@@ -9,21 +9,25 @@ class TrayController with TrayListener {
   TrayController._();
 
   VoidCallback? _onShowWindow;
+  VoidCallback? _onHideWindow;
+  VoidCallback? _onPublish;
   VoidCallback? _onQuit;
 
   Future<void> init({
     required VoidCallback onShowWindow,
+    required VoidCallback onHideWindow,
+    required VoidCallback onPublish,
     required VoidCallback onQuit,
   }) async {
     _onShowWindow = onShowWindow;
+    _onHideWindow = onHideWindow;
+    _onPublish = onPublish;
     _onQuit = onQuit;
 
     trayManager.addListener(this);
 
     try {
       if (Platform.isLinux) {
-        // AppIndicator no Linux exige um ícone para renderizar o item.
-        // Usamos um ícone do tema do sistema como fallback provisório.
         await trayManager.setIcon('application-x-executable');
       } else {
         // TODO: Adicionar asset real e chamar setIcon() passando o caminho no Windows/macOS.
@@ -46,6 +50,14 @@ class TrayController with TrayListener {
           MenuItem(
             key: 'show',
             label: 'Mostrar janela',
+          ),
+          MenuItem(
+            key: 'hide',
+            label: 'Esconder janela',
+          ),
+          MenuItem(
+            key: 'publish',
+            label: 'Publicar agora',
           ),
           MenuItem.separator(),
           MenuItem(
@@ -70,6 +82,10 @@ class TrayController with TrayListener {
   void onTrayMenuItemClick(MenuItem menuItem) {
     if (menuItem.key == 'show') {
       _onShowWindow?.call();
+    } else if (menuItem.key == 'hide') {
+      _onHideWindow?.call();
+    } else if (menuItem.key == 'publish') {
+      _onPublish?.call();
     } else if (menuItem.key == 'quit') {
       _onQuit?.call();
     }

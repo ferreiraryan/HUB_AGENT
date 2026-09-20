@@ -6,12 +6,13 @@ class WindowController with WindowListener {
 
   WindowController._();
 
+  bool _hidden = false;
+
   Future<void> init({required bool hidden}) async {
     await windowManager.ensureInitialized();
 
     windowManager.addListener(this);
 
-    // X esconde em vez de matar a aplicação. O único meio de sair será pelo tray.
     await windowManager.setPreventClose(true);
 
     const options = WindowOptions(
@@ -23,15 +24,24 @@ class WindowController with WindowListener {
 
     await windowManager.waitUntilReadyToShow(options, () async {
       if (hidden) {
-        await windowManager.hide();
+        await hide();
       } else {
-        await windowManager.show();
-        await windowManager.focus();
+        await showAndFocus();
       }
     });
   }
 
+  Future<void> hide() async {
+    // Remove da barra de tarefas para agir como um daemon real de background
+    await windowManager.setSkipTaskbar(true);
+    _hidden = true;
+    await windowManager.hide();
+  }
+
   Future<void> showAndFocus() async {
+    await windowManager.setSkipTaskbar(false);
+    _hidden = false;
+
     if (await windowManager.isMinimized()) {
       await windowManager.restore();
     }
@@ -40,10 +50,8 @@ class WindowController with WindowListener {
   }
 
   @override
-  void onWindowClose() async {
-    if (await windowManager.isPreventClose()) {
-      await windowManager.hide();
-    }
+  void onWindowClose() {
+    hide();
   }
 
   void dispose() {

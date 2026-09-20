@@ -11,8 +11,6 @@ import 'system/agent_config.dart';
 import 'system/tray_controller.dart';
 import 'system/window_controller.dart';
 
-// Mantido vivo para o ServerSocket não ser coletado — senão o lock
-// de instância única morre junto.
 // ignore: unused_element
 ServerSocket? _instanceLock;
 
@@ -48,6 +46,20 @@ void main(List<String> args) async {
 
   await WindowController.instance.init(hidden: isHidden);
 
+  // Inicializado antes do runApp para garantir que o menu de bandeja e as
+  // ações de controle nativo estejam prontas imediatamente, independente da UI Flutter.
+  await TrayController.instance.init(
+    onShowWindow: WindowController.instance.showAndFocus,
+    onHideWindow: WindowController.instance.hide,
+    onPublish: () async {
+      await repository.flush();
+    },
+    onQuit: () async {
+      await runtime.dispose();
+      exit(0);
+    },
+  );
+
   runApp(
     ProviderScope(
       overrides: [
@@ -56,14 +68,6 @@ void main(List<String> args) async {
       ],
       child: const CmsApp(),
     ),
-  );
-
-  await TrayController.instance.init(
-    onShowWindow: WindowController.instance.showAndFocus,
-    onQuit: () async {
-      await runtime.dispose();
-      exit(0);
-    },
   );
 }
 
