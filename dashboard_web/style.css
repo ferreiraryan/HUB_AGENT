@@ -1,0 +1,631 @@
+/* =========================================================
+   RESET / BASE
+   ========================================================= */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+:root {
+  /* --- Paleta Catppuccin Mocha (base) --- */
+  --ctp-base:      #1e1e2e;
+  --ctp-mantle:    #181825;
+  --ctp-crust:     #11111b;
+  --ctp-surface0:  #313244;
+  --ctp-surface1:  #45475a;
+  --ctp-surface2:  #585b70;
+  --ctp-text:      #cdd6f4;
+  --ctp-subtext1:  #bac2de;
+  --ctp-subtext0:  #a6adc8;
+  --ctp-overlay0:  #6c7086;
+  --ctp-mauve:     #cba6f7;
+  --ctp-red:       #f38ba8;
+
+  /* --- Tema dinâmico: sobrescrito em runtime via UI.applyTheme() a partir do
+     tópico MQTT "layout". Os valores abaixo são o fallback antes de qualquer
+     node publicar um tema customizado. Online/offline TAMBÉM usam --accent-color
+     por decisão de produto (o tema controla a identidade visual inteira). --- */
+  --bg-color: var(--ctp-crust);
+  --card-color: var(--ctp-base);
+  --accent-color: var(--ctp-mauve);
+  --accent-glow: rgba(203, 166, 247, 0.35);
+
+  --danger-color: var(--ctp-red);
+
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --transition-fast: 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-med: 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Vidro (glassmorphism): superfície semitransparente + blur */
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.08);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* sem scroll geral - viewport fixo */
+  background: var(--bg-color);
+  color: var(--ctp-text);
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  background: none;
+}
+
+/* =========================================================
+   APP SHELL: sidebar + main lado a lado
+   ========================================================= */
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  width: 100%;
+  height: 100%;
+}
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--ctp-mantle);
+  border-right: 1px solid var(--glass-border);
+  padding: 20px 14px;
+  min-height: 0;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 20px 6px;
+  flex-shrink: 0;
+}
+.sidebar__brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  box-shadow: 0 0 10px 2px var(--accent-glow);
+}
+.sidebar__brand-text {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-size: 0.85rem;
+  color: var(--ctp-subtext1);
+}
+
+.device-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.device-tabs__empty {
+  color: var(--ctp-overlay0);
+  font-size: 0.82rem;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.device-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  transition: background var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+.device-tab:active {
+  transform: scale(0.96);
+}
+.device-tab--active {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  box-shadow: inset 3px 0 0 var(--accent-color);
+}
+
+.device-tab__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ctp-overlay0); /* offline por padrão */
+  flex-shrink: 0;
+}
+.device-tab--online .device-tab__dot {
+  background: var(--accent-color);
+  box-shadow: 0 0 6px 1px var(--accent-glow);
+}
+/* Offline: aba permanece clicável, só fica visualmente apagada (opacity baixa) */
+.device-tab--offline {
+  opacity: 0.45;
+}
+
+.device-tab__name {
+  flex: 1;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.device-tab__media {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.sidebar__footer {
+  flex-shrink: 0;
+  padding-top: 14px;
+}
+
+.broker-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+.broker-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger-color);
+  flex-shrink: 0;
+}
+.broker-status--online .broker-status__dot {
+  background: var(--accent-color);
+  box-shadow: 0 0 6px 1px var(--accent-glow);
+}
+
+/* =========================================================
+   MAIN
+   ========================================================= */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 28px;
+}
+
+.main__header {
+  flex-shrink: 0;
+  padding-bottom: 14px;
+}
+.main__title-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.main__title {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--ctp-subtext0);
+}
+.badge--online {
+  color: var(--accent-color);
+  border-color: var(--accent-glow);
+}
+
+.main__body {
+  position: relative; /* ancora o offline-overlay */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  transition: opacity var(--transition-fast), filter var(--transition-fast);
+}
+/* Device offline selecionado: conteúdo fica visível porém "apagado" e sem clique */
+.main-content--disabled {
+  opacity: 0.35;
+  filter: grayscale(0.5);
+  pointer-events: none;
+}
+
+.offline-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--ctp-subtext0);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+.offline-overlay--active {
+  opacity: 1;
+}
+.offline-overlay__icon {
+  font-size: 2rem;
+  opacity: 0.6;
+}
+
+/* =========================================================
+   NOW PLAYING
+   ========================================================= */
+.now-playing {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-md);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: opacity var(--transition-fast);
+}
+.now-playing--empty {
+  opacity: 0.55;
+}
+
+.np-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+.np-icon--playing {
+  animation: np-pulse 2s infinite;
+}
+@keyframes np-pulse {
+  0%   { opacity: 0.6; }
+  50%  { opacity: 1;   }
+  100% { opacity: 0.6; }
+}
+
+.np-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.np-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.np-artist {
+  font-size: 0.8rem;
+  color: var(--ctp-subtext0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* =========================================================
+   CONTENT GRID (2 colunas: audio | atalhos)
+   ========================================================= */
+.content-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 18px;
+}
+
+.panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel__title {
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+/* --- Volume master (slider vertical estilo iOS/Win11) --- */
+.volume-master {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 0;
+}
+
+.slider-vertical-wrap {
+  width: 90px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.slider-vertical {
+  width: 200px;
+  height: 56px;
+  transform: rotate(-90deg);
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  touch-action: none;
+}
+.slider-vertical::-webkit-slider-runnable-track {
+  height: 20px;
+  border-radius: 999px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--glass-border);
+}
+.slider-vertical::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 48px;
+  height: 48px;
+  margin-top: -14px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  border: 4px solid var(--ctp-crust);
+  box-shadow: 0 0 16px 2px var(--accent-glow);
+}
+.slider-vertical::-moz-range-track {
+  height: 20px;
+  border-radius: 999px;
+  background: var(--ctp-surface0);
+}
+.slider-vertical::-moz-range-thumb {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--ctp-crust);
+  border-radius: 50%;
+  background: var(--accent-color);
+}
+
+.volume-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.btn-pill {
+  flex-shrink: 0;
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: 999px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--glass-border);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+.btn-pill:active {
+  transform: scale(0.96);
+  background: var(--ctp-surface1);
+}
+
+/* --- Grid de atalhos (com transição de entrada/saída de pasta) --- */
+.shortcuts-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-auto-rows: 110px;
+  gap: 14px;
+  align-content: start;
+}
+
+.shortcuts-empty {
+  grid-column: 1 / -1;
+  color: var(--ctp-overlay0);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.shortcut-btn {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+  /* Efeito de entrada: cada botão "nasce" com fade + leve escala, escalonado por --i
+     (setado via JS em cada botão). Só transform/opacity -> leve pra CPU do tablet. */
+  animation: shortcut-in var(--transition-med) both;
+  animation-delay: calc(var(--i, 0) * 25ms);
+}
+@keyframes shortcut-in {
+  from { opacity: 0; transform: scale(0.85) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.shortcut-btn:active {
+  transform: scale(0.92);
+  background: var(--accent-color);
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.shortcut-btn__icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+/* =========================================================
+   MIXER DRAWER (desliza da direita, com backdrop em blur)
+   ========================================================= */
+.mixer-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.mixer-drawer__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity var(--transition-med);
+}
+
+.mixer-drawer__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 88vw);
+  background: var(--card-color);
+  border-left: 1px solid var(--glass-border);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform var(--transition-med);
+}
+
+/* Estado aberto: liga eventos e desliza pra dentro */
+.mixer-drawer--open {
+  pointer-events: auto;
+}
+.mixer-drawer--open .mixer-drawer__backdrop {
+  opacity: 1;
+}
+.mixer-drawer--open .mixer-drawer__panel {
+  transform: translateX(0);
+}
+
+.mixer-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+.mixer-drawer__header h2 {
+  font-size: 1.05rem;
+}
+
+.btn-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--ctp-subtext0);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+.btn-icon:active {
+  background: var(--ctp-surface0);
+}
+
+.mixer-apps-list {
+  flex: 1;
+  padding: 18px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mixer-empty-msg {
+  color: var(--ctp-overlay0);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.app-mixer-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.app-mixer-row__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+.app-mixer-row__name { font-weight: 600; }
+.app-mixer-row__value { color: var(--accent-color); font-weight: 600; }
+
+.app-mixer-row input[type="range"] {
+  width: 100%;
+  height: 38px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.app-mixer-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--glass-border);
+}
+.app-mixer-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  border: 3px solid var(--ctp-crust);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+.app-mixer-row input[type="range"]::-moz-range-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ctp-surface0);
+}
+.app-mixer-row input[type="range"]::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--ctp-crust);
+  border-radius: 50%;
+  background: var(--accent-color);
+}

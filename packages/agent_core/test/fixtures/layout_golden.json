@@ -1,0 +1,24 @@
+{
+  "deviceName": "Meu PC",
+  "theme": {
+    "bgColor": "#11111b",
+    "cardColor": "#1e1e2e",
+    "accentColor": "#cba6f7"
+  },
+  "pages": {
+    "home": [
+      { "type": "shortcut", "id": "play_pause", "icon": "⏯️", "label": "Play" },
+      { "type": "shortcut", "id": "next", "icon": "⏭️", "label": "Next" },
+      { "type": "folder", "id": "media", "icon": "🎵", "label": "Mídia", "target": "media" },
+      { "type": "folder", "id": "dev", "icon": "💻", "label": "Dev", "target": "dev" }
+    ],
+    "media": [
+      { "type": "shortcut", "id": "prev", "icon": "⏮️", "label": "Anterior" },
+      { "type": "shortcut", "id": "next", "icon": "⏭️", "label": "Próxima" }
+    ],
+    "dev": [
+      { "type": "shortcut", "id": "open_vscode", "icon": "🧩", "label": "VS Code" },
+      { "type": "shortcut", "id": "open_terminal", "icon": "⌨️", "label": "Terminal" }
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "hub-agent-tablet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard kiosk que consome nodes/+/... do Hub Agent.",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

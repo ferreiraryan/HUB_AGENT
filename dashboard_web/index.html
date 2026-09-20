@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Smart Kiosk Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-shell">
+
+    <!-- ===================== SIDEBAR: dispositivos descobertos na rede ===================== -->
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <span class="sidebar__brand-dot"></span>
+        <span class="sidebar__brand-text">KIOSK</span>
+      </div>
+
+      <!-- Tabs injetadas dinamicamente via UI.renderDeviceTabs() -->
+      <nav id="device-tabs" class="device-tabs">
+        <p class="device-tabs__empty">Procurando dispositivos&hellip;</p>
+      </nav>
+
+      <div class="sidebar__footer">
+        <span id="broker-status" class="broker-status broker-status--offline">
+          <span class="broker-status__dot"></span> Conectando
+        </span>
+      </div>
+    </aside>
+
+    <!-- ===================== MAIN: conteúdo do dispositivo selecionado ===================== -->
+    <main class="main">
+      <header class="main__header">
+        <div class="main__title-group">
+          <h1 id="device-title" class="main__title">Selecione um dispositivo</h1>
+          <span id="device-status-badge" class="badge badge--offline">&mdash;</span>
+        </div>
+      </header>
+
+      <div class="main__body">
+        <div id="main-content" class="main-content">
+
+          <!-- Widget Now Playing -->
+          <div id="now-playing" class="now-playing now-playing--empty">
+            <span id="np-icon" class="np-icon">&#127925;</span>
+            <div class="np-info">
+              <div id="np-title" class="np-title">Nenhuma mídia tocando</div>
+              <div id="np-artist" class="np-artist">-</div>
+            </div>
+          </div>
+
+          <div class="content-grid">
+
+            <!-- Coluna esquerda: Volume master -->
+            <section class="panel panel--audio">
+              <h2 class="panel__title">Volume</h2>
+
+              <div class="volume-master">
+                <div class="slider-vertical-wrap">
+                  <input
+                    id="master-volume"
+                    class="slider-vertical"
+                    type="range"
+                    min="0" max="100" step="1" value="50"
+                    aria-label="Volume master"
+                  >
+                </div>
+                <output id="master-volume-value" class="volume-value">50%</output>
+              </div>
+
+              <button id="btn-toggle-mixer" class="btn-pill" type="button">
+                &#127925; Mixer de Apps
+              </button>
+            </section>
+
+            <!-- Coluna direita: Grid de atalhos (com pastas) -->
+            <section class="panel panel--shortcuts">
+              <h2 class="panel__title">Atalhos</h2>
+              <div id="shortcuts-grid" class="shortcuts-grid">
+                <p class="shortcuts-empty">Sem atalhos configurados.</p>
+              </div>
+            </section>
+
+          </div>
+        </div>
+
+        <!-- Overlay de bloqueio visual quando o device selecionado está offline -->
+        <div id="offline-overlay" class="offline-overlay">
+          <span class="offline-overlay__icon">&#9889;</span>
+          <p>Dispositivo offline</p>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ===================== DRAWER: Mixer de Aplicações ===================== -->
+  <div id="mixer-drawer" class="mixer-drawer">
+    <div id="mixer-backdrop" class="mixer-drawer__backdrop"></div>
+    <div class="mixer-drawer__panel">
+      <header class="mixer-drawer__header">
+        <h2>Mixer de Aplicações</h2>
+        <button id="btn-close-mixer" class="btn-icon" type="button" aria-label="Fechar">&times;</button>
+      </header>
+      <div id="mixer-apps-list" class="mixer-apps-list">
+        <p class="mixer-empty-msg">Nenhuma aplicação de áudio ativa.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- mqtt.js local: sem dependência de internet -->
+  <script src="mqtt.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
