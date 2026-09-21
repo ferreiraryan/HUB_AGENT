@@ -21,7 +21,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     const pad = 16.0;
 
     final usableW = box.width - pad * 2;
-    final cols = (usableW / (maxExtent + spacing)).floor().clamp(1, 999);
+    final cols = (usableW / (maxExtent + spacing)).ceil().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
     final tileH = tileW;
 
@@ -160,6 +160,8 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                                         return Stack(
                                           children: [
                                             GridView.builder(
+                                              physics:
+                                                  const NeverScrollableScrollPhysics(),
                                               padding: const EdgeInsets.all(16),
                                               gridDelegate:
                                                   const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -400,7 +402,7 @@ class _GapPlaceholder extends StatelessWidget {
     const pad = 16.0;
 
     final usableW = boxSize.width - pad * 2;
-    final cols = (usableW / (maxExtent + spacing)).floor().clamp(1, 999);
+    final cols = (usableW / (maxExtent + spacing)).ceil().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
     final tileH = tileW;
 
