@@ -159,103 +159,113 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                                       builder: (context, candidate, rejected) {
                                         return Stack(
                                           children: [
-                                            GridView.builder(
-                                              physics:
-                                                  const NeverScrollableScrollPhysics(),
-                                              padding: const EdgeInsets.all(16),
-                                              gridDelegate:
-                                                  const SliverGridDelegateWithMaxCrossAxisExtent(
-                                                maxCrossAxisExtent: 140,
-                                                mainAxisSpacing: 16,
-                                                crossAxisSpacing: 16,
-                                                childAspectRatio: 1.0,
-                                              ),
-                                              itemCount: tiles.length,
-                                              itemBuilder: (context, index) {
-                                                final tile = tiles[index];
-                                                final isAutoBack =
-                                                    needsAutoBack && index == 0;
+                                            Expanded(
+                                              child: SingleChildScrollView(
+                                                physics:
+                                                    const BouncingScrollPhysics(),
+                                                child: GridView.builder(
+                                                  shrinkWrap: true,
+                                                  physics:
+                                                      const NeverScrollableScrollPhysics(),
+                                                  padding:
+                                                      const EdgeInsets.all(16),
+                                                  gridDelegate:
+                                                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                                                    maxCrossAxisExtent: 140,
+                                                    mainAxisSpacing: 16,
+                                                    crossAxisSpacing: 16,
+                                                    childAspectRatio: 1.0,
+                                                  ),
+                                                  itemCount: tiles.length,
+                                                  itemBuilder:
+                                                      (context, index) {
+                                                    final tile = tiles[index];
+                                                    final isAutoBack =
+                                                        needsAutoBack &&
+                                                            index == 0;
 
-                                                Widget card = TileCard(
-                                                  tile: tile,
-                                                  theme: theme,
-                                                  index: index,
-                                                  selected:
-                                                      state.selectedTileId ==
+                                                    Widget card = TileCard(
+                                                      tile: tile,
+                                                      theme: theme,
+                                                      index: index,
+                                                      selected: state
+                                                              .selectedTileId ==
                                                           tile.id,
-                                                  fromPage: isAutoBack
-                                                      ? null
-                                                      : state.currentPage,
-                                                  onTap: () {
-                                                    final notifier = ref.read(
-                                                        editorControllerProvider
-                                                            .notifier);
-                                                    if (isAutoBack) {
-                                                      notifier.selectPage(
-                                                          Layout.homePage);
-                                                      return;
-                                                    }
-                                                    notifier
-                                                        .selectTile(tile.id);
-                                                  },
-                                                  onDoubleTap: () {
-                                                    final notifier = ref.read(
-                                                        editorControllerProvider
-                                                            .notifier);
-                                                    if (tile is FolderTile) {
-                                                      notifier.selectPage(
-                                                          tile.target);
-                                                    } else if (tile
-                                                        is BackTile) {
-                                                      notifier.selectPage(
-                                                          Layout.homePage);
-                                                    }
-                                                  },
-                                                );
+                                                      fromPage: isAutoBack
+                                                          ? null
+                                                          : state.currentPage,
+                                                      onTap: () {
+                                                        final notifier = ref.read(
+                                                            editorControllerProvider
+                                                                .notifier);
+                                                        if (isAutoBack) {
+                                                          notifier.selectPage(
+                                                              Layout.homePage);
+                                                          return;
+                                                        }
+                                                        notifier.selectTile(
+                                                            tile.id);
+                                                      },
+                                                      onDoubleTap: () {
+                                                        final notifier = ref.read(
+                                                            editorControllerProvider
+                                                                .notifier);
+                                                        if (tile
+                                                            is FolderTile) {
+                                                          notifier.selectPage(
+                                                              tile.target);
+                                                        } else if (tile
+                                                            is BackTile) {
+                                                          notifier.selectPage(
+                                                              Layout.homePage);
+                                                        }
+                                                      },
+                                                    );
 
-                                                if (isAutoBack) {
-                                                  card = Opacity(
-                                                    opacity: 0.6,
-                                                    child: Stack(
-                                                      children: [
-                                                        Positioned.fill(
-                                                            child: card),
-                                                        Positioned(
-                                                          top: 4,
-                                                          right: 4,
-                                                          child: Container(
-                                                            padding:
-                                                                const EdgeInsets
+                                                    if (isAutoBack) {
+                                                      card = Opacity(
+                                                        opacity: 0.6,
+                                                        child: Stack(
+                                                          children: [
+                                                            Positioned.fill(
+                                                                child: card),
+                                                            Positioned(
+                                                              top: 4,
+                                                              right: 4,
+                                                              child: Container(
+                                                                padding: const EdgeInsets
                                                                     .symmetric(
                                                                     horizontal:
                                                                         6,
                                                                     vertical:
                                                                         2),
-                                                            decoration:
-                                                                BoxDecoration(
-                                                              color: Colors
-                                                                  .black54,
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          8),
+                                                                decoration:
+                                                                    BoxDecoration(
+                                                                  color: Colors
+                                                                      .black54,
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              8),
+                                                                ),
+                                                                child: const Text(
+                                                                    'auto',
+                                                                    style: TextStyle(
+                                                                        fontSize:
+                                                                            10,
+                                                                        color: Colors
+                                                                            .white)),
+                                                              ),
                                                             ),
-                                                            child: const Text(
-                                                                'auto',
-                                                                style: TextStyle(
-                                                                    fontSize:
-                                                                        10,
-                                                                    color: Colors
-                                                                        .white)),
-                                                          ),
+                                                          ],
                                                         ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                }
+                                                      );
+                                                    }
 
-                                                return card;
-                                              },
+                                                    return card;
+                                                  },
+                                                ),
+                                              ),
                                             ),
                                             if (_targetGap != null)
                                               _GapPlaceholder(
