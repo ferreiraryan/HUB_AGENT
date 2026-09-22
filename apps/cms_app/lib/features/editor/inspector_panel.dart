@@ -98,6 +98,7 @@ class InspectorPanel extends ConsumerWidget {
       BuildContext context, WidgetRef ref, EditorState state, Tile tile) {
     final child = switch (tile) {
       ShortcutTile() => _ShortcutInspector(tile: tile, state: state),
+      SliderTile() => _ShortcutInspector(tile: tile, state: state),
       FolderTile() => _FolderInspector(tile: tile, state: state),
       BackTile() => _BackInspector(tile: tile, state: state),
     };
@@ -171,6 +172,8 @@ class _InspectorFooter extends ConsumerWidget {
           id: newId, icon: tile.icon, label: tile.label, target: f.target);
     } else if (tile is BackTile) {
       newTile = BackTile(id: newId, icon: tile.icon, label: tile.label);
+    } else if (tile is SliderTile) {
+      newTile = SliderTile(id: newId, icon: tile.icon, label: tile.label);
     } else {
       return;
     }
@@ -267,7 +270,7 @@ class _InspectorFooter extends ConsumerWidget {
 }
 
 class _ShortcutInspector extends ConsumerStatefulWidget {
-  final ShortcutTile tile;
+  final Tile tile;
   final EditorState state;
 
   const _ShortcutInspector({required this.tile, required this.state});
@@ -279,18 +282,41 @@ class _ShortcutInspector extends ConsumerStatefulWidget {
 class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
   late bool _isBuiltinMode;
 
+  bool get _isShortcut => widget.tile is ShortcutTile;
+
   @override
   void initState() {
     super.initState();
-    _isBuiltinMode = Layout.builtinActions.contains(widget.tile.id);
+    _isBuiltinMode =
+        _isShortcut && Layout.builtinActions.contains(widget.tile.id);
   }
 
   @override
   void didUpdateWidget(covariant _ShortcutInspector oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.tile.id != widget.tile.id) {
-      _isBuiltinMode = Layout.builtinActions.contains(widget.tile.id);
+    if (oldWidget.tile.id != widget.tile.id ||
+        oldWidget.tile.runtimeType != widget.tile.runtimeType) {
+      _isBuiltinMode =
+          _isShortcut && Layout.builtinActions.contains(widget.tile.id);
     }
+  }
+
+  Tile _updateTile({String? id, String? icon, String? label}) {
+    final current = widget.tile;
+
+    if (current is SliderTile) {
+      return SliderTile(
+        id: id ?? current.id,
+        icon: icon ?? current.icon,
+        label: label ?? current.label,
+      );
+    }
+
+    return ShortcutTile(
+      id: id ?? current.id,
+      icon: icon ?? current.icon,
+      label: label ?? current.label,
+    );
   }
 
   @override
@@ -306,8 +332,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           onSubmitted: (newLabel) {
             notifier.upsertTile(
               widget.state.currentPage,
-              ShortcutTile(
-                  id: widget.tile.id, icon: widget.tile.icon, label: newLabel),
+              _updateTile(label: newLabel),
             );
           },
         ),
@@ -317,8 +342,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           onPicked: (newIcon) {
             notifier.upsertTile(
               widget.state.currentPage,
-              ShortcutTile(
-                  id: widget.tile.id, icon: newIcon, label: widget.tile.label),
+              _updateTile(icon: newIcon),
             );
           },
         ),
@@ -329,41 +353,42 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           onSubmitted: (newId) {
             notifier.upsertTile(
               widget.state.currentPage,
-              ShortcutTile(
-                  id: newId, icon: widget.tile.icon, label: widget.tile.label),
+              _updateTile(id: newId),
             );
           },
         ),
         const SizedBox(height: 16),
-        const Text('Comportamento',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        RadioGroup<bool>(
-          groupValue: _isBuiltinMode,
-          onChanged: (v) {
-            if (v != null) setState(() => _isBuiltinMode = v);
-          },
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Radio<bool>(
-                      value: true, visualDensity: VisualDensity.compact),
-                  const Text('Ação embutida', style: TextStyle(fontSize: 13)),
-                ],
-              ),
-              Row(
-                children: [
-                  Radio<bool>(
-                      value: false, visualDensity: VisualDensity.compact),
-                  const Text('Comando personalizado',
-                      style: TextStyle(fontSize: 13)),
-                ],
-              ),
-            ],
+        if (_isShortcut) ...[
+          const Text('Comportamento',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          RadioGroup<bool>(
+            groupValue: _isBuiltinMode,
+            onChanged: (v) {
+              if (v != null) setState(() => _isBuiltinMode = v);
+            },
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Radio<bool>(
+                        value: true, visualDensity: VisualDensity.compact),
+                    const Text('Ação embutida', style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Radio<bool>(
+                        value: false, visualDensity: VisualDensity.compact),
+                    const Text('Comando personalizado',
+                        style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-        if (_isBuiltinMode) ...[
+        ],
+        if (_isShortcut && _isBuiltinMode) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             initialValue: Layout.builtinActions.contains(widget.tile.id)
@@ -389,7 +414,8 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           const SizedBox(height: 4),
           const Text('Esta ação é tratada pelo agente; não precisa de comando.',
               style: TextStyle(fontSize: 11, color: Colors.white54)),
-        ] else ...[
+        ],
+        if (!_isShortcut || !_isBuiltinMode) ...[
           const SizedBox(height: 8),
           _ArgvEditor(
             initialArgv: widget.state.layout.bindings[widget.tile.id] ?? [],

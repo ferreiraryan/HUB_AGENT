@@ -309,6 +309,14 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.linear_scale),
+                title: const Text('Slider (Volume/Brilho)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _createTile(ref, state, 'slider', context);
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.folder),
                 title: const Text('Pasta'),
                 onTap: () {
@@ -351,6 +359,22 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     switch (type) {
       case 'shortcut':
         newTile = ShortcutTile(id: id, icon: '⚡', label: 'Novo atalho');
+        break;
+      case 'slider':
+        // Pega todos os IDs que já existem no layout
+        final allIds = state.layout.pages.values
+            .expand((list) => list)
+            .map((t) => t.id)
+            .toSet();
+
+        // Se ainda não tem o master_volume, cria ele. Se já tem, cria um genérico.
+        if (!allIds.contains('master_volume')) {
+          newTile = const SliderTile(
+              id: 'master_volume', icon: '🔊', label: 'Volume Principal');
+        } else {
+          final dynId = _generateId(state, 'slider');
+          newTile = SliderTile(id: dynId, icon: '🎚️', label: 'Novo Slider');
+        }
         break;
       case 'folder':
         final availablePages = state.layout.pages.keys
