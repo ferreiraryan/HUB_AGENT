@@ -28,8 +28,8 @@ class CommandResult {
 /// Roteia `action` -> handler tipado.
 ///
 /// SEGURANCA: nada que chegue pelo MQTT vira comando de shell. O tablet manda
-/// um `action`; se nao for embutida, o dispatcher procura o argv em
-/// [Layout.bindings] e ainda valida o binario contra a whitelist. Uma mensagem
+/// um `action`; se nao for embutida, o dispatcher procura a cadeia de comandos
+/// em [Layout.bindings] e valida os binarios contra a whitelist. Uma mensagem
 /// MQTT forjada so consegue disparar o que o usuario ja autorizou no CMS.
 class CommandDispatcher {
   final AudioController audio;
@@ -98,25 +98,59 @@ class CommandDispatcher {
     }
   }
 
-  /// Executa o binding associado ao id. Silencioso e logado se nao houver.
+  /// Resolve a cadeia associada ao id e a executa com semantica &&.
   Future<bool> runShortcut(String id) async {
-    final argv = layoutProvider().bindingFor(id);
-    if (argv == null || argv.isEmpty) {
+    final cmds = layoutProvider().bindingFor(id);
+    if (cmds == null || cmds.isEmpty) {
       stderr.writeln('shortcut "$id" sem binding; ignorado');
       return false;
     }
-    if (!_isAllowed(argv.first)) {
-      stderr.writeln('binario "${argv.first}" fora da whitelist; bloqueado');
+    return _runChain(cmds);
+  }
+
+  /// Executa comandos em sequencia (&& semantics), parando no primeiro erro.
+  Future<bool> _runChain(List<List<String>> cmds) async {
+    if (cmds.length > 10) {
+      stderr.writeln('limite de 10 comandos excedido no dispatcher');
       return false;
     }
-    return launch(argv);
+
+    for (final argv in cmds) {
+      if (argv.isEmpty) continue;
+      if (!_isAllowed(argv.first)) {
+        stderr.writeln('binario "${argv.first}" fora da whitelist; bloqueado');
+        return false;
+      }
+
+      try {
+        final proc = await Process.start(
+          argv.first,
+          argv.skip(1).toList(),
+          runInShell: false,
+        );
+
+        // Consume stdout/stderr silenciosamente para evitar travamentos de buffer
+        proc.stdout.listen((_) {});
+        proc.stderr.listen((_) {});
+
+        final code = await proc.exitCode;
+        if (code != 0) {
+          stderr.writeln('comando falhou com codigo $code:${argv.join(' ')}');
+          return false;
+        }
+      } catch (e) {
+        stderr.writeln('falha ao executar ${argv.join(' ')}:$e');
+        return false;
+      }
+    }
+    return true;
   }
 
   bool _isAllowed(String binary) =>
       allowedBinaries.isEmpty || allowedBinaries.contains(binary);
 
-  /// Dispara e esquece. `detachedWithStdio` faz o filho sobreviver ao agente:
-  /// fechar o CMS nao pode fechar o VS Code que ele abriu.
+  /// Dispara e esquece individual. Retido para legado ou usos onde
+  /// a semantica detached seja necessaria sem esperar exit.
   Future<bool> launch(List<String> argv) async {
     if (argv.isEmpty) return false;
     try {
@@ -124,11 +158,11 @@ class CommandDispatcher {
         argv.first,
         argv.skip(1).toList(),
         mode: ProcessStartMode.detachedWithStdio,
-        runInShell: false, // argv puro: sem interpretador, sem injecao
+        runInShell: false,
       );
       return true;
     } catch (e) {
-      stderr.writeln('falha ao executar ${argv.join(' ')}: $e');
+      stderr.writeln('falha ao executar ${argv.join(' ')}:$e');
       return false;
     }
   }
@@ -151,6 +185,25 @@ class CommandDispatcher {
   }
 
   void clearCache() => _existsCache.clear();
+
+  /// Testa uma cadeia de comandos inteira (para o CMS). Para no erro.
+  Future<List<CommandResult>> testChain(List<List<String>> cmds,
+      {Duration timeout = const Duration(seconds: 8)}) async {
+    final results = <CommandResult>[];
+    if (cmds.length > 10) {
+      return [
+        const CommandResult(
+            started: false, error: 'limite de 10 comandos excedido')
+      ];
+    }
+    for (final argv in cmds) {
+      if (argv.isEmpty) continue;
+      final res = await test(argv, timeout: timeout);
+      results.add(res);
+      if (!res.ok) break;
+    }
+    return results;
+  }
 
   /// Executa capturando saida, com timeout. So para o botao "Testar": nao use
   /// para apps de GUI, que nunca terminam.

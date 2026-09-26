@@ -6,8 +6,6 @@ class WindowController with WindowListener {
 
   WindowController._();
 
-  bool _hidden = false;
-
   Future<void> init({required bool hidden}) async {
     await windowManager.ensureInitialized();
 
@@ -34,13 +32,11 @@ class WindowController with WindowListener {
   Future<void> hide() async {
     // Remove da barra de tarefas para agir como um daemon real de background
     await windowManager.setSkipTaskbar(true);
-    _hidden = true;
     await windowManager.hide();
   }
 
   Future<void> showAndFocus() async {
     await windowManager.setSkipTaskbar(false);
-    _hidden = false;
 
     if (await windowManager.isMinimized()) {
       await windowManager.restore();

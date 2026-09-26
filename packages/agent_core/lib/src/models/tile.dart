@@ -22,8 +22,8 @@ sealed class Tile {
     final id = json['id'] as String;
     final icon = (json['icon'] as String?) ?? '';
     final label = (json['label'] as String?) ?? '';
-    // Contrato: `type` omitido significa "shortcut".
     final type = (json['type'] as String?) ?? 'shortcut';
+
     return switch (type) {
       'shortcut' => ShortcutTile(id: id, icon: icon, label: label),
       'folder' => FolderTile(
@@ -33,6 +33,8 @@ sealed class Tile {
           target: json['target'] as String,
         ),
       'back' => BackTile(id: id, icon: icon, label: label),
+      'slider' =>
+        SliderTile(id: id, icon: icon, label: label), // <-- ADICIONE AQUI
       _ => throw FormatException('tipo de tile desconhecido: "$type"'),
     };
   }
@@ -140,6 +142,35 @@ final class BackTile extends Tile {
   @override
   bool operator ==(Object o) =>
       o is BackTile && o.id == id && o.icon == icon && o.label == label;
+
+  @override
+  int get hashCode => Object.hash(type, id, icon, label);
+}
+
+/// Um slider para controles de variação contínua (volume, brilho, etc).
+final class SliderTile extends Tile {
+  const SliderTile({
+    required super.id,
+    required super.icon,
+    required super.label,
+  });
+
+  @override
+  String get type => 'slider';
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {'type': 'slider', 'id': id, 'icon': icon, 'label': label};
+
+  SliderTile copyWith({String? id, String? icon, String? label}) => SliderTile(
+        id: id ?? this.id,
+        icon: icon ?? this.icon,
+        label: label ?? this.label,
+      );
+
+  @override
+  bool operator ==(Object o) =>
+      o is SliderTile && o.id == id && o.icon == icon && o.label == label;
 
   @override
   int get hashCode => Object.hash(type, id, icon, label);

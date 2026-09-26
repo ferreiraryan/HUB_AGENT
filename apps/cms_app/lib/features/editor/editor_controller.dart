@@ -127,8 +127,8 @@ class EditorController extends Notifier<EditorState> {
 
   void removePage(String pageId) => _mutate((l) => l.removePage(pageId));
 
-  void setBinding(String id, List<String>? argv) =>
-      _mutate((l) => l.setBinding(id, argv));
+  void setBinding(String id, List<List<String>>? cmds) =>
+      _mutate((l) => l.setBinding(id, cmds));
 
   void updateTheme(HubTheme theme) => _mutate((l) => l.copyWith(theme: theme));
 

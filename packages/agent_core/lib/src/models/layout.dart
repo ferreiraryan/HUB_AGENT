@@ -26,21 +26,24 @@ class LayoutIssue {
 ///    `nodes/$id/layout` com retain.
 ///  - [toDiskJson] e o superset persistido: contrato + [bindings].
 ///
-/// [bindings] mapeia `id` de shortcut -> argv a executar. Ele existe porque o
-/// contrato canonico nao tem campo `cmd` no tile, e mandar comando de shell
-/// pelo MQTT seria uma superficie de ataque aberta: qualquer coisa com acesso
-/// ao broker executaria codigo no PC. Com bindings, o tablet so consegue
-/// disparar ids que o usuario ja autorizou no CMS.
+/// [bindings] mapeia `id` de shortcut -> LISTA DE comandos (argv). Cada
+/// shortcut pode ter vários comandos executados em sequência com semântica
+/// de && (para no primeiro erro). Ele existe porque o contrato canônico não
+/// tem campo `cmd` no tile, e mandar comando de shell pelo MQTT seria uma
+/// superfície de ataque aberta: qualquer coisa com acesso ao broker
+/// executaria código no PC. Com bindings, o tablet só consegue disparar ids
+/// que o usuário já autorizou no CMS.
 @immutable
 class Layout {
   final String deviceName;
   final HubTheme theme;
 
-  /// Ordem de insercao importa: `home` sempre primeiro no JSON publicado.
+  /// Ordem de inserção importa: `home` sempre primeiro no JSON publicado.
   final Map<String, List<Tile>> pages;
 
-  /// LOCAL. Nunca publicado. `id do shortcut` -> argv.
-  final Map<String, List<String>> bindings;
+  /// LOCAL. Nunca publicado. `id do shortcut` -> lista de comandos (argv).
+  /// Cada comando é um argv (List<String>). Vários comandos = encadeamento.
+  final Map<String, List<List<String>>> bindings;
 
   const Layout({
     required this.deviceName,
@@ -51,7 +54,10 @@ class Layout {
 
   static const String homePage = 'home';
 
-  /// Ids tratados pelo agente e que, por isso, nao precisam de binding.
+  /// Limite de comandos por shortcut. Mais que isso, rejeita.
+  static const int maxCommandsPerBinding = 10;
+
+  /// Ids tratados pelo agente e que, por isso, não precisam de binding.
   static const Set<String> builtinActions = {
     'play_pause',
     'next',
@@ -65,13 +71,18 @@ class Layout {
         theme: HubTheme.fallback,
         pages: {
           homePage: const [
-            ShortcutTile(id: 'play_pause', icon: '\u{23EF}\u{FE0F}', label: 'Play'),
+            ShortcutTile(
+                id: 'play_pause', icon: '\u{23EF}\u{FE0F}', label: 'Play'),
             ShortcutTile(id: 'next', icon: '\u{23ED}\u{FE0F}', label: 'Next'),
           ],
         },
       );
 
   /// Aceita tanto o JSON do disco (com bindings) quanto o puro do contrato.
+  ///
+  /// Detecção de formato antigo vs novo:
+  ///   ["code", "."]              -> formato antigo (1 comando)
+  ///   [["code", "."], ["ls"]]    -> formato novo (N comandos)
   factory Layout.fromJson(Map<String, dynamic> json) {
     final rawPages = (json['pages'] as Map).cast<String, dynamic>();
     final pages = <String, List<Tile>>{};
@@ -81,11 +92,33 @@ class Layout {
           .toList(growable: false);
     }
 
-    final bindings = <String, List<String>>{};
+    final bindings = <String, List<List<String>>>{};
     final rawBindings = json['bindings'];
     if (rawBindings is Map) {
       for (final e in rawBindings.entries) {
-        bindings[e.key as String] = List<String>.from(e.value as List);
+        final raw = e.value;
+        if (raw is! List || raw.isEmpty) continue;
+        final key = e.key as String;
+
+        if (raw.first is String) {
+          // Formato antigo: 1 comando.
+          final argv = List<String>.from(raw);
+          if (argv.isNotEmpty) {
+            bindings[key] = [argv];
+          }
+        } else {
+          // Formato novo: N comandos.
+          final cmds = <List<String>>[];
+          for (final c in raw) {
+            if (c is! List) continue;
+            final argv = List<String>.from(c);
+            if (argv.isNotEmpty) cmds.add(argv);
+            if (cmds.length >= maxCommandsPerBinding) break;
+          }
+          if (cmds.isNotEmpty) {
+            bindings[key] = cmds;
+          }
+        }
       }
     }
 
@@ -109,7 +142,7 @@ class Layout {
     return ordered;
   }
 
-  /// O contrato canonico. Sem bindings, sem campo extra nenhum.
+  /// O contrato canônico. Sem bindings, sem campo extra nenhum.
   Map<String, dynamic> toPublishJson() => {
         'deviceName': deviceName,
         'theme': theme.toJson(),
@@ -117,6 +150,7 @@ class Layout {
       };
 
   /// O que vai para o layout.json em disco.
+  /// Sempre no formato novo (lista de listas).
   Map<String, dynamic> toDiskJson() => {
         'deviceName': deviceName,
         'theme': theme.toJson(),
@@ -131,13 +165,14 @@ class Layout {
   List<Tile> tilesOf(String pageId) =>
       List.unmodifiable(pages[pageId] ?? const <Tile>[]);
 
-  List<String>? bindingFor(String id) => bindings[id];
+  /// Lista de comandos associada ao id. Retorna null se não houver.
+  List<List<String>>? bindingFor(String id) => bindings[id];
 
   Layout copyWith({
     String? deviceName,
     HubTheme? theme,
     Map<String, List<Tile>>? pages,
-    Map<String, List<String>>? bindings,
+    Map<String, List<List<String>>>? bindings,
   }) =>
       Layout(
         deviceName: deviceName ?? this.deviceName,
@@ -205,31 +240,50 @@ class Layout {
     return copyWith(pages: next);
   }
 
-  /// Associa (ou remove, com [argv] nulo) um comando a um id de shortcut.
-  Layout setBinding(String id, List<String>? argv) {
-    final next = Map<String, List<String>>.of(bindings);
-    if (argv == null || argv.isEmpty) {
+  /// Associa (ou remove, com [cmds] nulo) uma cadeia de comandos a um id.
+  ///
+  /// Regras:
+  ///   - cmds == null ou vazio -> remove o binding.
+  ///   - argvs vazios são filtrados.
+  ///   - Limite de [maxCommandsPerBinding] aplicado.
+  Layout setBinding(String id, List<List<String>>? cmds) {
+    final next = Map<String, List<List<String>>>.of(bindings);
+
+    if (cmds == null) {
+      next.remove(id);
+      return copyWith(bindings: next);
+    }
+
+    final cleaned = <List<String>>[];
+    for (final argv in cmds) {
+      if (argv.isEmpty) continue;
+      cleaned.add(List<String>.of(argv));
+      if (cleaned.length >= maxCommandsPerBinding) break;
+    }
+
+    if (cleaned.isEmpty) {
       next.remove(id);
     } else {
-      next[id] = List<String>.of(argv);
+      next[id] = cleaned;
     }
     return copyWith(bindings: next);
   }
 
+  Layout setBindingLegacy(String id, List<String>? argv) =>
+      setBinding(id, argv == null ? null : [argv]);
+
   // ------------------------------------------------------------ validacao
 
-  /// Nao bloqueia publicacao: alimenta os badges de alerta do CMS.
+  /// Não bloqueia publicação: alimenta os badges de alerta do CMS.
   List<LayoutIssue> validate() {
     final issues = <LayoutIssue>[];
 
     if (!pages.containsKey(homePage)) {
-      issues.add(const LayoutIssue(
-          IssueLevel.error, 'a pagina "home" e obrigatoria'));
+      issues.add(
+          const LayoutIssue(IssueLevel.error, 'a pagina "home" e obrigatoria'));
     }
 
     final reachable = <String>{homePage};
-    // Ids podem repetir entre paginas (ex.: "next" na home e em media):
-    // sao a MESMA acao. So duplicata na mesma pagina e erro.
     for (final entry in pages.entries) {
       final seen = <String>{};
       for (final tile in entry.value) {
@@ -248,11 +302,14 @@ class Layout {
             }
           case ShortcutTile():
             if (!builtinActions.contains(tile.id) &&
-                !bindings.containsKey(tile.id)) {
+                !(bindings[tile.id]?.isNotEmpty ?? false)) {
               issues.add(LayoutIssue(IssueLevel.warning,
                   'shortcut sem comando associado: nada vai acontecer',
                   pageId: entry.key, tileId: tile.id));
             }
+          case SliderTile():
+            // Sem warnings por enquanto. Slider está em desenvolvimento.
+            break;
           case BackTile():
             break;
         }
@@ -265,13 +322,13 @@ class Layout {
 
     for (final pageId in pages.keys) {
       if (!reachable.contains(pageId)) {
-        issues.add(LayoutIssue(IssueLevel.warning,
-            'pagina orfa: nenhuma pasta aponta para ela',
+        issues.add(LayoutIssue(
+            IssueLevel.warning, 'pagina orfa: nenhuma pasta aponta para ela',
             pageId: pageId));
       }
     }
 
-    // Binding que nao corresponde a nenhum tile: lixo acumulado no disco.
+    // Binding que não corresponde a nenhum tile: lixo acumulado no disco.
     final allIds = pages.values.expand((l) => l).map((t) => t.id).toSet();
     for (final id in bindings.keys) {
       if (!allIds.contains(id)) {
@@ -299,8 +356,9 @@ class Layout {
     if (o.bindings.length != bindings.length) return false;
     for (final e in bindings.entries) {
       final other = o.bindings[e.key];
-      if (other == null || other.join('\u0000') != e.value.join('\u0000')) {
-        return false;
+      if (other == null || other.length != e.value.length) return false;
+      for (var i = 0; i < other.length; i++) {
+        if (other[i].join('\u0000') != e.value[i].join('\u0000')) return false;
       }
     }
     return true;

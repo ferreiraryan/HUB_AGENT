@@ -418,10 +418,24 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
         if (!_isShortcut || !_isBuiltinMode) ...[
           const SizedBox(height: 8),
           _ArgvEditor(
-            initialArgv: widget.state.layout.bindings[widget.tile.id] ?? [],
+            initialArgv:
+                (widget.state.layout.bindings[widget.tile.id]?.isNotEmpty ??
+                        false)
+                    ? widget.state.layout.bindings[widget.tile.id]!.first
+                    : const <String>[],
             dispatcher: dispatcher,
             onChanged: (argv) {
-              notifier.setBinding(widget.tile.id, argv);
+              // Gambiarra temporária: preserva os comandos 2+ da cadeia.
+              // Sobrescreve só o primeiro.
+              final atual = widget.state.layout.bindings[widget.tile.id] ?? [];
+              final novos = <List<String>>[
+                if (argv != null && argv.isNotEmpty) argv,
+                ...atual.skip(1), // mantém os comandos 2 em diante
+              ];
+              notifier.setBinding(
+                widget.tile.id,
+                novos.isEmpty ? null : novos,
+              );
             },
           ),
         ],

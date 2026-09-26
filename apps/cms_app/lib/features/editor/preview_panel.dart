@@ -159,7 +159,10 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                                       builder: (context, candidate, rejected) {
                                         return Stack(
                                           children: [
-                                            Expanded(
+                                            SizedBox(
+                                              height: MediaQuery.of(context)
+                                                  .size
+                                                  .height,
                                               child: SingleChildScrollView(
                                                 physics:
                                                     const BouncingScrollPhysics(),
