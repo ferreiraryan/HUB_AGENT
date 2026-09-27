@@ -1,5 +1,6 @@
 import 'package:agent_core/agent_core.dart';
 import 'package:cms_app/features/editor/import_layout_dialog.dart';
+import 'package:cms_app/features/settings/broker_settings_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -123,6 +124,12 @@ class _TopBar extends ConsumerWidget {
             tooltip: 'Refazer',
           ),
           const SizedBox(width: 16),
+          IconButton(
+            icon: const Icon(Icons.settings, size: 18),
+            tooltip: 'Configurações do Broker',
+            onPressed: () => showBrokerSettingsDialog(context, ref),
+          ),
+          const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.data_object, size: 18),
             tooltip: 'Importar/Editar JSON',

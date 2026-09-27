@@ -27,96 +27,98 @@ class PagesPanel extends ConsumerWidget {
         .map((i) => i.pageId)
         .toSet();
 
-    return Container(
-      width: 240,
+    return Material(
       color: const Color(0xFF1E1E2E),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('Páginas',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: pagesKeys.length,
-              itemBuilder: (context, index) {
-                final pageId = pagesKeys[index];
-                final isSelected = state.currentPage == pageId;
-                final isOrphan = orphanPages.contains(pageId);
-                final tileCount = layout.tilesOf(pageId).length;
+      child: SizedBox(
+        width: 240,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('Páginas',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: pagesKeys.length,
+                itemBuilder: (context, index) {
+                  final pageId = pagesKeys[index];
+                  final isSelected = state.currentPage == pageId;
+                  final isOrphan = orphanPages.contains(pageId);
+                  final tileCount = layout.tilesOf(pageId).length;
 
-                return DragTarget<TileDragPayload>(
-                  onWillAcceptWithDetails: (d) => d.data.fromPage != pageId,
-                  onAcceptWithDetails: (d) {
-                    ref.read(editorControllerProvider.notifier).moveTile(
-                          d.data.fromPage,
-                          d.data.tileId,
-                          pageId,
-                        );
-                  },
-                  builder: (context, candidateData, rejectedData) {
-                    final isHovered = candidateData.isNotEmpty;
+                  return DragTarget<TileDragPayload>(
+                    onWillAcceptWithDetails: (d) => d.data.fromPage != pageId,
+                    onAcceptWithDetails: (d) {
+                      ref.read(editorControllerProvider.notifier).moveTile(
+                            d.data.fromPage,
+                            d.data.tileId,
+                            pageId,
+                          );
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      final isHovered = candidateData.isNotEmpty;
 
-                    return Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: isHovered
-                              ? Color(layout.theme.accentColor)
-                              : Colors.transparent,
-                          width: 2,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: ListTile(
-                        leading: Icon(Icons.folder,
-                            color: isSelected
+                      return Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: isHovered
                                 ? Color(layout.theme.accentColor)
-                                : Colors.white54),
-                        title:
-                            Text(pageId, style: const TextStyle(fontSize: 14)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (isOrphan)
-                              const Padding(
-                                padding: EdgeInsets.only(right: 8.0),
-                                child: Icon(Icons.warning_amber,
-                                    size: 16, color: Colors.orange),
-                              ),
-                            Text('($tileCount)',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.white38)),
-                          ],
+                                : Colors.transparent,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        selected: isSelected,
-                        selectedTileColor: Color(layout.theme.accentColor)
-                            .withValues(alpha: 0.15),
-                        onTap: () {
-                          ref
-                              .read(editorControllerProvider.notifier)
-                              .selectPage(pageId);
-                        },
-                      ),
-                    );
-                  },
-                );
-              },
+                        child: ListTile(
+                          leading: Icon(Icons.folder,
+                              color: isSelected
+                                  ? Color(layout.theme.accentColor)
+                                  : Colors.white54),
+                          title: Text(pageId,
+                              style: const TextStyle(fontSize: 14)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isOrphan)
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 8.0),
+                                  child: Icon(Icons.warning_amber,
+                                      size: 16, color: Colors.orange),
+                                ),
+                              Text('($tileCount)',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.white38)),
+                            ],
+                          ),
+                          selected: isSelected,
+                          selectedTileColor: Color(layout.theme.accentColor)
+                              .withValues(alpha: 0.15),
+                          onTap: () {
+                            ref
+                                .read(editorControllerProvider.notifier)
+                                .selectPage(pageId);
+                          },
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Nova página'),
-              onPressed: () => _showNewPageDialog(context, ref),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Nova página'),
+                onPressed: () => _showNewPageDialog(context, ref),
+              ),
             ),
-          ),
-          const Divider(height: 32),
-          _ThemeConfigurator(theme: layout.theme),
-          const SizedBox(height: 16),
-        ],
+            const Divider(height: 32),
+            _ThemeConfigurator(theme: layout.theme),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }

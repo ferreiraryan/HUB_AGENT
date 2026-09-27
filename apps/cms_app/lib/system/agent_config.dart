@@ -15,16 +15,23 @@ class AgentConfig {
   });
 
   factory AgentConfig.fromJson(Map<String, dynamic> json) => AgentConfig(
-    host: json['host'] as String? ?? 'localhost',
-    port: json['port'] as int? ?? 1883,
-    deviceId: json['deviceId'] as String? ?? Platform.localHostname,
-  );
+        host: json['host'] as String? ?? 'localhost',
+        port: json['port'] as int? ?? 1883,
+        deviceId: json['deviceId'] as String? ?? Platform.localHostname,
+      );
 
   Map<String, dynamic> toJson() => {
-    'host': host,
-    'port': port,
-    'deviceId': deviceId,
-  };
+        'host': host,
+        'port': port,
+        'deviceId': deviceId,
+      };
+
+  AgentConfig copyWith({String? host, int? port, String? deviceId}) =>
+      AgentConfig(
+        host: host ?? this.host,
+        port: port ?? this.port,
+        deviceId: deviceId ?? this.deviceId,
+      );
 
   static Future<File> _getFile() async {
     final dir = await getApplicationSupportDirectory();

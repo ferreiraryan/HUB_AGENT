@@ -28,24 +28,26 @@ class InspectorPanel extends ConsumerWidget {
       }
     }
 
-    return Container(
-      width: 320,
+    return Material(
       color: const Color(0xFF1E1E2E),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('Inspector',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          const Divider(height: 1, thickness: 1, color: Colors.white10),
-          Expanded(
-            child: tile == null
-                ? _buildEmptyState(context, ref, state, tiles.length)
-                : _buildTileState(context, ref, state, tile),
-          ),
-        ],
+      child: SizedBox(
+        width: 320,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('Inspector',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            const Divider(height: 1, thickness: 1, color: Colors.white10),
+            Expanded(
+              child: tile == null
+                  ? _buildEmptyState(context, ref, state, tiles.length)
+                  : _buildTileState(context, ref, state, tile),
+            ),
+          ],
+        ),
       ),
     );
   }
