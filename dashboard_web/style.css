@@ -645,3 +645,65 @@ button {
   border: 3px solid var(--ctp-crust);
   box-shadow: 0 0 10px var(--accent-glow);
 }
+
+/* =========================================================
+   STAT CARD (CPU/RAM/Disco)
+   ========================================================= */
+.shortcut-btn--stat {
+  grid-column: span 2;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: default;
+}
+
+.shortcut-btn--stat:active {
+  transform: none;
+  background: var(--glass-bg);
+}
+
+.stat-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ctp-subtext1);
+  font-size: 0.9rem;
+}
+
+.stat-card__icon {
+  font-size: 1.2rem;
+  color: var(--accent-color);
+}
+
+.stat-card__value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent-color);
+  margin: 4px 0;
+  line-height: 1.1;
+}
+
+.stat-card__bar {
+  height: 6px;
+  background: var(--ctp-crust);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stat-card__bar-fill {
+  height: 100%;
+  background: var(--accent-color);
+  transition: width 300ms ease;
+  width: 0%;
+}
+
+/* Telas pequenas: stat card ocupa a coluna inteira */
+@media (max-width: 700px) {
+  .shortcut-btn--stat {
+    grid-column: span 2;
+  }
+
+  .stat-card__value {
+    font-size: 1.5rem;
+  }
+}

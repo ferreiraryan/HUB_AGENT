@@ -39,6 +39,22 @@ void main() {
             ]
           }));
     });
+    // (Adicionado aos testes de contrato do layout)
+    test('StatTile round-trip preserva source', () {
+      final l = Layout.initial('PC').upsertTile(
+          'home',
+          const StatTile(
+            id: 'cpu_load',
+            icon: '⚙️',
+            label: 'CPU',
+            source:
+                StatSource(kind: StatSource.kindCpu, field: 'load', unit: '%'),
+          ));
+      final back = Layout.fromJson(l.toPublishJson());
+      final tile = back.tilesOf('home').whereType<StatTile>().first;
+      expect(tile.source.kind, equals('cpu'));
+      expect(tile.source.field, equals('load'));
+    });
 
     test('disco -> memoria -> disco preserva bindings', () {
       final original = Layout.fromJson(golden)

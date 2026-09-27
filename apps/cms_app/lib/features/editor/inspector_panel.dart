@@ -102,6 +102,7 @@ class InspectorPanel extends ConsumerWidget {
     final child = switch (tile) {
       ShortcutTile() => _ShortcutInspector(tile: tile, state: state),
       SliderTile() => _ShortcutInspector(tile: tile, state: state),
+      StatTile() => _ShortcutInspector(tile: tile, state: state),
       FolderTile() => _FolderInspector(tile: tile, state: state),
       BackTile() => _BackInspector(tile: tile, state: state),
     };
@@ -172,6 +173,10 @@ class _InspectorFooter extends ConsumerWidget {
     } else if (tile is SliderTile) {
       final s = tile as SliderTile;
       newTile = SliderTile(
+          id: newId, icon: tile.icon, label: tile.label, source: s.source);
+    } else if (tile is StatTile) {
+      final s = tile as StatTile;
+      newTile = StatTile(
           id: newId, icon: tile.icon, label: tile.label, source: s.source);
     } else if (tile is FolderTile) {
       final f = tile as FolderTile;
@@ -312,18 +317,11 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
   Tile _updateTile({String? id, String? icon, String? label}) {
     final current = widget.tile;
     if (current is ShortcutTile) {
-      return ShortcutTile(
-        id: id ?? current.id,
-        icon: icon ?? current.icon,
-        label: label ?? current.label,
-      );
+      return current.copyWith(id: id, icon: icon, label: label);
     } else if (current is SliderTile) {
-      return SliderTile(
-        id: id ?? current.id,
-        icon: icon ?? current.icon,
-        label: label ?? current.label,
-        source: current.source,
-      );
+      return current.copyWith(id: id, icon: icon, label: label);
+    } else if (current is StatTile) {
+      return current.copyWith(id: id, icon: icon, label: label);
     }
     return current;
   }
@@ -334,6 +332,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
     final dispatcher = ref.read(agentRuntimeProvider).dispatcher;
 
     final isShortcut = widget.tile is ShortcutTile;
+    final isStat = widget.tile is StatTile;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -457,6 +456,102 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
               },
             ),
           ],
+        ],
+        if (isStat) ...[
+          const Divider(height: 32, color: Colors.white10),
+          const Text('Fonte do Stat',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: (widget.tile as StatTile).source.kind,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Tipo',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: StatSource.kindCpu, child: Text('CPU')),
+              DropdownMenuItem(value: StatSource.kindRam, child: Text('RAM')),
+              DropdownMenuItem(
+                  value: StatSource.kindDisk, child: Text('Disco')),
+            ],
+            onChanged: (kind) {
+              if (kind == null) return;
+              final current = widget.tile as StatTile;
+
+              String newField = 'load';
+              String newUnit = '%';
+              if (kind == StatSource.kindRam) {
+                newField = 'percent';
+              } else if (kind == StatSource.kindDisk) {
+                newField = 'percent';
+              }
+
+              notifier.upsertTile(
+                widget.state.currentPage,
+                current.copyWith(
+                    source: current.source
+                        .copyWith(kind: kind, field: newField, unit: newUnit)),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          Builder(builder: (context) {
+            final kind = (widget.tile as StatTile).source.kind;
+            List<String> fields = [];
+            if (kind == StatSource.kindCpu) {
+              fields = ['load', 'temp', 'freq_mhz'];
+            } else if (kind == StatSource.kindRam) {
+              fields = ['percent', 'used_mb', 'total_mb'];
+            } else if (kind == StatSource.kindDisk) {
+              fields = ['percent', 'used_gb', 'total_gb'];
+            }
+
+            return DropdownButtonFormField<String>(
+              initialValue: (widget.tile as StatTile).source.field,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Campo',
+                border: OutlineInputBorder(),
+              ),
+              items: fields
+                  .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                  .toList(),
+              onChanged: (field) {
+                if (field == null) return;
+                final current = widget.tile as StatTile;
+
+                String newUnit = '%';
+                if (field == 'temp') newUnit = '°C';
+                if (field == 'freq_mhz') newUnit = 'MHz';
+                if (field == 'used_mb' || field == 'total_mb') newUnit = 'MB';
+                if (field == 'used_gb' || field == 'total_gb') newUnit = 'GB';
+
+                notifier.upsertTile(
+                  widget.state.currentPage,
+                  current.copyWith(
+                      source:
+                          current.source.copyWith(field: field, unit: newUnit)),
+                );
+              },
+            );
+          }),
+          const SizedBox(height: 12),
+          TextFormField(
+            initialValue: (widget.tile as StatTile).source.unit,
+            decoration: const InputDecoration(
+              labelText: 'Unidade (sufixo)',
+              border: OutlineInputBorder(),
+            ),
+            onFieldSubmitted: (value) {
+              final current = widget.tile as StatTile;
+              notifier.upsertTile(
+                widget.state.currentPage,
+                current.copyWith(
+                    source: current.source.copyWith(unit: value.trim())),
+              );
+            },
+          ),
         ],
         if (isShortcut) ...[
           const SizedBox(height: 16),

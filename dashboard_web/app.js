@@ -30,6 +30,7 @@ const state = {
   mediaCache: {},
   shortcutsCache: {},
   currentPageCache: {},
+  statsCache: {},      // { [deviceId]: { cpu: {...}, ram: {...}, disk: {...} } }
 };
 
 /* =========================================================
@@ -87,6 +88,10 @@ const MqttLayer = {
     state.mqttClient.subscribe('nodes/+/media');
     // Prepara para os futuros sensores genéricos:
     state.mqttClient.subscribe('nodes/+/state/+');
+    // Métricas do PC (stat cards: CPU/RAM/disco)
+    state.mqttClient.subscribe('nodes/+/stats/cpu');
+    state.mqttClient.subscribe('nodes/+/stats/ram');
+    state.mqttClient.subscribe('nodes/+/stats/disk');
   },
 
   handleMessage(topic, payloadBuffer) {
@@ -135,6 +140,14 @@ const MqttLayer = {
       state.slidersCache[device.id][sliderId] = data.value;
 
       if (state.currentDeviceId === device.id) UI.updateSliderUI(sliderId, data.value);
+    }
+    // Métricas do PC (cpu/ram/disco) — tópico "nodes/<id>/stats/<kind>"
+    else if (topicType.startsWith('stats/')) {
+      const kind = topicParts[3]; // "cpu" | "ram" | "disk"
+      if (!state.statsCache[device.id]) state.statsCache[device.id] = {};
+      state.statsCache[device.id][kind] = data;
+      // Atualização cirúrgica: evita destruir/reconstruir a grid a cada 3s
+      if (state.currentDeviceId === device.id) UI.updateStatsInPlace(device.id);
     }
     else if (topicType === 'media') {
       state.mediaCache[device.id] = data;
@@ -249,6 +262,36 @@ const UI = {
     }
   },
 
+  /**
+   * Atualiza só os stat cards já renderizados, sem re-renderizar a grid.
+   * Chamado a cada mensagem de stats (3s) para não causar flicker.
+   */
+  updateStatsInPlace(deviceId) {
+    const stats = state.statsCache?.[deviceId] ?? {};
+    const cards = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--stat');
+
+    cards.forEach((card) => {
+      const kind = card.dataset.statKind;
+      const field = card.dataset.statField;
+      const unit = card.dataset.statUnit;
+
+      const payload = stats[kind] ?? {};
+      const raw = payload[field];
+      const display = (raw === undefined || raw === null) ? '--' : raw;
+
+      const valueEl = card.querySelector('.stat-card__value');
+      if (valueEl) {
+        valueEl.textContent = `${display}${unit || ''}`;
+      }
+
+      const barFill = card.querySelector('.stat-card__bar-fill');
+      if (barFill && unit === '%' && typeof raw === 'number') {
+        const pct = Math.max(0, Math.min(100, raw));
+        barFill.style.width = `${pct}%`;
+      }
+    });
+  },
+
   renderShortcuts(deviceId) {
     dom.shortcutsGrid.innerHTML = '';
     const pages = state.shortcutsCache[deviceId];
@@ -311,6 +354,40 @@ const UI = {
             }
           }
         });
+        dom.shortcutsGrid.appendChild(card);
+      }
+
+      // ====== RENDERIZAÇÃO DO STAT CARD (CPU/RAM/DISCO) ======
+      else if (item.type === 'stat') {
+        const stats = state.statsCache?.[deviceId] ?? {};
+        const payload = stats[item.source.kind] ?? {};
+        const raw = payload[item.source.field];
+        const display = (raw === undefined || raw === null) ? '--' : raw;
+
+        const card = document.createElement('div');
+        card.className = 'shortcut-btn shortcut-btn--stat';
+        card.style.setProperty('--i', index);
+        // Guarda a fonte do dado no próprio elemento p/ updateStatsInPlace achá-lo depois
+        card.dataset.statKind = item.source.kind;
+        card.dataset.statField = item.source.field;
+        card.dataset.statUnit = item.source.unit || '';
+
+        // Barra de progresso só faz sentido para valores percentuais
+        const pct = item.source.unit === '%' && typeof raw === 'number'
+          ? Math.max(0, Math.min(100, raw))
+          : 0;
+
+        card.innerHTML = `
+          <div class="stat-card__header">
+            <span class="stat-card__icon">${UI.escapeHtml(item.icon || '📊')}</span>
+            <span class="stat-card__label">${UI.escapeHtml(item.label || item.id)}</span>
+          </div>
+          <div class="stat-card__value">${UI.escapeHtml(String(display))}${UI.escapeHtml(item.source.unit || '')}</div>
+          <div class="stat-card__bar">
+            <div class="stat-card__bar-fill" style="width: ${pct}%"></div>
+          </div>
+        `;
+
         dom.shortcutsGrid.appendChild(card);
       }
 

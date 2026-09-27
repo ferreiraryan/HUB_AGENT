@@ -22,8 +22,6 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
 
     final usableW = box.width - pad * 2;
 
-    // O Flutter calcula colunas garantindo que (tileW <= maxExtent).
-    // A fórmula exata exige adicionar o gap final e fazer ceil()
     final cols =
         ((usableW + spacing) / (maxExtent + spacing)).ceil().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
@@ -332,6 +330,14 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                   _createTile(ref, state, 'slider', context);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.monitor_heart),
+                title: const Text('Stat (CPU/RAM/Disco)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _createTile(ref, state, 'stat', context);
+                },
+              ),
             ],
           ),
         );
@@ -404,6 +410,19 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
           );
         }
         break;
+      case 'stat':
+        final id = _generateId(state, type);
+        newTile = StatTile(
+          id: id,
+          icon: '📊',
+          label: 'Novo Stat',
+          source: const StatSource(
+            kind: StatSource.kindCpu,
+            field: 'load',
+            unit: '%',
+          ),
+        );
+        break;
       default:
         return;
     }
@@ -434,19 +453,16 @@ class _GapPlaceholder extends StatelessWidget {
     const pad = 16.0;
 
     final usableW = boxSize.width - pad * 2;
-    // O mesmo cálculo exato de Grid do Flutter
     final cols =
         ((usableW + spacing) / (maxExtent + spacing)).ceil().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
     final tileH = tileW;
 
-    // Removemos os if/elses conflitantes - mod/div resolve perfeitamente em qualquer caso
     int col = gap % cols;
     int row = gap ~/ cols;
 
-    // Posiciona exatamente no centro do espaçamento
     double left = pad + col * (tileW + spacing) - (spacing / 2);
-    left -= 2; // Centraliza a linha de espessura 4
+    left -= 2;
 
     final top = pad + row * (tileH + spacing);
 

@@ -8,6 +8,7 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import '../models/audio_state.dart';
 import '../models/layout.dart';
 import '../models/media_state.dart';
+import 'stats/stats_service.dart';
 
 class AgentTopics {
   final String deviceId;
@@ -56,7 +57,7 @@ class AgentCommand {
   }
 
   @override
-  String toString() => 'AgentCommand($action, ${jsonEncode(raw)})';
+  String toString() => 'AgentCommand($action,${jsonEncode(raw)})';
 }
 
 class MqttService {
@@ -113,7 +114,7 @@ class MqttService {
     try {
       await _client.connect(username, password);
     } catch (e) {
-      stderr.writeln('MQTT: falha ao conectar em $host:$port -> $e');
+      stderr.writeln('MQTT: falha ao conectar em $host:$port ->$e');
       _client.disconnect();
       _state.add(AgentConnectionState.disconnected);
       return;
@@ -146,7 +147,7 @@ class MqttService {
       if (cmd != null) {
         _commands.add(cmd);
       } else {
-        stderr.writeln('MQTT: payload invalido em ${e.topic}: $payload');
+        stderr.writeln('MQTT: payload invalido em ${e.topic}:$payload');
       }
     }
   }
@@ -190,6 +191,21 @@ class MqttService {
     );
   }
 
+  void publishStatsCpu(StatsSnapshot s) {
+    _publish('${topics.base}/stats/cpu', jsonEncode(s.cpuJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishStatsRam(StatsSnapshot s) {
+    _publish('${topics.base}/stats/ram', jsonEncode(s.ramJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishStatsDisk(StatsSnapshot s) {
+    _publish('${topics.base}/stats/disk', jsonEncode(s.diskJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
   void clearRetained() {
     for (final t in [
       topics.status,
@@ -197,6 +213,9 @@ class MqttService {
       topics.volume,
       topics.apps,
       topics.media,
+      '${topics.base}/stats/cpu',
+      '${topics.base}/stats/ram',
+      '${topics.base}/stats/disk',
     ]) {
       _publish(t, '', retain: true, qos: MqttQos.atLeastOnce);
     }

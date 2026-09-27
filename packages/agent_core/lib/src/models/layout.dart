@@ -321,6 +321,12 @@ class Layout {
                   IssueLevel.warning, 'slider custom sem comando configurado',
                   pageId: entry.key, tileId: tile.id));
             }
+          case StatTile(:final source):
+            if (source.field.trim().isEmpty) {
+              issues.add(LayoutIssue(
+                  IssueLevel.error, 'StatTile sem field definido',
+                  pageId: entry.key, tileId: tile.id));
+            }
           case BackTile():
             break;
         }

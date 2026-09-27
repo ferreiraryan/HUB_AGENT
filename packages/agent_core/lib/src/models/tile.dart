@@ -34,6 +34,14 @@ sealed class Tile {
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'master_volume'}),
         ),
+      'stat' => StatTile(
+          id: id,
+          icon: icon,
+          label: label,
+          source: StatSource.fromJson(
+              (json['source'] as Map?)?.cast<String, dynamic>() ??
+                  const {'kind': 'cpu', 'field': 'load', 'unit': '%'}),
+        ),
       _ => throw FormatException('tipo de tile desconhecido: "$type"'),
     };
   }
@@ -250,6 +258,99 @@ final class SliderTile extends Tile {
   @override
   bool operator ==(Object o) =>
       o is SliderTile &&
+      o.id == id &&
+      o.icon == icon &&
+      o.label == label &&
+      o.source == source;
+
+  @override
+  int get hashCode => Object.hash(type, id, icon, label, source);
+}
+
+@immutable
+class StatSource {
+  final String kind;
+  final String field;
+  final String unit;
+
+  const StatSource({
+    required this.kind,
+    required this.field,
+    required this.unit,
+  });
+
+  static const String kindCpu = 'cpu';
+  static const String kindRam = 'ram';
+  static const String kindDisk = 'disk';
+  static const Set<String> validKinds = {kindCpu, kindRam, kindDisk};
+
+  factory StatSource.fromJson(Map<String, dynamic> j) {
+    final kind = j['kind'] as String? ?? kindCpu;
+    if (!validKinds.contains(kind)) {
+      throw FormatException('kind de stat desconhecido: "$kind"');
+    }
+    return StatSource(
+      kind: kind,
+      field: j['field'] as String? ?? 'load',
+      unit: j['unit'] as String? ?? '%',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'kind': kind, 'field': field, 'unit': unit};
+
+  StatSource copyWith({String? kind, String? field, String? unit}) =>
+      StatSource(
+        kind: kind ?? this.kind,
+        field: field ?? this.field,
+        unit: unit ?? this.unit,
+      );
+
+  @override
+  bool operator ==(Object o) =>
+      o is StatSource && o.kind == kind && o.field == field && o.unit == unit;
+
+  @override
+  int get hashCode => Object.hash(kind, field, unit);
+}
+
+final class StatTile extends Tile {
+  final StatSource source;
+
+  const StatTile({
+    required super.id,
+    required super.icon,
+    required super.label,
+    required this.source,
+  });
+
+  @override
+  String get type => 'stat';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'stat',
+        'id': id,
+        'icon': icon,
+        'label': label,
+        'source': source.toJson(),
+      };
+
+  StatTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    StatSource? source,
+  }) =>
+      StatTile(
+        id: id ?? this.id,
+        icon: icon ?? this.icon,
+        label: label ?? this.label,
+        source: source ?? this.source,
+      );
+
+  @override
+  bool operator ==(Object o) =>
+      o is StatTile &&
       o.id == id &&
       o.icon == icon &&
       o.label == label &&

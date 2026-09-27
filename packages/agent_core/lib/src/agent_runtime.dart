@@ -12,6 +12,7 @@ import 'services/command_dispatcher.dart';
 import 'services/layout_repository.dart';
 import 'services/media_service.dart';
 import 'services/mqtt_service.dart';
+import 'services/stats/stats_service.dart';
 
 class AgentRuntime {
   final LayoutRepository repository;
@@ -19,6 +20,7 @@ class AgentRuntime {
   final AudioController audio;
   final BrightnessController brightness;
   final MediaService media;
+  final StatsService stats;
   late final CommandDispatcher dispatcher;
 
   final Duration echoGuard;
@@ -34,11 +36,13 @@ class AgentRuntime {
     AudioController? audio,
     BrightnessController? brightness,
     MediaService? media,
+    StatsService? stats,
     Set<String> allowedBinaries = const {},
     this.echoGuard = const Duration(milliseconds: 200),
   })  : audio = audio ?? _defaultAudio(),
         brightness = brightness ?? _defaultBrightness(),
-        media = media ?? MediaService() {
+        media = media ?? MediaService(),
+        stats = stats ?? StatsService() {
     dispatcher = CommandDispatcher(
       audio: this.audio,
       brightness: this.brightness,
@@ -72,13 +76,18 @@ class AgentRuntime {
     _subs
       ..add(repository.changes.listen((l) {
         mqtt.publishLayout(l);
-        _publishBrightness(); // forçar publicação imediata do slider
+        _publishBrightness();
       }))
       ..add(mqtt.commands.listen(_onCommand))
       ..add(audio.masterChanges.listen(_onLocalVolume))
       ..add(audio.appsChanges.listen(mqtt.publishApps))
       ..add(brightness.changes.listen((_) => _publishBrightness()))
-      ..add(media.changes.listen(mqtt.publishMedia));
+      ..add(media.changes.listen(mqtt.publishMedia))
+      ..add(stats.changes.listen((s) {
+        mqtt.publishStatsCpu(s);
+        mqtt.publishStatsRam(s);
+        mqtt.publishStatsDisk(s);
+      }));
 
     _subs.add(mqtt.connectionState.listen((s) {
       if (s == AgentConnectionState.connected) _publishSnapshot();
@@ -88,6 +97,7 @@ class AgentRuntime {
     await audio.start();
     await brightness.start();
     await media.start();
+    await stats.start();
 
     _brightnessPublishTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _publishBrightness());
@@ -107,6 +117,11 @@ class AgentRuntime {
     }
     _publishBrightness();
     mqtt.publishMedia(media.current);
+    if (stats.isAvailable && stats.current != null) {
+      mqtt.publishStatsCpu(stats.current!);
+      mqtt.publishStatsRam(stats.current!);
+      mqtt.publishStatsDisk(stats.current!);
+    }
   }
 
   Future<void> _publishBrightness() async {
@@ -131,7 +146,7 @@ class AgentRuntime {
     try {
       await dispatcher.dispatch(cmd);
     } catch (e) {
-      stderr.writeln('erro ao processar $cmd: $e');
+      stderr.writeln('erro ao processar $cmd:$e');
     }
   }
 
@@ -148,6 +163,7 @@ class AgentRuntime {
     }
     _subs.clear();
     _brightnessPublishTimer?.cancel();
+    await stats.dispose();
     await media.dispose();
     await brightness.dispose();
     await audio.dispose();

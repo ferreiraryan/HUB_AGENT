@@ -17,4 +17,6 @@ export 'src/services/command_dispatcher.dart';
 export 'src/services/layout_repository.dart';
 export 'src/services/media_service.dart';
 export 'src/services/mqtt_service.dart';
+export 'src/services/stats/stats_provider.dart';
+export 'src/services/stats/stats_service.dart';
 export 'src/util/hex_color.dart';
