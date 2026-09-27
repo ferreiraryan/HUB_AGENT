@@ -64,8 +64,8 @@ class Layout {
     'prev',
     'set_volume',
     'set_app_volume',
+    'set_slider', // ← novo
   };
-
   factory Layout.initial(String deviceName) => Layout(
         deviceName: deviceName,
         theme: HubTheme.fallback,
@@ -292,6 +292,7 @@ class Layout {
               IssueLevel.error, 'id duplicado "${tile.id}" na mesma pagina',
               pageId: entry.key, tileId: tile.id));
         }
+        // Trecho do método validate()
         switch (tile) {
           case FolderTile(:final target):
             reachable.add(target);
@@ -307,9 +308,19 @@ class Layout {
                   'shortcut sem comando associado: nada vai acontecer',
                   pageId: entry.key, tileId: tile.id));
             }
-          case SliderTile():
-            // Sem warnings por enquanto. Slider está em desenvolvimento.
-            break;
+          case SliderTile(:final source):
+            if (source.kind == SliderSource.kindAppVolume &&
+                (source.match == null || source.match!.trim().isEmpty)) {
+              issues.add(LayoutIssue(
+                  IssueLevel.error, 'slider app_volume sem "match" definido',
+                  pageId: entry.key, tileId: tile.id));
+            }
+            if (source.kind == SliderSource.kindCustom &&
+                (source.cmd == null || source.cmd!.isEmpty)) {
+              issues.add(LayoutIssue(
+                  IssueLevel.warning, 'slider custom sem comando configurado',
+                  pageId: entry.key, tileId: tile.id));
+            }
           case BackTile():
             break;
         }

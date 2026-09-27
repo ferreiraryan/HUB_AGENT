@@ -12,6 +12,7 @@ export 'src/models/media_state.dart';
 export 'src/models/tile.dart';
 export 'src/services/audio/audio_controller.dart';
 export 'src/services/audio/linux_audio_controller.dart';
+export 'src/services/brightness_controller.dart';
 export 'src/services/command_dispatcher.dart';
 export 'src/services/layout_repository.dart';
 export 'src/services/media_service.dart';

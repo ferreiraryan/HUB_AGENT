@@ -81,8 +81,9 @@ class LinuxAudioController implements AudioController {
   /// `Volume: 0.45` ou `Volume: 0.45 [MUTED]`
   Future<MasterVolume?> _readMaster() async {
     try {
-      final r = await Process.run('wpctl', ['get-volume', '@DEFAULT_AUDIO_SINK@'])
-          .timeout(const Duration(seconds: 3));
+      final r =
+          await Process.run('wpctl', ['get-volume', '@DEFAULT_AUDIO_SINK@'])
+              .timeout(const Duration(seconds: 3));
       if (r.exitCode != 0) return null;
       final out = (r.stdout as String).trim();
       final m = RegExp(r'([\d.]+)').firstMatch(out);
@@ -96,8 +97,9 @@ class LinuxAudioController implements AudioController {
 
   Future<List<AppVolume>> _readApps() async {
     try {
-      final r = await Process.run('pactl', ['-f', 'json', 'list', 'sink-inputs'])
-          .timeout(const Duration(seconds: 3));
+      final r =
+          await Process.run('pactl', ['-f', 'json', 'list', 'sink-inputs'])
+              .timeout(const Duration(seconds: 3));
       if (r.exitCode != 0) return const [];
       final raw = jsonDecode(r.stdout as String);
       if (raw is! List) return const [];
@@ -109,10 +111,9 @@ class LinuxAudioController implements AudioController {
         if (index == null) continue;
 
         final props = (item['properties'] as Map?) ?? const {};
-        final name = (props['application.name'] ??
-                props['media.name'] ??
-                'app $index')
-            .toString();
+        final name =
+            (props['application.name'] ?? props['media.name'] ?? 'app $index')
+                .toString();
 
         result.add(AppVolume(
           id: index.toString(),
@@ -139,7 +140,9 @@ class LinuxAudioController implements AudioController {
       if (n != null) values.add(n);
     }
     if (values.isEmpty) return 0;
-    return (values.reduce((a, b) => a + b) / values.length).round().clamp(0, 100);
+    return (values.reduce((a, b) => a + b) / values.length)
+        .round()
+        .clamp(0, 100);
   }
 
   @override
@@ -152,7 +155,8 @@ class LinuxAudioController implements AudioController {
   @override
   Future<void> setMute(bool muted) async {
     if (!_available) return;
-    await _run('wpctl', ['set-mute', '@DEFAULT_AUDIO_SINK@', muted ? '1' : '0']);
+    await _run(
+        'wpctl', ['set-mute', '@DEFAULT_AUDIO_SINK@', muted ? '1' : '0']);
   }
 
   @override
@@ -162,6 +166,31 @@ class LinuxAudioController implements AudioController {
     // id e o index do sink-input. Se o app morreu, pactl falha e ignoramos:
     // o proximo refresh ja remove o item da lista.
     await _run('pactl', ['set-sink-input-volume', id, '$v%']);
+  }
+
+  @override
+  Future<void> setAppVolumeByName(String name, int value) async {
+    if (!_available) return;
+    final v = value.clamp(0, 100);
+
+    // Lista sink-inputs em JSON e filtra por application.name.
+    // Requer pactl >= 16 (2021). Se falhar, ignora silenciosamente.
+    try {
+      final r =
+          await Process.run('pactl', ['-f', 'json', 'list', 'sink-inputs']);
+      if (r.exitCode != 0) return;
+      final list = jsonDecode(r.stdout as String) as List;
+      for (final item in list) {
+        final props = (item as Map)['properties'] as Map?;
+        final appName = props?['application.name'] as String?;
+        if (appName == name) {
+          final index = item['index'].toString();
+          await _run('pactl', ['set-sink-input-volume', index, '$v%']);
+        }
+      }
+    } catch (e) {
+      stderr.writeln('audio: setAppVolumeByName("$name") falhou: $e');
+    }
   }
 
   Future<void> _run(String exe, List<String> args) async {

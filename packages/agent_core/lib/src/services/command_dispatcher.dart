@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
-
+import '../models/tile.dart';
 import '../models/layout.dart';
 import 'audio/audio_controller.dart';
+import 'brightness_controller.dart';
 import 'media_service.dart';
 import 'mqtt_service.dart';
 
-/// Resultado de uma execucao de teste (botao "Testar" do CMS).
 class CommandResult {
   final bool started;
   final int exitCode;
@@ -25,30 +25,17 @@ class CommandResult {
   bool get ok => started && exitCode == 0;
 }
 
-/// Roteia `action` -> handler tipado.
-///
-/// SEGURANCA: nada que chegue pelo MQTT vira comando de shell. O tablet manda
-/// um `action`; se nao for embutida, o dispatcher procura a cadeia de comandos
-/// em [Layout.bindings] e valida os binarios contra a whitelist. Uma mensagem
-/// MQTT forjada so consegue disparar o que o usuario ja autorizou no CMS.
 class CommandDispatcher {
   final AudioController audio;
+  final BrightnessController brightness;
   final MediaService media;
-
-  /// Binarios permitidos. Vazia = permite qualquer binding do disco (o disco
-  /// ja e territorio do usuario); populada = restringe ainda mais.
   final Set<String> allowedBinaries;
-
-  /// Fonte do layout atual, para resolver bindings. Injetada como funcao para
-  /// o dispatcher nao depender do repository.
   final Layout Function() layoutProvider;
-
-  /// Chamado quando uma acao muda o volume, para o runtime armar a guarda
-  /// de eco.
   final void Function()? onLocalVolumeChange;
 
   CommandDispatcher({
     required this.audio,
+    required this.brightness,
     required this.media,
     required this.layoutProvider,
     this.allowedBinaries = const {},
@@ -72,7 +59,7 @@ class CommandDispatcher {
           stderr.writeln('set_volume sem value');
           return;
         }
-        onLocalVolumeChange?.call(); // arma a guarda de eco ANTES de aplicar
+        onLocalVolumeChange?.call();
         await audio.setMasterVolume(v);
 
       case 'set_app_volume':
@@ -92,13 +79,86 @@ class CommandDispatcher {
         }
         await runShortcut(id);
 
+      case 'set_slider':
+        final id = cmd.sliderId;
+        final v = cmd.value;
+        if (id == null || v == null) {
+          stderr.writeln('set_slider exige id e value');
+          return;
+        }
+        final tile = _findSliderTile(id);
+        if (tile == null) {
+          stderr.writeln('set_slider: slider "$id" nao encontrado no layout');
+          return;
+        }
+        await _applySlider(tile.source, v);
+
       default:
-        // Contrato: "qualquer id de shortcut definido no layout".
         await runShortcut(cmd.action);
     }
   }
 
-  /// Resolve a cadeia associada ao id e a executa com semantica &&.
+  SliderTile? _findSliderTile(String id) {
+    final layout = layoutProvider();
+    for (final tiles in layout.pages.values) {
+      for (final t in tiles) {
+        if (t is SliderTile && t.id == id) return t;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _applySlider(SliderSource source, int value) async {
+    switch (source.kind) {
+      case SliderSource.kindMasterVolume:
+        onLocalVolumeChange?.call();
+        await audio.setMasterVolume(value);
+
+      case SliderSource.kindAppVolume:
+        final match = source.match;
+        if (match == null || match.isEmpty) {
+          stderr.writeln('slider app_volume sem "match"');
+          return;
+        }
+        await audio.setAppVolumeByName(match, value);
+
+      case SliderSource.kindBrightness:
+        final match = (source.match ?? '').trim();
+        if (match.isEmpty) {
+          await brightness.set(value);
+        } else {
+          await brightness.setForDisplay(match, value);
+        }
+        return;
+
+      case SliderSource.kindCustom:
+        final cmd = source.cmd;
+        if (cmd == null || cmd.isEmpty) {
+          stderr.writeln('slider custom sem cmd');
+          return;
+        }
+        await _runWithEnv(cmd, {'VALUE': value.toString()});
+    }
+  }
+
+  Future<void> _runWithEnv(List<String> argv, Map<String, String> env) async {
+    if (argv.isEmpty) return;
+    if (!_isAllowed(argv.first)) {
+      stderr.writeln('binario "${argv.first}" fora da whitelist; bloqueado');
+      return;
+    }
+    try {
+      await Process.start(
+        argv.first,
+        argv.skip(1).toList(),
+        environment: env,
+        runInShell: false,
+      );
+    } catch (e) {
+      stderr.writeln('slider custom ${argv.join(' ')} falhou: $e');
+    }
+  }
+
   Future<bool> runShortcut(String id) async {
     final cmds = layoutProvider().bindingFor(id);
     if (cmds == null || cmds.isEmpty) {
@@ -108,7 +168,6 @@ class CommandDispatcher {
     return _runChain(cmds);
   }
 
-  /// Executa comandos em sequencia (&& semantics), parando no primeiro erro.
   Future<bool> _runChain(List<List<String>> cmds) async {
     if (cmds.length > 10) {
       stderr.writeln('limite de 10 comandos excedido no dispatcher');
@@ -129,7 +188,6 @@ class CommandDispatcher {
           runInShell: false,
         );
 
-        // Consume stdout/stderr silenciosamente para evitar travamentos de buffer
         proc.stdout.listen((_) {});
         proc.stderr.listen((_) {});
 
@@ -149,8 +207,6 @@ class CommandDispatcher {
   bool _isAllowed(String binary) =>
       allowedBinaries.isEmpty || allowedBinaries.contains(binary);
 
-  /// Dispara e esquece individual. Retido para legado ou usos onde
-  /// a semantica detached seja necessaria sem esperar exit.
   Future<bool> launch(List<String> argv) async {
     if (argv.isEmpty) return false;
     try {
@@ -166,8 +222,6 @@ class CommandDispatcher {
       return false;
     }
   }
-
-  // ------------------------------------------------------ apoio ao CMS
 
   final Map<String, bool> _existsCache = {};
 
@@ -186,7 +240,6 @@ class CommandDispatcher {
 
   void clearCache() => _existsCache.clear();
 
-  /// Testa uma cadeia de comandos inteira (para o CMS). Para no erro.
   Future<List<CommandResult>> testChain(List<List<String>> cmds,
       {Duration timeout = const Duration(seconds: 8)}) async {
     final results = <CommandResult>[];
@@ -205,8 +258,6 @@ class CommandDispatcher {
     return results;
   }
 
-  /// Executa capturando saida, com timeout. So para o botao "Testar": nao use
-  /// para apps de GUI, que nunca terminam.
   Future<CommandResult> test(List<String> argv,
       {Duration timeout = const Duration(seconds: 8)}) async {
     if (argv.isEmpty) {

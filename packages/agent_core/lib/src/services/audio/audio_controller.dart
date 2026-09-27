@@ -23,6 +23,7 @@ abstract interface class AudioController {
 
   /// [value] 0-100, [id] e o id efemero vindo de [AppVolume.id].
   Future<void> setAppVolume(String id, int value);
+  Future<void> setAppVolumeByName(String name, int value);
 
   /// Forca releitura e emissao (usado no boot e apos comandos).
   Future<void> refresh();
@@ -45,7 +46,8 @@ class UnsupportedAudioController implements AudioController {
   bool get isAvailable => false;
   @override
   Future<void> start() async {
-    stderr.writeln('audio: nenhuma implementacao para ${Platform.operatingSystem}');
+    stderr.writeln(
+        'audio: nenhuma implementacao para ${Platform.operatingSystem}');
   }
 
   @override
@@ -54,6 +56,8 @@ class UnsupportedAudioController implements AudioController {
   Future<void> setMute(bool muted) async {}
   @override
   Future<void> setAppVolume(String id, int value) async {}
+  @override
+  Future<void> setAppVolumeByName(String name, int value) async {}
   @override
   Future<void> refresh() async {}
   @override

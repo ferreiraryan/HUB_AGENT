@@ -21,7 +21,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     const pad = 16.0;
 
     final usableW = box.width - pad * 2;
-    final cols = (usableW / (maxExtent + spacing)).ceil().clamp(1, 999);
+    final cols = (usableW / (maxExtent + spacing)).floor().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
     final tileH = tileW;
 
@@ -111,7 +111,6 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                                         var gap = _calcularGap(local.dx,
                                             local.dy, boxSize, tiles.length);
 
-                                        // Não permite inserir antes do botão Voltar automático
                                         if (needsAutoBack && gap == 0) gap = 1;
 
                                         if (gap != _targetGap) {
@@ -132,7 +131,6 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                                         final notifier = ref.read(
                                             editorControllerProvider.notifier);
 
-                                        // Ajuste do gap visual para o gap real (sem contar o botão Voltar automático)
                                         final realGap =
                                             needsAutoBack ? gap - 1 : gap;
 
@@ -159,116 +157,101 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                                       builder: (context, candidate, rejected) {
                                         return Stack(
                                           children: [
-                                            SizedBox(
-                                              height: MediaQuery.of(context)
-                                                  .size
-                                                  .height,
-                                              child: SingleChildScrollView(
-                                                physics:
-                                                    const BouncingScrollPhysics(),
-                                                child: GridView.builder(
-                                                  shrinkWrap: true,
-                                                  physics:
-                                                      const NeverScrollableScrollPhysics(),
-                                                  padding:
-                                                      const EdgeInsets.all(16),
-                                                  gridDelegate:
-                                                      const SliverGridDelegateWithMaxCrossAxisExtent(
-                                                    maxCrossAxisExtent: 140,
-                                                    mainAxisSpacing: 16,
-                                                    crossAxisSpacing: 16,
-                                                    childAspectRatio: 1.0,
-                                                  ),
-                                                  itemCount: tiles.length,
-                                                  itemBuilder:
-                                                      (context, index) {
-                                                    final tile = tiles[index];
-                                                    final isAutoBack =
-                                                        needsAutoBack &&
-                                                            index == 0;
+                                            GridView.builder(
+                                              padding: const EdgeInsets.all(16),
+                                              gridDelegate:
+                                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                                maxCrossAxisExtent: 140,
+                                                mainAxisSpacing: 16,
+                                                crossAxisSpacing: 16,
+                                                childAspectRatio: 1.0,
+                                              ),
+                                              itemCount: tiles.length,
+                                              itemBuilder: (context, index) {
+                                                final tile = tiles[index];
+                                                final isAutoBack =
+                                                    needsAutoBack && index == 0;
 
-                                                    Widget card = TileCard(
-                                                      tile: tile,
-                                                      theme: theme,
-                                                      index: index,
-                                                      selected: state
-                                                              .selectedTileId ==
+                                                Widget card = TileCard(
+                                                  tile: tile,
+                                                  theme: theme,
+                                                  index: index,
+                                                  selected:
+                                                      state.selectedTileId ==
                                                           tile.id,
-                                                      fromPage: isAutoBack
-                                                          ? null
-                                                          : state.currentPage,
-                                                      onTap: () {
-                                                        final notifier = ref.read(
-                                                            editorControllerProvider
-                                                                .notifier);
-                                                        if (isAutoBack) {
-                                                          notifier.selectPage(
-                                                              Layout.homePage);
-                                                          return;
-                                                        }
-                                                        notifier.selectTile(
-                                                            tile.id);
-                                                      },
-                                                      onDoubleTap: () {
-                                                        final notifier = ref.read(
-                                                            editorControllerProvider
-                                                                .notifier);
-                                                        if (tile
-                                                            is FolderTile) {
-                                                          notifier.selectPage(
-                                                              tile.target);
-                                                        } else if (tile
-                                                            is BackTile) {
-                                                          notifier.selectPage(
-                                                              Layout.homePage);
-                                                        }
-                                                      },
-                                                    );
-
+                                                  fromPage: isAutoBack
+                                                      ? null
+                                                      : state.currentPage,
+                                                  onTap: () {
+                                                    final notifier = ref.read(
+                                                        editorControllerProvider
+                                                            .notifier);
                                                     if (isAutoBack) {
-                                                      card = Opacity(
-                                                        opacity: 0.6,
-                                                        child: Stack(
-                                                          children: [
-                                                            Positioned.fill(
-                                                                child: card),
-                                                            Positioned(
-                                                              top: 4,
-                                                              right: 4,
-                                                              child: Container(
-                                                                padding: const EdgeInsets
+                                                      notifier.selectPage(
+                                                          Layout.homePage);
+                                                      return;
+                                                    }
+                                                    notifier
+                                                        .selectTile(tile.id);
+                                                  },
+                                                  onDoubleTap: () {
+                                                    final notifier = ref.read(
+                                                        editorControllerProvider
+                                                            .notifier);
+                                                    if (tile is FolderTile) {
+                                                      notifier.selectPage(
+                                                          tile.target);
+                                                    } else if (tile
+                                                        is BackTile) {
+                                                      notifier.selectPage(
+                                                          Layout.homePage);
+                                                    }
+                                                  },
+                                                );
+
+                                                if (isAutoBack) {
+                                                  card = Opacity(
+                                                    opacity: 0.6,
+                                                    child: Stack(
+                                                      children: [
+                                                        Positioned.fill(
+                                                            child: card),
+                                                        Positioned(
+                                                          top: 4,
+                                                          right: 4,
+                                                          child: Container(
+                                                            padding:
+                                                                const EdgeInsets
                                                                     .symmetric(
                                                                     horizontal:
                                                                         6,
                                                                     vertical:
                                                                         2),
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color: Colors
-                                                                      .black54,
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              8),
-                                                                ),
-                                                                child: const Text(
-                                                                    'auto',
-                                                                    style: TextStyle(
-                                                                        fontSize:
-                                                                            10,
-                                                                        color: Colors
-                                                                            .white)),
-                                                              ),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: Colors
+                                                                  .black54,
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          8),
                                                             ),
-                                                          ],
+                                                            child: const Text(
+                                                                'auto',
+                                                                style: TextStyle(
+                                                                    fontSize:
+                                                                        10,
+                                                                    color: Colors
+                                                                        .white)),
+                                                          ),
                                                         ),
-                                                      );
-                                                    }
+                                                      ],
+                                                    ),
+                                                  );
+                                                }
 
-                                                    return card;
-                                                  },
-                                                ),
-                                              ),
+                                                return card;
+                                              },
                                             ),
                                             if (_targetGap != null)
                                               _GapPlaceholder(
@@ -322,14 +305,6 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.linear_scale),
-                title: const Text('Slider (Volume/Brilho)'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _createTile(ref, state, 'slider', context);
-                },
-              ),
-              ListTile(
                 leading: const Icon(Icons.folder),
                 title: const Text('Pasta'),
                 onTap: () {
@@ -343,6 +318,14 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 onTap: () {
                   Navigator.pop(ctx);
                   _createTile(ref, state, 'back', context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.linear_scale),
+                title: const Text('Slider'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _createTile(ref, state, 'slider', context);
                 },
               ),
             ],
@@ -366,30 +349,15 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
 
   void _createTile(
       WidgetRef ref, EditorState state, String type, BuildContext context) {
-    final id = _generateId(state, type);
     Tile newTile;
 
     switch (type) {
       case 'shortcut':
+        final id = _generateId(state, type);
         newTile = ShortcutTile(id: id, icon: '⚡', label: 'Novo atalho');
         break;
-      case 'slider':
-        // Pega todos os IDs que já existem no layout
-        final allIds = state.layout.pages.values
-            .expand((list) => list)
-            .map((t) => t.id)
-            .toSet();
-
-        // Se ainda não tem o master_volume, cria ele. Se já tem, cria um genérico.
-        if (!allIds.contains('master_volume')) {
-          newTile = const SliderTile(
-              id: 'master_volume', icon: '🔊', label: 'Volume Principal');
-        } else {
-          final dynId = _generateId(state, 'slider');
-          newTile = SliderTile(id: dynId, icon: '🎚️', label: 'Novo Slider');
-        }
-        break;
       case 'folder':
+        final id = _generateId(state, type);
         final availablePages = state.layout.pages.keys
             .where((k) => k != state.currentPage)
             .toList();
@@ -407,7 +375,30 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
             target: availablePages.first);
         break;
       case 'back':
+        final id = _generateId(state, type);
         newTile = BackTile(id: id, icon: '⬅️', label: 'Voltar');
+        break;
+      case 'slider':
+        final allIds = state.layout.pages.values
+            .expand((list) => list)
+            .map((t) => t.id)
+            .toSet();
+        if (!allIds.contains('master_volume')) {
+          newTile = const SliderTile(
+            id: 'master_volume',
+            icon: '🔊',
+            label: 'Volume Principal',
+            source: SliderSource(kind: SliderSource.kindMasterVolume),
+          );
+        } else {
+          final dynId = _generateId(state, 'slider');
+          newTile = SliderTile(
+            id: dynId,
+            icon: '🎚️',
+            label: 'Novo Slider',
+            source: const SliderSource(kind: SliderSource.kindMasterVolume),
+          );
+        }
         break;
       default:
         return;
@@ -439,7 +430,7 @@ class _GapPlaceholder extends StatelessWidget {
     const pad = 16.0;
 
     final usableW = boxSize.width - pad * 2;
-    final cols = (usableW / (maxExtent + spacing)).ceil().clamp(1, 999);
+    final cols = (usableW / (maxExtent + spacing)).floor().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
     final tileH = tileW;
 

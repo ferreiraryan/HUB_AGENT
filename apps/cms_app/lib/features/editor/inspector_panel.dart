@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers.dart';
 import 'editor_controller.dart';
 import 'emoji_picker.dart';
+import 'brightness_picker.dart';
 
 class InspectorPanel extends ConsumerWidget {
   const InspectorPanel({super.key});
@@ -166,14 +167,16 @@ class _InspectorFooter extends ConsumerWidget {
     Tile newTile;
     if (tile is ShortcutTile) {
       newTile = ShortcutTile(id: newId, icon: tile.icon, label: tile.label);
+    } else if (tile is SliderTile) {
+      final s = tile as SliderTile;
+      newTile = SliderTile(
+          id: newId, icon: tile.icon, label: tile.label, source: s.source);
     } else if (tile is FolderTile) {
       final f = tile as FolderTile;
       newTile = FolderTile(
           id: newId, icon: tile.icon, label: tile.label, target: f.target);
     } else if (tile is BackTile) {
       newTile = BackTile(id: newId, icon: tile.icon, label: tile.label);
-    } else if (tile is SliderTile) {
-      newTile = SliderTile(id: newId, icon: tile.icon, label: tile.label);
     } else {
       return;
     }
@@ -282,47 +285,53 @@ class _ShortcutInspector extends ConsumerStatefulWidget {
 class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
   late bool _isBuiltinMode;
 
-  bool get _isShortcut => widget.tile is ShortcutTile;
-
   @override
   void initState() {
     super.initState();
-    _isBuiltinMode =
-        _isShortcut && Layout.builtinActions.contains(widget.tile.id);
+    if (widget.tile is ShortcutTile) {
+      _isBuiltinMode = Layout.builtinActions.contains(widget.tile.id);
+    } else {
+      _isBuiltinMode = false;
+    }
   }
 
   @override
   void didUpdateWidget(covariant _ShortcutInspector oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.tile.id != widget.tile.id ||
-        oldWidget.tile.runtimeType != widget.tile.runtimeType) {
-      _isBuiltinMode =
-          _isShortcut && Layout.builtinActions.contains(widget.tile.id);
+    if (oldWidget.tile.id != widget.tile.id) {
+      if (widget.tile is ShortcutTile) {
+        _isBuiltinMode = Layout.builtinActions.contains(widget.tile.id);
+      } else {
+        _isBuiltinMode = false;
+      }
     }
   }
 
   Tile _updateTile({String? id, String? icon, String? label}) {
     final current = widget.tile;
-
-    if (current is SliderTile) {
-      return SliderTile(
+    if (current is ShortcutTile) {
+      return ShortcutTile(
         id: id ?? current.id,
         icon: icon ?? current.icon,
         label: label ?? current.label,
       );
+    } else if (current is SliderTile) {
+      return SliderTile(
+        id: id ?? current.id,
+        icon: icon ?? current.icon,
+        label: label ?? current.label,
+        source: current.source,
+      );
     }
-
-    return ShortcutTile(
-      id: id ?? current.id,
-      icon: icon ?? current.icon,
-      label: label ?? current.label,
-    );
+    return current;
   }
 
   @override
   Widget build(BuildContext context) {
     final notifier = ref.read(editorControllerProvider.notifier);
     final dispatcher = ref.read(agentRuntimeProvider).dispatcher;
+
+    final isShortcut = widget.tile is ShortcutTile;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -331,9 +340,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           initialValue: widget.tile.label,
           onSubmitted: (newLabel) {
             notifier.upsertTile(
-              widget.state.currentPage,
-              _updateTile(label: newLabel),
-            );
+                widget.state.currentPage, _updateTile(label: newLabel));
           },
         ),
         const SizedBox(height: 16),
@@ -341,9 +348,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           icon: widget.tile.icon,
           onPicked: (newIcon) {
             notifier.upsertTile(
-              widget.state.currentPage,
-              _updateTile(icon: newIcon),
-            );
+                widget.state.currentPage, _updateTile(icon: newIcon));
           },
         ),
         const Divider(height: 32, color: Colors.white10),
@@ -352,13 +357,107 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           hasBinding: widget.state.layout.bindings.containsKey(widget.tile.id),
           onSubmitted: (newId) {
             notifier.upsertTile(
-              widget.state.currentPage,
-              _updateTile(id: newId),
-            );
+                widget.state.currentPage, _updateTile(id: newId));
           },
         ),
-        const SizedBox(height: 16),
-        if (_isShortcut) ...[
+        if (widget.tile is SliderTile) ...[
+          const Divider(height: 32, color: Colors.white10),
+          const Text('Fonte do Slider',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: (widget.tile as SliderTile).source.kind,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Tipo',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: SliderSource.kindMasterVolume,
+                child: Text('Volume Master'),
+              ),
+              DropdownMenuItem(
+                value: SliderSource.kindAppVolume,
+                child: Text('Volume de App'),
+              ),
+              DropdownMenuItem(
+                value: SliderSource.kindBrightness,
+                child: Text('Brilho'),
+              ),
+            ],
+            onChanged: (kind) {
+              if (kind == null) return;
+              final current = widget.tile as SliderTile;
+              final newSource = kind == SliderSource.kindAppVolume
+                  ? SliderSource(kind: kind, match: '')
+                  : SliderSource(kind: kind);
+              notifier.upsertTile(
+                widget.state.currentPage,
+                SliderTile(
+                  id: current.id,
+                  icon: current.icon,
+                  label: current.label,
+                  source: newSource,
+                ),
+              );
+            },
+          ),
+          if ((widget.tile as SliderTile).source.kind ==
+              SliderSource.kindMasterVolume) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Aplica o volume geral do sistema.',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ] else if ((widget.tile as SliderTile).source.kind ==
+              SliderSource.kindAppVolume) ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: (widget.tile as SliderTile).source.match ?? '',
+              decoration: const InputDecoration(
+                labelText: 'Nome do App (match)',
+                hintText: 'ex: Firefox, Spotify, mpv',
+                border: OutlineInputBorder(),
+                helperText: 'Case-sensitive. É o application.name do pactl.',
+              ),
+              onFieldSubmitted: (value) {
+                final current = widget.tile as SliderTile;
+                notifier.upsertTile(
+                  widget.state.currentPage,
+                  SliderTile(
+                    id: current.id,
+                    icon: current.icon,
+                    label: current.label,
+                    source: current.source.copyWith(
+                        match: value.trim(), clearMatch: value.trim().isEmpty),
+                  ),
+                );
+              },
+            ),
+          ] else if ((widget.tile as SliderTile).source.kind ==
+              SliderSource.kindBrightness) ...[
+            const SizedBox(height: 12),
+            MonitorDropdown(
+              currentMatch: (widget.tile as SliderTile).source.match,
+              onChanged: (val) {
+                final current = widget.tile as SliderTile;
+                notifier.upsertTile(
+                  widget.state.currentPage,
+                  SliderTile(
+                    id: current.id,
+                    icon: current.icon,
+                    label: current.label,
+                    source: current.source
+                        .copyWith(match: val, clearMatch: val.isEmpty),
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+        if (isShortcut) ...[
+          const SizedBox(height: 16),
           const Text('Comportamento',
               style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
@@ -387,57 +486,39 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
               ],
             ),
           ),
-        ],
-        if (_isShortcut && _isBuiltinMode) ...[
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            initialValue: Layout.builtinActions.contains(widget.tile.id)
-                ? widget.tile.id
-                : Layout.builtinActions.first,
-            isExpanded: true,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            items: Layout.builtinActions
-                .map((a) => DropdownMenuItem(value: a, child: Text(a)))
-                .toList(),
-            onChanged: (val) {
-              if (val != null) {
-                notifier.upsertTile(
-                  widget.state.currentPage,
-                  ShortcutTile(
-                      id: val,
-                      icon: widget.tile.icon,
-                      label: widget.tile.label),
-                );
-              }
-            },
-          ),
-          const SizedBox(height: 4),
-          const Text('Esta ação é tratada pelo agente; não precisa de comando.',
-              style: TextStyle(fontSize: 11, color: Colors.white54)),
-        ],
-        if (!_isShortcut || !_isBuiltinMode) ...[
-          const SizedBox(height: 8),
-          _ArgvEditor(
-            initialArgv:
-                (widget.state.layout.bindings[widget.tile.id]?.isNotEmpty ??
-                        false)
-                    ? widget.state.layout.bindings[widget.tile.id]!.first
-                    : const <String>[],
-            dispatcher: dispatcher,
-            onChanged: (argv) {
-              // Gambiarra temporária: preserva os comandos 2+ da cadeia.
-              // Sobrescreve só o primeiro.
-              final atual = widget.state.layout.bindings[widget.tile.id] ?? [];
-              final novos = <List<String>>[
-                if (argv != null && argv.isNotEmpty) argv,
-                ...atual.skip(1), // mantém os comandos 2 em diante
-              ];
-              notifier.setBinding(
-                widget.tile.id,
-                novos.isEmpty ? null : novos,
-              );
-            },
-          ),
+          if (_isBuiltinMode) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: Layout.builtinActions.contains(widget.tile.id)
+                  ? widget.tile.id
+                  : Layout.builtinActions.first,
+              isExpanded: true,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+              items: Layout.builtinActions
+                  .map((a) => DropdownMenuItem(value: a, child: Text(a)))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  notifier.upsertTile(
+                      widget.state.currentPage, _updateTile(id: val));
+                }
+              },
+            ),
+            const SizedBox(height: 4),
+            const Text(
+                'Esta ação é tratada pelo agente; não precisa de comando.',
+                style: TextStyle(fontSize: 11, color: Colors.white54)),
+          ] else ...[
+            const SizedBox(height: 8),
+            _CommandsEditor(
+              initialCommands:
+                  widget.state.layout.bindings[widget.tile.id] ?? const [],
+              dispatcher: dispatcher,
+              onChanged: (cmds) {
+                notifier.setBinding(widget.tile.id, cmds);
+              },
+            ),
+          ],
         ],
       ],
     );
@@ -566,10 +647,6 @@ class _BackInspector extends ConsumerWidget {
     );
   }
 }
-
-// ============================================================================
-// Componentes Reutilizáveis
-// ============================================================================
 
 class _LabelField extends StatefulWidget {
   final String initialValue;
@@ -748,25 +825,41 @@ class _IconField extends StatelessWidget {
   }
 }
 
-class _ArgvEditor extends StatefulWidget {
-  final List<String> initialArgv;
-  final ValueChanged<List<String>?> onChanged;
-  final CommandDispatcher dispatcher;
+class _CmdCtrl {
+  final List<TextEditingController> args;
+  bool isTesting = false;
+  CommandResult? testResult;
 
-  const _ArgvEditor(
-      {required this.initialArgv,
-      required this.onChanged,
-      required this.dispatcher});
+  _CmdCtrl(List<String> initial)
+      : args = initial.isEmpty
+            ? [TextEditingController()]
+            : initial.map((a) => TextEditingController(text: a)).toList();
 
-  @override
-  State<_ArgvEditor> createState() => _ArgvEditorState();
+  void dispose() {
+    for (final c in args) {
+      c.dispose();
+    }
+  }
 }
 
-class _ArgvEditorState extends State<_ArgvEditor> {
-  late List<TextEditingController> _ctrls;
+class _CommandsEditor extends StatefulWidget {
+  final List<List<String>> initialCommands;
+  final ValueChanged<List<List<String>>?> onChanged;
+  final CommandDispatcher dispatcher;
+
+  const _CommandsEditor({
+    required this.initialCommands,
+    required this.onChanged,
+    required this.dispatcher,
+  });
+
+  @override
+  State<_CommandsEditor> createState() => _CommandsEditorState();
+}
+
+class _CommandsEditorState extends State<_CommandsEditor> {
+  late List<_CmdCtrl> _commands;
   Timer? _debounce;
-  bool _isTesting = false;
-  CommandResult? _testResult;
 
   @override
   void initState() {
@@ -775,23 +868,28 @@ class _ArgvEditorState extends State<_ArgvEditor> {
   }
 
   @override
-  void didUpdateWidget(covariant _ArgvEditor oldWidget) {
+  void didUpdateWidget(covariant _CommandsEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialArgv.join('\u0000') !=
-        widget.initialArgv.join('\u0000')) {
+    final oldStr =
+        oldWidget.initialCommands.map((c) => c.join('\u0000')).join('\u0001');
+    final newStr =
+        widget.initialCommands.map((c) => c.join('\u0000')).join('\u0001');
+    if (oldStr != newStr) {
       _disposeCtrls();
       _initCtrls();
-      _testResult = null;
     }
   }
 
   void _initCtrls() {
-    _ctrls =
-        widget.initialArgv.map((a) => TextEditingController(text: a)).toList();
+    if (widget.initialCommands.isEmpty) {
+      _commands = [];
+    } else {
+      _commands = widget.initialCommands.map((c) => _CmdCtrl(c)).toList();
+    }
   }
 
   void _disposeCtrls() {
-    for (final c in _ctrls) {
+    for (final c in _commands) {
       c.dispose();
     }
   }
@@ -805,178 +903,326 @@ class _ArgvEditorState extends State<_ArgvEditor> {
 
   void _fireChanged() {
     _debounce?.cancel();
-    setState(() {}); // Força rebuild para o FutureBuilder e UI geral
+    setState(() {});
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      final argv =
-          _ctrls.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
-      widget.onChanged(argv.isEmpty ? null : argv);
+      final cmds = <List<String>>[];
+      for (final ctrl in _commands) {
+        final argv = ctrl.args
+            .map((c) => c.text.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        if (argv.isNotEmpty) {
+          cmds.add(argv);
+        }
+      }
+      widget.onChanged(cmds.isEmpty ? null : cmds);
     });
   }
 
-  Future<void> _runTest() async {
+  Future<void> _runTest(int index) async {
+    final ctrl = _commands[index];
     final argv =
-        _ctrls.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
+        ctrl.args.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
     if (argv.isEmpty) return;
 
     setState(() {
-      _isTesting = true;
-      _testResult = null;
+      ctrl.isTesting = true;
+      ctrl.testResult = null;
     });
 
     final res = await widget.dispatcher.test(argv);
 
     if (mounted) {
       setState(() {
-        _isTesting = false;
-        _testResult = res;
+        ctrl.isTesting = false;
+        ctrl.testResult = res;
       });
     }
   }
 
+  void _moveCmd(int index, int dir) {
+    if (index + dir < 0 || index + dir >= _commands.length) return;
+    final temp = _commands[index];
+    _commands[index] = _commands[index + dir];
+    _commands[index + dir] = temp;
+    _fireChanged();
+  }
+
+  void _deleteCmd(int index) {
+    _commands[index].dispose();
+    _commands.removeAt(index);
+    _fireChanged();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final firstArg = _ctrls.isNotEmpty ? _ctrls.first.text.trim() : '';
+    final bool isSingle = _commands.length == 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Argumentos',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-        const SizedBox(height: 8),
-        if (firstArg.isNotEmpty)
-          FutureBuilder<bool>(
-            future: widget.dispatcher.exists(firstArg),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const SizedBox.shrink();
-              final exists = snapshot.data!;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: Row(
-                  children: [
-                    Icon(exists ? Icons.check_circle : Icons.cancel,
-                        color: exists ? Colors.green : Colors.red, size: 14),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        exists
-                            ? 'Binário encontrado no PATH'
-                            : 'Binário não está no PATH',
+        if (_commands.isNotEmpty) ...[
+          if (!isSingle)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8.0),
+              child: Text('Comandos',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            ),
+          ..._commands.asMap().entries.map((e) {
+            final i = e.key;
+            final ctrl = e.value;
+            final firstArg =
+                ctrl.args.isNotEmpty ? ctrl.args.first.text.trim() : '';
+
+            Widget content = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!isSingle)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white10,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('${i + 1}',
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.arrow_upward, size: 16),
+                          onPressed: i > 0 ? () => _moveCmd(i, -1) : null,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.arrow_downward, size: 16),
+                          onPressed: i < _commands.length - 1
+                              ? () => _moveCmd(i, 1)
+                              : null,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: () => _deleteCmd(i),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                  ),
+                if (isSingle)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8.0),
+                    child: Text('Comando',
                         style: TextStyle(
-                            color: exists ? Colors.green : Colors.red,
-                            fontSize: 11),
+                            fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                if (firstArg.isNotEmpty)
+                  FutureBuilder<bool>(
+                    future: widget.dispatcher.exists(firstArg),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const SizedBox.shrink();
+                      final exists = snapshot.data!;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Row(
+                          children: [
+                            Icon(exists ? Icons.check_circle : Icons.cancel,
+                                color: exists ? Colors.green : Colors.red,
+                                size: 14),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                exists
+                                    ? 'Binário encontrado no PATH'
+                                    : 'Binário não está no PATH',
+                                style: TextStyle(
+                                    color: exists ? Colors.green : Colors.red,
+                                    fontSize: 11),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ...ctrl.args.asMap().entries.map((argEntry) {
+                  return _ArgTextField(
+                    controller: argEntry.value,
+                    isFirst: argEntry.key == 0,
+                    onChanged: _fireChanged,
+                    onDeleted: () {
+                      argEntry.value.dispose();
+                      ctrl.args.removeAt(argEntry.key);
+                      _fireChanged();
+                    },
+                  );
+                }),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Argumento'),
+                        onPressed: () {
+                          setState(() {
+                            ctrl.args.add(TextEditingController());
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: ctrl.isTesting
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.play_arrow, size: 16),
+                        label: const Text('Testar'),
+                        onPressed: ctrl.args.isEmpty || ctrl.isTesting
+                            ? null
+                            : () => _runTest(i),
                       ),
                     ),
                   ],
                 ),
+                if (ctrl.testResult != null) ...[
+                  const SizedBox(height: 8),
+                  ExpansionTile(
+                    initiallyExpanded: true,
+                    tilePadding: EdgeInsets.zero,
+                    title: Text(
+                      ctrl.testResult!.started
+                          ? 'Exit code: ${ctrl.testResult!.exitCode}'
+                          : 'Não executou',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: ctrl.testResult!.error != null
+                        ? Text(ctrl.testResult!.error!,
+                            style: const TextStyle(
+                                color: Colors.redAccent, fontSize: 11))
+                        : null,
+                    childrenPadding: const EdgeInsets.only(bottom: 8),
+                    children: [
+                      if (ctrl.testResult!.stdout.isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(4)),
+                          child: SelectableText(ctrl.testResult!.stdout,
+                              style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  color: Colors.white70)),
+                        ),
+                      if (ctrl.testResult!.stderr.isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(top: 8),
+                          decoration: BoxDecoration(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(4)),
+                          child: SelectableText(ctrl.testResult!.stderr,
+                              style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  color: Colors.redAccent)),
+                        ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () =>
+                              setState(() => ctrl.testResult = null),
+                          child: const Text('Fechar',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            );
+
+            if (isSingle) {
+              return content;
+            } else {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: content,
               );
+            }
+          }),
+        ],
+        if (_commands.length < 10)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.add_to_photos, size: 16),
+            label: const Text('Adicionar comando na sequência'),
+            onPressed: () {
+              setState(() {
+                _commands.add(_CmdCtrl([]));
+              });
+              _fireChanged();
             },
           ),
-        ..._ctrls.asMap().entries.map((e) {
-          final i = e.key;
-          final ctrl = e.value;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: ctrl,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: i == 0 ? 'Comando (ex: code)' : 'Argumento',
-                      border: const OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => _fireChanged(),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  onPressed: () {
-                    final c = _ctrls.removeAt(i);
-                    c.dispose();
-                    _fireChanged();
-                  },
-                ),
-              ],
-            ),
-          );
-        }),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.add, size: 16),
-          label: const Text('Adicionar argumento'),
-          onPressed: () {
-            setState(() {
-              _ctrls.add(TextEditingController());
-            });
-          },
-        ),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          icon: _isTesting
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.play_arrow, size: 16),
-          label: const Text('Testar'),
-          onPressed: _ctrls.isEmpty || _isTesting ? null : _runTest,
-        ),
-        if (_testResult != null) ...[
-          const SizedBox(height: 8),
-          ExpansionTile(
-            initiallyExpanded: true,
-            title: Text(
-              _testResult!.started
-                  ? 'Exit code: ${_testResult!.exitCode}'
-                  : 'Não executou',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-            subtitle: _testResult!.error != null
-                ? Text(_testResult!.error!,
-                    style:
-                        const TextStyle(color: Colors.redAccent, fontSize: 11))
-                : null,
-            childrenPadding: const EdgeInsets.all(8),
-            children: [
-              if (_testResult!.stdout.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(4)),
-                  child: SelectableText(_testResult!.stdout,
-                      style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          color: Colors.white70)),
-                ),
-              if (_testResult!.stderr.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  margin: const EdgeInsets.only(top: 8),
-                  decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(4)),
-                  child: SelectableText(_testResult!.stderr,
-                      style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          color: Colors.redAccent)),
-                ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => setState(() => _testResult = null),
-                  child: const Text('Fechar', style: TextStyle(fontSize: 12)),
-                ),
+      ],
+    );
+  }
+}
+
+class _ArgTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isFirst;
+  final VoidCallback onChanged;
+  final VoidCallback onDeleted;
+
+  const _ArgTextField({
+    required this.controller,
+    required this.isFirst,
+    required this.onChanged,
+    required this.onDeleted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: isFirst ? 'Comando (ex: code)' : 'Argumento',
+                border: const OutlineInputBorder(),
               ),
-            ],
+              onChanged: (_) => onChanged(),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: onDeleted,
+            visualDensity: VisualDensity.compact,
           ),
         ],
-      ],
+      ),
     );
   }
 }

@@ -4,29 +4,27 @@ import 'dart:io';
 import 'models/audio_state.dart';
 import 'models/layout.dart';
 import 'models/media_state.dart';
+import 'models/tile.dart';
 import 'services/audio/audio_controller.dart';
 import 'services/audio/linux_audio_controller.dart';
+import 'services/brightness_controller.dart';
 import 'services/command_dispatcher.dart';
 import 'services/layout_repository.dart';
 import 'services/media_service.dart';
 import 'services/mqtt_service.dart';
 
-/// Orquestrador do node. Dart puro: o app Flutter e o daemon headless
-/// hospedam exatamente este objeto.
 class AgentRuntime {
   final LayoutRepository repository;
   final MqttService mqtt;
   final AudioController audio;
+  final BrightnessController brightness;
   final MediaService media;
   late final CommandDispatcher dispatcher;
 
-  /// Janela da guarda de eco. Ao receber set_volume do tablet, o evento local
-  /// que o proprio comando provoca e descartado — senao o slider do tablet
-  /// treme (tablet manda 40 -> PC aplica -> PC publica 40 -> tablet redesenha
-  /// no meio do arrasto).
   final Duration echoGuard;
 
   final _subs = <StreamSubscription<dynamic>>[];
+  Timer? _brightnessPublishTimer;
   DateTime _suppressUntil = DateTime.fromMillisecondsSinceEpoch(0);
   bool _started = false;
 
@@ -34,13 +32,16 @@ class AgentRuntime {
     required this.repository,
     required this.mqtt,
     AudioController? audio,
+    BrightnessController? brightness,
     MediaService? media,
     Set<String> allowedBinaries = const {},
     this.echoGuard = const Duration(milliseconds: 200),
   })  : audio = audio ?? _defaultAudio(),
+        brightness = brightness ?? _defaultBrightness(),
         media = media ?? MediaService() {
     dispatcher = CommandDispatcher(
       audio: this.audio,
+      brightness: this.brightness,
       media: this.media,
       layoutProvider: () => repository.current,
       allowedBinaries: allowedBinaries,
@@ -51,16 +52,16 @@ class AgentRuntime {
   static AudioController _defaultAudio() =>
       Platform.isLinux ? LinuxAudioController() : UnsupportedAudioController();
 
+  static BrightnessController _defaultBrightness() => Platform.isLinux
+      ? LinuxBrightnessController()
+      : UnsupportedBrightnessController();
+
   Stream<AgentConnectionState> get connectionState => mqtt.connectionState;
   Stream<Layout> get layoutChanges => repository.changes;
   Stream<MasterVolume> get volumeChanges => audio.masterChanges;
   Stream<List<AppVolume>> get appVolumeChanges => audio.appsChanges;
   Stream<MediaState> get mediaChanges => media.changes;
 
-  /// Boot: carrega disco, conecta, publica status + layout + snapshots.
-  ///
-  /// Fluxo unidirecional preservado: a UI so chama repository.save(); o stream
-  /// do repositorio e quem alimenta o MQTT.
   Future<void> start({required String fallbackDeviceName}) async {
     if (_started) return;
     _started = true;
@@ -69,23 +70,30 @@ class AgentRuntime {
         await repository.load(fallbackDeviceName: fallbackDeviceName);
 
     _subs
-      ..add(repository.changes.listen(mqtt.publishLayout))
+      ..add(repository.changes.listen((l) {
+        mqtt.publishLayout(l);
+        _publishBrightness(); // forçar publicação imediata do slider
+      }))
       ..add(mqtt.commands.listen(_onCommand))
       ..add(audio.masterChanges.listen(_onLocalVolume))
       ..add(audio.appsChanges.listen(mqtt.publishApps))
+      ..add(brightness.changes.listen((_) => _publishBrightness()))
       ..add(media.changes.listen(mqtt.publishMedia));
 
-    // Republica o snapshot completo a cada (re)conexao: o retained do broker
-    // pode estar velho se o agente rodou offline.
     _subs.add(mqtt.connectionState.listen((s) {
       if (s == AgentConnectionState.connected) _publishSnapshot();
     }));
 
     await mqtt.connect();
     await audio.start();
+    await brightness.start();
     await media.start();
 
+    _brightnessPublishTimer =
+        Timer.periodic(const Duration(seconds: 5), (_) => _publishBrightness());
+
     _publishSnapshot();
+    await _publishBrightness();
     if (mqtt.isConnected) mqtt.publishLayout(layout);
   }
 
@@ -97,7 +105,26 @@ class AgentRuntime {
       mqtt.publishVolume(audio.master);
       mqtt.publishApps(audio.apps);
     }
+    _publishBrightness();
     mqtt.publishMedia(media.current);
+  }
+
+  Future<void> _publishBrightness() async {
+    if (!mqtt.isConnected) return;
+    final layout = repository.isLoaded ? repository.current : null;
+    if (layout == null) return;
+
+    for (final page in layout.pages.values) {
+      for (final tile in page) {
+        if (tile is SliderTile &&
+            tile.source.kind == SliderSource.kindBrightness) {
+          final v = await brightness.readForDisplay(tile.source.match ?? '');
+          if (v != null) {
+            mqtt.publishSliderState(tile.id, v);
+          }
+        }
+      }
+    }
   }
 
   Future<void> _onCommand(AgentCommand cmd) async {
@@ -108,11 +135,10 @@ class AgentRuntime {
     }
   }
 
-  void _armEchoGuard() =>
-      _suppressUntil = DateTime.now().add(echoGuard);
+  void _armEchoGuard() => _suppressUntil = DateTime.now().add(echoGuard);
 
   void _onLocalVolume(MasterVolume v) {
-    if (DateTime.now().isBefore(_suppressUntil)) return; // eco do tablet
+    if (DateTime.now().isBefore(_suppressUntil)) return;
     mqtt.publishVolume(v);
   }
 
@@ -121,7 +147,9 @@ class AgentRuntime {
       await s.cancel();
     }
     _subs.clear();
+    _brightnessPublishTimer?.cancel();
     await media.dispose();
+    await brightness.dispose();
     await audio.dispose();
     await mqtt.dispose();
     await repository.dispose();

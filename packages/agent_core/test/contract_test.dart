@@ -131,12 +131,11 @@ void main() {
     test('testChain para no primeiro erro', () async {
       final disp = CommandDispatcher(
         audio: UnsupportedAudioController(),
+        brightness: UnsupportedBrightnessController(),
         media: MediaService(),
         layoutProvider: () => Layout.initial(''),
       );
 
-      // Usa binários portáveis básicos garantidos em ambientes comuns
-      // ou depende da detecção de falha natural pelo path.
       final res = await disp.testChain([
         ['true'],
         ['comando_que_nao_existe_jamais_xyz123'],
@@ -162,6 +161,53 @@ void main() {
         isEmpty,
       );
     });
+
+    test('SliderTile round-trip preserva source', () {
+      final layout = Layout.initial('PC').upsertTile(
+          'home',
+          const SliderTile(
+            id: 'brilho',
+            icon: '☀️',
+            label: 'Brilho',
+            source: SliderSource(kind: SliderSource.kindBrightness),
+          ));
+      final json = layout.toPublishJson();
+      final back = Layout.fromJson(json);
+      final tile = back.tilesOf('home').whereType<SliderTile>().first;
+      expect(tile.source.kind, equals(SliderSource.kindBrightness));
+    });
+
+    test('SliderSource rejeita kind invalido', () {
+      expect(
+        () => SliderSource.fromJson({'kind': 'inventado'}),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+  test('SliderTile com brightness preserva source no round-trip', () {
+    final layout = Layout.initial('PC').upsertTile(
+        'home',
+        const SliderTile(
+          id: 'brilho_1',
+          icon: '☀️',
+          label: 'Brilho HDMI',
+          source: SliderSource(
+            kind: SliderSource.kindBrightness,
+            match: 'card1-HDMI-A-1',
+          ),
+        ));
+    final back = Layout.fromJson(layout.toPublishJson());
+    final tile = back.tilesOf('home').whereType<SliderTile>().first;
+    expect(tile.source.kind, equals(SliderSource.kindBrightness));
+    expect(tile.source.match, equals('card1-HDMI-A-1'));
+  });
+
+  test('SliderSource brightness sem match é válido (aplica em todos)', () {
+    final src = SliderSource(kind: SliderSource.kindBrightness);
+    expect(src.match, isNull);
+    final json = src.toJson();
+    expect(json['kind'], equals('brightness'));
+    expect(json.containsKey('match'), isFalse);
   });
 
   group('payloads auxiliares', () {

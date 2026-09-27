@@ -9,10 +9,6 @@ import '../models/audio_state.dart';
 import '../models/layout.dart';
 import '../models/media_state.dart';
 
-/// Topicos canonicos: prefixo `nodes/{deviceId}`.
-///
-/// O tablet assina com wildcard (`nodes/+/status`), entao o auto-discovery
-/// depende so de o deviceId ser unico na rede.
 class AgentTopics {
   final String deviceId;
   final String prefix;
@@ -30,16 +26,12 @@ class AgentTopics {
 
 enum AgentConnectionState { disconnected, connecting, connected }
 
-/// Mensagem publicada pelo tablet em `nodes/{deviceId}/cmd`.
-///
-/// `{ "action": string, "value"?: number, "app_id"?: string }`
 class AgentCommand {
   final String action;
   final Map<String, dynamic> raw;
 
   const AgentCommand(this.action, this.raw);
 
-  /// 0-100 int. Aceita float vindo do tablet por tolerancia, mas arredonda.
   int? get value {
     final v = raw['value'];
     if (v is num) return v.round();
@@ -48,9 +40,8 @@ class AgentCommand {
   }
 
   String? get appId => raw['app_id']?.toString();
-
-  /// Usado pela acao `run_shortcut`, onde o id vem em campo separado.
   String? get shortcutId => raw['id']?.toString();
+  String? get sliderId => raw['id']?.toString();
 
   static AgentCommand? tryParse(String payload) {
     try {
@@ -68,7 +59,6 @@ class AgentCommand {
   String toString() => 'AgentCommand($action, ${jsonEncode(raw)})';
 }
 
-/// Conexao MQTT do node. Nao conhece UI nem disco.
 class MqttService {
   final String host;
   final int port;
@@ -114,8 +104,6 @@ class MqttService {
 
     _client.connectionMessage = MqttConnectMessage()
         .withClientIdentifier('node-$deviceId')
-        // LWT: queda de energia e o broker publica isso sozinho. O tablet
-        // apaga o card do PC sem precisar de timeout proprio.
         .withWillTopic(topics.status)
         .withWillMessage(jsonEncode({'online': false}))
         .withWillQos(MqttQos.atLeastOnce)
@@ -137,7 +125,6 @@ class MqttService {
   void _onConnected() {
     _state.add(AgentConnectionState.connected);
     _client.subscribe(topics.cmd, MqttQos.atLeastOnce);
-    // Reconectou: o retained do broker pode estar velho se editamos offline.
     final l = _lastLayout;
     if (l != null) publishLayout(l);
   }
@@ -164,9 +151,6 @@ class MqttService {
     }
   }
 
-  // ------------------------------------------------------------ publicacao
-
-  /// `{ online: true, os: "linux" }`
   void publishStatus({required bool online}) {
     _publish(
       topics.status,
@@ -176,8 +160,6 @@ class MqttService {
     );
   }
 
-  /// A regra de ouro: retain true, e SEMPRE [Layout.toPublishJson].
-  /// Publicar toDiskJson vazaria os bindings (argv de shell) para a rede.
   void publishLayout(Layout layout) {
     _lastLayout = layout;
     _publish(topics.layout, jsonEncode(layout.toPublishJson()),
@@ -199,8 +181,15 @@ class MqttService {
         retain: true, qos: MqttQos.atMostOnce);
   }
 
-  /// Apaga os retained deste node. Chame ao trocar o deviceId ou desinstalar,
-  /// senao o tablet mostra um PC fantasma para sempre.
+  void publishSliderState(String sliderId, int value) {
+    _publish(
+      '${topics.base}/state/$sliderId',
+      jsonEncode({'value': value}),
+      retain: true,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
   void clearRetained() {
     for (final t in [
       topics.status,
@@ -228,7 +217,6 @@ class MqttService {
     return 'unknown';
   }
 
-  /// Saida limpa: publica offline sem depender do LWT.
   Future<void> dispose() async {
     _intentional = true;
     if (isConnected) {

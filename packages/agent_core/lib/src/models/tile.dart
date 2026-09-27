@@ -1,11 +1,5 @@
 import 'package:meta/meta.dart';
 
-/// Um botao da grid do dashboard.
-///
-/// IMPORTANTE: nenhum subtipo carrega `cmd`. O contrato canonico do tablet nao
-/// tem esse campo — o tablet so publica `{action: <id>}` e o agente resolve o
-/// que executar consultando [Layout.bindings], que fica no disco e nunca vai
-/// para o MQTT.
 @immutable
 sealed class Tile {
   final String id;
@@ -15,7 +9,6 @@ sealed class Tile {
   const Tile({required this.id, required this.icon, required this.label});
 
   String get type;
-
   Map<String, dynamic> toJson();
 
   factory Tile.fromJson(Map<String, dynamic> json) {
@@ -33,15 +26,19 @@ sealed class Tile {
           target: json['target'] as String,
         ),
       'back' => BackTile(id: id, icon: icon, label: label),
-      'slider' =>
-        SliderTile(id: id, icon: icon, label: label), // <-- ADICIONE AQUI
+      'slider' => SliderTile(
+          id: id,
+          icon: icon,
+          label: label,
+          source: SliderSource.fromJson(
+              (json['source'] as Map?)?.cast<String, dynamic>() ??
+                  const {'kind': 'master_volume'}),
+        ),
       _ => throw FormatException('tipo de tile desconhecido: "$type"'),
     };
   }
 }
 
-/// Dispara `{action: <id>}` no tablet. O agente decide o que isso significa:
-/// pode ser uma acao embutida (play_pause, next...) ou um binding de processo.
 final class ShortcutTile extends Tile {
   const ShortcutTile({
     required super.id,
@@ -71,7 +68,6 @@ final class ShortcutTile extends Tile {
   int get hashCode => Object.hash(type, id, icon, label);
 }
 
-/// Navega para a pagina [target].
 final class FolderTile extends Tile {
   final String target;
 
@@ -115,10 +111,6 @@ final class FolderTile extends Tile {
   int get hashCode => Object.hash(type, id, icon, label, target);
 }
 
-/// Volta para "home".
-///
-/// Opcional: o tablet injeta um back automatico em qualquer pagina != home que
-/// nao tenha um. Existe aqui para quando o usuario quiser controlar a posicao.
 final class BackTile extends Tile {
   const BackTile({
     required super.id,
@@ -147,31 +139,122 @@ final class BackTile extends Tile {
   int get hashCode => Object.hash(type, id, icon, label);
 }
 
-/// Um slider para controles de variação contínua (volume, brilho, etc).
+@immutable
+class SliderSource {
+  final String kind;
+  final String? match;
+  final List<String>? cmd;
+
+  const SliderSource({
+    required this.kind,
+    this.match,
+    this.cmd,
+  });
+
+  static const String kindMasterVolume = 'master_volume';
+  static const String kindAppVolume = 'app_volume';
+  static const String kindBrightness = 'brightness';
+  static const String kindCustom = 'custom';
+
+  static const Set<String> validKinds = {
+    kindMasterVolume,
+    kindAppVolume,
+    kindBrightness,
+    kindCustom,
+  };
+
+  factory SliderSource.fromJson(Map<String, dynamic> json) {
+    final kind = json['kind'] as String? ?? kindMasterVolume;
+    if (!validKinds.contains(kind)) {
+      throw FormatException('kind de slider desconhecido: "$kind"');
+    }
+    return SliderSource(
+      kind: kind,
+      match: json['match'] as String?,
+      cmd: json['cmd'] == null ? null : List<String>.from(json['cmd'] as List),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'kind': kind,
+        if (match != null) 'match': match,
+        if (cmd != null) 'cmd': cmd,
+      };
+
+  SliderSource copyWith({
+    String? kind,
+    String? match,
+    List<String>? cmd,
+    bool clearMatch = false,
+    bool clearCmd = false,
+  }) =>
+      SliderSource(
+        kind: kind ?? this.kind,
+        match: clearMatch ? null : (match ?? this.match),
+        cmd: clearCmd ? null : (cmd ?? this.cmd),
+      );
+
+  @override
+  bool operator ==(Object o) =>
+      o is SliderSource &&
+      o.kind == kind &&
+      o.match == match &&
+      (o.cmd == null && cmd == null ||
+          o.cmd != null &&
+              cmd != null &&
+              o.cmd!.join('\u0000') == cmd!.join('\u0000'));
+
+  @override
+  int get hashCode => Object.hash(
+        kind,
+        match,
+        cmd == null ? 0 : Object.hashAll(cmd!),
+      );
+}
+
 final class SliderTile extends Tile {
+  final SliderSource source;
+
   const SliderTile({
     required super.id,
     required super.icon,
     required super.label,
+    required this.source,
   });
 
   @override
   String get type => 'slider';
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': 'slider', 'id': id, 'icon': icon, 'label': label};
+  Map<String, dynamic> toJson() => {
+        'type': 'slider',
+        'id': id,
+        'icon': icon,
+        'label': label,
+        'source': source.toJson(),
+      };
 
-  SliderTile copyWith({String? id, String? icon, String? label}) => SliderTile(
+  SliderTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    SliderSource? source,
+  }) =>
+      SliderTile(
         id: id ?? this.id,
         icon: icon ?? this.icon,
         label: label ?? this.label,
+        source: source ?? this.source,
       );
 
   @override
   bool operator ==(Object o) =>
-      o is SliderTile && o.id == id && o.icon == icon && o.label == label;
+      o is SliderTile &&
+      o.id == id &&
+      o.icon == icon &&
+      o.label == label &&
+      o.source == source;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label);
+  int get hashCode => Object.hash(type, id, icon, label, source);
 }
