@@ -21,7 +21,11 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     const pad = 16.0;
 
     final usableW = box.width - pad * 2;
-    final cols = (usableW / (maxExtent + spacing)).floor().clamp(1, 999);
+
+    // O Flutter calcula colunas garantindo que (tileW <= maxExtent).
+    // A fórmula exata exige adicionar o gap final e fazer ceil()
+    final cols =
+        ((usableW + spacing) / (maxExtent + spacing)).ceil().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
     final tileH = tileW;
 
@@ -430,28 +434,19 @@ class _GapPlaceholder extends StatelessWidget {
     const pad = 16.0;
 
     final usableW = boxSize.width - pad * 2;
-    final cols = (usableW / (maxExtent + spacing)).floor().clamp(1, 999);
+    // O mesmo cálculo exato de Grid do Flutter
+    final cols =
+        ((usableW + spacing) / (maxExtent + spacing)).ceil().clamp(1, 999);
     final tileW = (usableW - (cols - 1) * spacing) / cols;
     final tileH = tileW;
 
-    int col;
-    int row;
+    // Removemos os if/elses conflitantes - mod/div resolve perfeitamente em qualquer caso
+    int col = gap % cols;
+    int row = gap ~/ cols;
 
-    if (gap == nTiles && nTiles > 0) {
-      col = (nTiles - 1) % cols + 1;
-      row = (nTiles - 1) ~/ cols;
-    } else {
-      col = gap % cols;
-      row = gap ~/ cols;
-    }
-
-    if (col >= cols) {
-      col = 0;
-      row += 1;
-    }
-
-    double left = pad + col * (tileW + spacing) - spacing / 2;
-    left -= 2;
+    // Posiciona exatamente no centro do espaçamento
+    double left = pad + col * (tileW + spacing) - (spacing / 2);
+    left -= 2; // Centraliza a linha de espessura 4
 
     final top = pad + row * (tileH + spacing);
 

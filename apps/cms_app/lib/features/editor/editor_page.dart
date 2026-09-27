@@ -1,4 +1,5 @@
 import 'package:agent_core/agent_core.dart';
+import 'package:cms_app/features/editor/import_layout_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -122,6 +123,12 @@ class _TopBar extends ConsumerWidget {
             tooltip: 'Refazer',
           ),
           const SizedBox(width: 16),
+          IconButton(
+            icon: const Icon(Icons.data_object, size: 18),
+            tooltip: 'Importar/Editar JSON',
+            onPressed: () => showImportLayoutDialog(context, ref),
+          ),
+          const SizedBox(width: 8),
           FilledButton.icon(
             icon: const Icon(Icons.publish, size: 16),
             label: const Text('Publicar agora'),

@@ -111,6 +111,43 @@ class EditorController extends Notifier<EditorState> {
     });
   }
 
+  void substituirLayout(Layout novo, {bool preserveBindings = false}) {
+    var aplicar = novo;
+
+    if (preserveBindings) {
+      final bindingsMesclados = <String, List<List<String>>>{};
+
+      final idsNoNovo =
+          novo.pages.values.expand((l) => l).map((t) => t.id).toSet();
+
+      for (final id in idsNoNovo) {
+        final antigo = state.layout.bindingFor(id);
+        final novoB = novo.bindingFor(id);
+
+        if (novoB != null && novoB.isNotEmpty) {
+          bindingsMesclados[id] = novoB;
+        } else if (antigo != null && antigo.isNotEmpty) {
+          bindingsMesclados[id] = antigo;
+        }
+      }
+
+      aplicar = novo.copyWith(bindings: bindingsMesclados);
+    }
+
+    _mutate((_) => aplicar);
+
+    if (!aplicar.pages.containsKey(state.currentPage)) {
+      selectPage(Layout.homePage);
+    }
+
+    final tileAinda = aplicar
+        .tilesOf(state.currentPage)
+        .any((t) => t.id == state.selectedTileId);
+    if (!tileAinda) {
+      selectTile(null);
+    }
+  }
+
   void upsertTile(String pageId, Tile tile) =>
       _mutate((l) => l.upsertTile(pageId, tile));
 
@@ -200,4 +237,4 @@ class EditorController extends Notifier<EditorState> {
 }
 
 final editorControllerProvider =
-    NotifierProvider<EditorController, EditorState>(EditorController.new);
+    NotifierProvider<EditorController, EditorState>(() => EditorController());
