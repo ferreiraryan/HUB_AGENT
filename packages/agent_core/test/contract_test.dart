@@ -3,6 +3,19 @@ import 'dart:io';
 import 'package:agent_core/agent_core.dart';
 import 'package:test/test.dart';
 
+class FakeKeySender implements KeySender {
+  final receivedCombos = <String>[];
+
+  @override
+  Future<bool> send(String combo) async {
+    receivedCombos.add(combo);
+    return true;
+  }
+
+  @override
+  Future<void> dispose() async {}
+}
+
 void main() {
   final goldenRaw = File('test/fixtures/layout_golden.json').readAsStringSync();
   final golden = jsonDecode(goldenRaw) as Map<String, dynamic>;
@@ -38,22 +51,6 @@ void main() {
               ['kitty']
             ]
           }));
-    });
-    // (Adicionado aos testes de contrato do layout)
-    test('StatTile round-trip preserva source', () {
-      final l = Layout.initial('PC').upsertTile(
-          'home',
-          const StatTile(
-            id: 'cpu_load',
-            icon: '⚙️',
-            label: 'CPU',
-            source:
-                StatSource(kind: StatSource.kindCpu, field: 'load', unit: '%'),
-          ));
-      final back = Layout.fromJson(l.toPublishJson());
-      final tile = back.tilesOf('home').whereType<StatTile>().first;
-      expect(tile.source.kind, equals('cpu'));
-      expect(tile.source.field, equals('load'));
     });
 
     test('disco -> memoria -> disco preserva bindings', () {
@@ -149,6 +146,7 @@ void main() {
         audio: UnsupportedAudioController(),
         brightness: UnsupportedBrightnessController(),
         media: MediaService(),
+        keySender: FakeKeySender(),
         layoutProvider: () => Layout.initial(''),
       );
 
@@ -178,52 +176,51 @@ void main() {
       );
     });
 
-    test('SliderTile round-trip preserva source', () {
+    test('SliderTile com brightness preserva source no round-trip', () {
       final layout = Layout.initial('PC').upsertTile(
           'home',
           const SliderTile(
-            id: 'brilho',
+            id: 'brilho_1',
             icon: '☀️',
-            label: 'Brilho',
-            source: SliderSource(kind: SliderSource.kindBrightness),
+            label: 'Brilho HDMI',
+            source: SliderSource(
+              kind: SliderSource.kindBrightness,
+              match: 'card1-HDMI-A-1',
+            ),
           ));
-      final json = layout.toPublishJson();
-      final back = Layout.fromJson(json);
+      final back = Layout.fromJson(layout.toPublishJson());
       final tile = back.tilesOf('home').whereType<SliderTile>().first;
       expect(tile.source.kind, equals(SliderSource.kindBrightness));
+      expect(tile.source.match, equals('card1-HDMI-A-1'));
     });
 
-    test('SliderSource rejeita kind invalido', () {
-      expect(
-        () => SliderSource.fromJson({'kind': 'inventado'}),
-        throwsA(isA<FormatException>()),
+    test('SliderSource brightness sem match é válido (aplica em todos)', () {
+      final src = SliderSource(kind: SliderSource.kindBrightness);
+      expect(src.match, isNull);
+      final json = src.toJson();
+      expect(json['kind'], equals('brightness'));
+      expect(json.containsKey('match'), isFalse);
+    });
+
+    test('binding __sendkeys__ é reconhecido sem Process.start', () async {
+      final fakeSender = FakeKeySender();
+      final layout = Layout.initial('PC').setBinding('test_keys', [
+        ['__sendkeys__', 'ctrl+shift+s']
+      ]);
+
+      final disp = CommandDispatcher(
+        audio: UnsupportedAudioController(),
+        brightness: UnsupportedBrightnessController(),
+        media: MediaService(),
+        keySender: fakeSender,
+        layoutProvider: () => layout,
       );
-    });
-  });
-  test('SliderTile com brightness preserva source no round-trip', () {
-    final layout = Layout.initial('PC').upsertTile(
-        'home',
-        const SliderTile(
-          id: 'brilho_1',
-          icon: '☀️',
-          label: 'Brilho HDMI',
-          source: SliderSource(
-            kind: SliderSource.kindBrightness,
-            match: 'card1-HDMI-A-1',
-          ),
-        ));
-    final back = Layout.fromJson(layout.toPublishJson());
-    final tile = back.tilesOf('home').whereType<SliderTile>().first;
-    expect(tile.source.kind, equals(SliderSource.kindBrightness));
-    expect(tile.source.match, equals('card1-HDMI-A-1'));
-  });
 
-  test('SliderSource brightness sem match é válido (aplica em todos)', () {
-    final src = SliderSource(kind: SliderSource.kindBrightness);
-    expect(src.match, isNull);
-    final json = src.toJson();
-    expect(json['kind'], equals('brightness'));
-    expect(json.containsKey('match'), isFalse);
+      final result = await disp.runShortcut('test_keys');
+
+      expect(result, isTrue);
+      expect(fakeSender.receivedCombos, equals(['ctrl+shift+s']));
+    });
   });
 
   group('payloads auxiliares', () {

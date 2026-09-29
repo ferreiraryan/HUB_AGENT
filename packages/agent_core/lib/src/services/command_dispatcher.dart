@@ -4,6 +4,7 @@ import '../models/tile.dart';
 import '../models/layout.dart';
 import 'audio/audio_controller.dart';
 import 'brightness_controller.dart';
+import 'key_sender.dart';
 import 'media_service.dart';
 import 'mqtt_service.dart';
 
@@ -29,6 +30,7 @@ class CommandDispatcher {
   final AudioController audio;
   final BrightnessController brightness;
   final MediaService media;
+  final KeySender keySender;
   final Set<String> allowedBinaries;
   final Layout Function() layoutProvider;
   final void Function()? onLocalVolumeChange;
@@ -37,6 +39,7 @@ class CommandDispatcher {
     required this.audio,
     required this.brightness,
     required this.media,
+    required this.keySender,
     required this.layoutProvider,
     this.allowedBinaries = const {},
     this.onLocalVolumeChange,
@@ -176,6 +179,20 @@ class CommandDispatcher {
 
     for (final argv in cmds) {
       if (argv.isEmpty) continue;
+
+      if (argv.first == '__sendkeys__') {
+        if (argv.length < 2) {
+          stderr.writeln('__sendkeys__ sem argumento');
+          return false;
+        }
+        final ok = await keySender.send(argv[1]);
+        if (!ok) {
+          stderr.writeln('__sendkeys__: combo inválida: "${argv[1]}"');
+          return false;
+        }
+        continue;
+      }
+
       if (!_isAllowed(argv.first)) {
         stderr.writeln('binario "${argv.first}" fora da whitelist; bloqueado');
         return false;
@@ -263,10 +280,24 @@ class CommandDispatcher {
     if (argv.isEmpty) {
       return const CommandResult(started: false, error: 'comando vazio');
     }
+
+    if (argv.first == '__sendkeys__') {
+      if (argv.length < 2) {
+        return const CommandResult(
+            started: false, error: '__sendkeys__ sem argumento');
+      }
+      return const CommandResult(
+        started: true,
+        exitCode: 0,
+        stdout: 'tecla validada (não executada no teste)',
+      );
+    }
+
     if (!await exists(argv.first)) {
       return CommandResult(
           started: false, error: '"${argv.first}" nao encontrado no PATH');
     }
+
     try {
       final proc = await Process.start(argv.first, argv.skip(1).toList());
       final out = StringBuffer();

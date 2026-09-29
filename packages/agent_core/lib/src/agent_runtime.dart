@@ -6,13 +6,16 @@ import 'models/layout.dart';
 import 'models/media_state.dart';
 import 'models/tile.dart';
 import 'services/audio/audio_controller.dart';
-import 'services/audio/linux_audio_controller.dart';
+import 'services/audio/audio_factory_stub.dart'
+    if (dart.library.io) 'services/audio/audio_factory_io.dart';
 import 'services/brightness_controller.dart';
 import 'services/command_dispatcher.dart';
 import 'services/layout_repository.dart';
 import 'services/media_service.dart';
 import 'services/mqtt_service.dart';
-import 'services/stats/stats_service.dart';
+import 'services/key_sender.dart';
+import 'services/key_sender_stub.dart'
+    if (dart.library.io) 'services/key_sender_factory_io.dart';
 
 class AgentRuntime {
   final LayoutRepository repository;
@@ -20,7 +23,7 @@ class AgentRuntime {
   final AudioController audio;
   final BrightnessController brightness;
   final MediaService media;
-  final StatsService stats;
+  final KeySender keySender;
   late final CommandDispatcher dispatcher;
 
   final Duration echoGuard;
@@ -36,25 +39,23 @@ class AgentRuntime {
     AudioController? audio,
     BrightnessController? brightness,
     MediaService? media,
-    StatsService? stats,
+    KeySender? keySender,
     Set<String> allowedBinaries = const {},
     this.echoGuard = const Duration(milliseconds: 200),
-  })  : audio = audio ?? _defaultAudio(),
+  })  : audio = audio ?? createDefaultAudioController(),
         brightness = brightness ?? _defaultBrightness(),
         media = media ?? MediaService(),
-        stats = stats ?? StatsService() {
+        keySender = keySender ?? createDefaultKeySender() {
     dispatcher = CommandDispatcher(
       audio: this.audio,
       brightness: this.brightness,
       media: this.media,
+      keySender: this.keySender,
       layoutProvider: () => repository.current,
       allowedBinaries: allowedBinaries,
       onLocalVolumeChange: _armEchoGuard,
     );
   }
-
-  static AudioController _defaultAudio() =>
-      Platform.isLinux ? LinuxAudioController() : UnsupportedAudioController();
 
   static BrightnessController _defaultBrightness() => Platform.isLinux
       ? LinuxBrightnessController()
@@ -82,12 +83,7 @@ class AgentRuntime {
       ..add(audio.masterChanges.listen(_onLocalVolume))
       ..add(audio.appsChanges.listen(mqtt.publishApps))
       ..add(brightness.changes.listen((_) => _publishBrightness()))
-      ..add(media.changes.listen(mqtt.publishMedia))
-      ..add(stats.changes.listen((s) {
-        mqtt.publishStatsCpu(s);
-        mqtt.publishStatsRam(s);
-        mqtt.publishStatsDisk(s);
-      }));
+      ..add(media.changes.listen(mqtt.publishMedia));
 
     _subs.add(mqtt.connectionState.listen((s) {
       if (s == AgentConnectionState.connected) _publishSnapshot();
@@ -97,7 +93,6 @@ class AgentRuntime {
     await audio.start();
     await brightness.start();
     await media.start();
-    await stats.start();
 
     _brightnessPublishTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _publishBrightness());
@@ -117,11 +112,6 @@ class AgentRuntime {
     }
     _publishBrightness();
     mqtt.publishMedia(media.current);
-    if (stats.isAvailable && stats.current != null) {
-      mqtt.publishStatsCpu(stats.current!);
-      mqtt.publishStatsRam(stats.current!);
-      mqtt.publishStatsDisk(stats.current!);
-    }
   }
 
   Future<void> _publishBrightness() async {
@@ -163,7 +153,7 @@ class AgentRuntime {
     }
     _subs.clear();
     _brightnessPublishTimer?.cancel();
-    await stats.dispose();
+    await keySender.dispose();
     await media.dispose();
     await brightness.dispose();
     await audio.dispose();

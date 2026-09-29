@@ -6,11 +6,11 @@ publish_to: none
 environment:
   sdk: ^3.4.0
 
-# ATENCAO: este pubspec NAO tem a chave "flutter" e NAO deve ter nunca.
-# E isso que garante, no compilador, que o nucleo nao dependa da UI.
 dependencies:
   mqtt_client: ^10.5.1
   meta: ^1.15.0
+  win32: ^5.5.0
+  ffi: ^2.1.2
 
 dev_dependencies:
   test: ^1.25.0

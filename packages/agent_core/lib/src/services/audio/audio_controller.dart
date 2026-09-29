@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:async';
 
 import '../../models/audio_state.dart';
 
@@ -32,7 +32,7 @@ abstract interface class AudioController {
 }
 
 /// Stub para plataformas ainda nao implementadas. Mantem o runtime rodando
-/// em vez de explodir no boot do Windows.
+/// em vez de explodir no boot.
 class UnsupportedAudioController implements AudioController {
   @override
   Stream<MasterVolume> get masterChanges => const Stream.empty();
@@ -44,10 +44,12 @@ class UnsupportedAudioController implements AudioController {
   List<AppVolume> get apps => const [];
   @override
   bool get isAvailable => false;
+
   @override
   Future<void> start() async {
-    stderr.writeln(
-        'audio: nenhuma implementacao para ${Platform.operatingSystem}');
+    // Usando print padrão em vez de stderr/Platform (dart:io) para garantir
+    // que este arquivo abstrato seja seguro em qualquer alvo de compilação.
+    print('audio: nenhuma implementacao nativa carregada para o SO atual.');
   }
 
   @override
