@@ -17,3 +17,6 @@ packages/*/build/
 # Sistema
 .DS_Store
 *~
+dump*.md
+dump*.zip
+resultado.txt

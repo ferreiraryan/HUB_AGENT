@@ -99,7 +99,12 @@ class LinuxBrightnessController implements BrightnessController {
             currentSerial = null;
             currentModel = null;
             final match = RegExp(r'Display\s+(\d+)').firstMatch(line);
-            if (match != null) currentNum = int.tryParse(match.group(1)!);
+            if (match != null) {
+              final str = match.group(1);
+              if (str != null) {
+                currentNum = int.tryParse(str);
+              }
+            }
           } else {
             if (line.contains('I2C bus:')) {
               currentBus = line.split(':')[1].trim();

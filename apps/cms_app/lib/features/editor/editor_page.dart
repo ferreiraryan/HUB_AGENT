@@ -1,11 +1,13 @@
+// apps/cms_app/lib/features/editor/editor_page.dart
+
 import 'package:agent_core/agent_core.dart';
-import 'package:cms_app/features/editor/import_layout_dialog.dart';
-import 'package:cms_app/features/settings/broker_settings_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
+import '../settings/broker_settings_dialog.dart';
 import 'editor_controller.dart';
+import 'import_layout_dialog.dart';
 import 'inspector_panel.dart';
 import 'pages_panel.dart';
 import 'preview_panel.dart';
@@ -70,7 +72,6 @@ class _TopBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final runtime = ref.watch(agentRuntimeProvider);
     final deviceName =
         ref.watch(editorControllerProvider.select((s) => s.layout.deviceName));
     final canUndo = ref
@@ -78,31 +79,26 @@ class _TopBar extends ConsumerWidget {
     final canRedo = ref
         .watch(editorControllerProvider.select((s) => s.redoStack.isNotEmpty));
 
+    final connStateAsync = ref.watch(connectionStateProvider);
+    final state = connStateAsync.value ?? AgentConnectionState.disconnected;
+    final color =
+        state == AgentConnectionState.connected ? Colors.green : Colors.red;
+
     return Container(
       height: 48,
       color: const Color(0xFF1E1E2E),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          StreamBuilder<AgentConnectionState>(
-            stream: runtime.connectionState,
-            initialData: AgentConnectionState.disconnected,
-            builder: (context, snapshot) {
-              final state = snapshot.data!;
-              final color = state == AgentConnectionState.connected
-                  ? Colors.green
-                  : Colors.red;
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.circle, size: 10, color: color),
-                  const SizedBox(width: 8),
-                  Text(state.name.toUpperCase(),
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.bold)),
-                ],
-              );
-            },
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.circle, size: 10, color: color),
+              const SizedBox(width: 8),
+              Text(state.name.toUpperCase(),
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold)),
+            ],
           ),
           const SizedBox(width: 24),
           const Icon(Icons.tablet_mac, size: 16, color: Colors.white54),

@@ -1,3 +1,5 @@
+// packages/agent_core/lib/src/services/mqtt_service.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -8,6 +10,7 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import '../models/audio_state.dart';
 import '../models/layout.dart';
 import '../models/media_state.dart';
+import '../util/notifier.dart';
 import 'stats/stats_service.dart';
 
 class AgentTopics {
@@ -57,7 +60,7 @@ class AgentCommand {
   }
 
   @override
-  String toString() => 'AgentCommand($action,${jsonEncode(raw)})';
+  String toString() => 'AgentCommand($action, ${jsonEncode(raw)})';
 }
 
 class MqttService {
@@ -70,7 +73,9 @@ class MqttService {
 
   late final MqttServerClient _client;
 
-  final _state = StreamController<AgentConnectionState>.broadcast();
+  final stateNotifier =
+      AgentNotifier<AgentConnectionState>(AgentConnectionState.disconnected);
+  final _stateChanges = StreamController<AgentConnectionState>.broadcast();
   final _commands = StreamController<AgentCommand>.broadcast();
 
   Layout? _lastLayout;
@@ -84,6 +89,8 @@ class MqttService {
     this.password,
     AgentTopics? topics,
   }) : topics = topics ?? AgentTopics(deviceId) {
+    stateNotifier.addListener((v) => _stateChanges.add(v));
+
     _client = MqttServerClient.withPort(host, 'node-$deviceId', port)
       ..keepAlivePeriod = 20
       ..autoReconnect = true
@@ -94,14 +101,21 @@ class MqttService {
       ..onAutoReconnected = _onConnected;
   }
 
-  Stream<AgentConnectionState> get connectionState => _state.stream;
+  Stream<AgentConnectionState> get connectionState => _notifierStream();
+
+  Stream<AgentConnectionState> _notifierStream() async* {
+    yield stateNotifier.value;
+    yield* _stateChanges.stream;
+  }
+
   Stream<AgentCommand> get commands => _commands.stream;
+
   bool get isConnected =>
       _client.connectionStatus?.state == MqttConnectionState.connected;
 
   Future<void> connect() async {
     _intentional = false;
-    _state.add(AgentConnectionState.connecting);
+    stateNotifier.value = AgentConnectionState.connecting;
 
     _client.connectionMessage = MqttConnectMessage()
         .withClientIdentifier('node-$deviceId')
@@ -114,9 +128,9 @@ class MqttService {
     try {
       await _client.connect(username, password);
     } catch (e) {
-      stderr.writeln('MQTT: falha ao conectar em $host:$port ->$e');
+      stderr.writeln('MQTT: falha ao conectar em $host:$port -> $e');
       _client.disconnect();
-      _state.add(AgentConnectionState.disconnected);
+      stateNotifier.value = AgentConnectionState.disconnected;
       return;
     }
 
@@ -124,14 +138,15 @@ class MqttService {
   }
 
   void _onConnected() {
-    _state.add(AgentConnectionState.connected);
+    stateNotifier.value = AgentConnectionState.connected;
     _client.subscribe(topics.cmd, MqttQos.atLeastOnce);
+    publishStatus(online: true);
     final l = _lastLayout;
     if (l != null) publishLayout(l);
   }
 
   void _onDisconnected() {
-    _state.add(AgentConnectionState.disconnected);
+    stateNotifier.value = AgentConnectionState.disconnected;
     if (!_intentional) {
       stderr.writeln('MQTT: desconectado; autoReconnect assume');
     }
@@ -147,7 +162,7 @@ class MqttService {
       if (cmd != null) {
         _commands.add(cmd);
       } else {
-        stderr.writeln('MQTT: payload invalido em ${e.topic}:$payload');
+        stderr.writeln('MQTT: payload invalido em ${e.topic}: $payload');
       }
     }
   }
@@ -243,7 +258,7 @@ class MqttService {
       await Future<void>.delayed(const Duration(milliseconds: 150));
     }
     _client.disconnect();
-    await _state.close();
+    await _stateChanges.close();
     await _commands.close();
   }
 }

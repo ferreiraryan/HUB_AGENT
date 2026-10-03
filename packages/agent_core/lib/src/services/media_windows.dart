@@ -1,7 +1,8 @@
+// packages/agent_core/lib/src/services/media_windows.dart
+
 import 'dart:async';
 import 'dart:io';
 
-import '../models/media_state.dart';
 import 'media_service.dart';
 
 class WindowsMediaService extends MediaService {
@@ -37,23 +38,23 @@ class WindowsMediaService extends MediaService {
   }
 
   @override
-  Future<void> playPause() => _run(['sendkeypress', '0xB3']);
+  Future<void> playPause() => _sendKey('play');
   @override
-  Future<void> next() => _run(['sendkeypress', '0xB0']);
+  Future<void> next() => _sendKey('nexttrack');
   @override
-  Future<void> previous() => _run(['sendkeypress', '0xB1']);
+  Future<void> previous() => _sendKey('prevtrack');
 
-  Future<void> _run(List<String> args) async {
+  Future<void> _sendKey(String key) async {
     if (_nircmdPath == null) return;
     try {
       final r = await Process.run(
         _nircmdPath!,
-        args,
+        ['sendkey', key],
         runInShell: false,
       );
-      print('[MEDIA] run: ${args.join(' ')} exit=${r.exitCode}');
+      print('[MEDIA] sendkey $key exit=${r.exitCode}');
     } catch (e) {
-      stderr.writeln('media: nircmd ${args.join(' ')} falhou: $e');
+      stderr.writeln('media: nircmd sendkey $key falhou: $e');
     }
   }
 }

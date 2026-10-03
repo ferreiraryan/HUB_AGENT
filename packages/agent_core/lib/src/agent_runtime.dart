@@ -10,7 +10,7 @@ import 'services/media_factory.dart';
 import 'services/media_service.dart';
 import 'services/mqtt_service.dart';
 import 'services/key_sender.dart';
-// ...
+import 'services/stats/stats_service.dart';
 import 'services/audio/audio_controller.dart';
 import 'services/audio/audio_factory_stub.dart'
     if (dart.library.io) 'services/audio/audio_factory_io.dart';
@@ -26,6 +26,7 @@ class AgentRuntime {
   final BrightnessController brightness;
   final MediaService media;
   final KeySender keySender;
+  final StatsService stats;
   late final CommandDispatcher dispatcher;
 
   final Duration echoGuard;
@@ -35,19 +36,21 @@ class AgentRuntime {
   DateTime _suppressUntil = DateTime.fromMillisecondsSinceEpoch(0);
   bool _started = false;
 
-AgentRuntime({
+  AgentRuntime({
     required this.repository,
     required this.mqtt,
     AudioController? audio,
     BrightnessController? brightness,
     MediaService? media,
     KeySender? keySender,
+    StatsService? stats,
     Set<String> allowedBinaries = const {},
     this.echoGuard = const Duration(milliseconds: 200),
   })  : audio = audio ?? createDefaultAudioController(),
         brightness = brightness ?? _defaultBrightness(),
         media = media ?? createDefaultMediaService(),
-        keySender = keySender ?? createDefaultKeySender() {
+        keySender = keySender ?? createDefaultKeySender(),
+        stats = stats ?? StatsService() {
     dispatcher = CommandDispatcher(
       audio: this.audio,
       brightness: this.brightness,
@@ -95,6 +98,13 @@ AgentRuntime({
     await audio.start();
     await brightness.start();
     await media.start();
+    await stats.start();
+
+    _subs.add(stats.changes.listen((s) {
+      mqtt.publishStatsCpu(s);
+      mqtt.publishStatsRam(s);
+      mqtt.publishStatsDisk(s);
+    }));
 
     _brightnessPublishTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _publishBrightness());
@@ -156,6 +166,7 @@ AgentRuntime({
     _subs.clear();
     _brightnessPublishTimer?.cancel();
     await keySender.dispose();
+    await stats.dispose();
     await media.dispose();
     await brightness.dispose();
     await audio.dispose();

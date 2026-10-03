@@ -1,3 +1,5 @@
+// apps/cms_app/lib/providers.dart
+
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,3 +16,8 @@ final agentRuntimeProvider = Provider<AgentRuntime>(
     'agentRuntimeProvider não foi sobrescrito no ProviderScope raiz.',
   ),
 );
+
+final connectionStateProvider = StreamProvider<AgentConnectionState>((ref) {
+  final runtime = ref.watch(agentRuntimeProvider);
+  return runtime.connectionState;
+});
