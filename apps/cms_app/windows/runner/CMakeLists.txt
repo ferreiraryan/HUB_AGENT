@@ -38,3 +38,11 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+# Copia recursos (nircmd.exe etc.) para o bundle final.
+# Copia todos os recursos para o bundle final.
+add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/nircmd.exe"
+    "$<TARGET_FILE_DIR:${BINARY_NAME}>/nircmd.exe"
+  COMMENT "Copiando nircmd.exe para o bundle"
+)

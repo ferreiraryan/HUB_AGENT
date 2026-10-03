@@ -44,8 +44,8 @@ Future<List<MonitorInfo>> detectMonitors() async {
     void flush() {
       if (number != null && conn != null) {
         displays.add(MonitorInfo(
-          number: number!,
-          connector: conn!,
+          number: number,
+          connector: conn,
           serial: serial ?? '',
           model: model ?? '',
         ));

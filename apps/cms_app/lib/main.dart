@@ -15,6 +15,7 @@ import 'system/window_controller.dart';
 ServerSocket? _instanceLock;
 
 void main(List<String> args) async {
+  
   WidgetsFlutterBinding.ensureInitialized();
 
   final isHidden = args.contains('--hidden');
@@ -25,7 +26,10 @@ void main(List<String> args) async {
     exit(0);
   }
 
+  print('=== CONFIG DIR: ${supportDir.path} ===');
+
   final config = await AgentConfig.load();
+  print('=== CONFIG: host=${config.host} port=${config.port} deviceId=${config.deviceId} ===');
 
   final repository = LayoutRepository(
     file: File('${supportDir.path}/layout.json'),
@@ -36,10 +40,11 @@ void main(List<String> args) async {
     port: config.port,
     deviceId: config.deviceId,
   );
-
+  // TESTE TEMPORÁRIO: força o WindowsAudioController em vez do stub.
   final runtime = AgentRuntime(
     repository: repository,
     mqtt: mqtt,
+    // sem `audio:` — deixa o default (agora vai pegar WindowsAudioController)
   );
 
   await runtime.start(fallbackDeviceName: Platform.localHostname);

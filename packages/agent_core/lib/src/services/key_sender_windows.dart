@@ -1,120 +1,121 @@
-import 'dart:ffi';
-import 'package:ffi/ffi.dart';
-import 'package:win32/win32.dart';
+// packages/agent_core/lib/src/services/key_sender_windows.dart
+
+import 'dart:io';
+
 import 'key_sender.dart';
 
+/// Envia teclas no Windows via nircmd.exe.
+///
+/// Por que nircmd e não SendInput via FFI: montar a struct INPUT na mão
+/// é chato (union, layouts de 32 vs 64 bits) e já causou crash. O nircmd
+/// encapsula isso num binário de 100 KB que está no bundle do app.
 class WindowsKeySender implements KeySender {
+  String? _nircmdPath;
+
   @override
   Future<bool> send(String combo) async {
-    final parts = combo
-        .toLowerCase()
-        .split('+')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return false;
+    _nircmdPath ??= await _resolveNircmdPath();
+    if (_nircmdPath == null) return false;
 
-    final mods = <int>[];
-    int? vk;
-
-    for (final p in parts) {
-      switch (p) {
-        case 'ctrl':
-        case 'control':
-          mods.add(VK_CONTROL);
-          break;
-        case 'shift':
-          mods.add(VK_SHIFT);
-          break;
-        case 'alt':
-          mods.add(VK_MENU);
-          break;
-        case 'win':
-        case 'meta':
-        case 'super':
-          mods.add(VK_LWIN);
-          break;
-        default:
-          final resolved = _resolveKey(p);
-          if (resolved == null) return false;
-          vk = resolved;
-      }
+    final media = _mediaCommand(combo);
+    if (media != null) {
+      return _run(['sendkeypress', media]);
     }
 
-    if (vk == null) return false;
-
-    for (final m in mods) _sendKey(m, true);
-
-    _sendKey(vk, true);
-    _sendKey(vk, false);
-
-    for (final m in mods.reversed) _sendKey(m, false);
-
-    return true;
+    final normalized = _normalizeCombo(combo);
+    if (normalized == null) return false;
+    return _run(['sendkeypress', normalized]);
   }
 
-  int? _resolveKey(String name) {
-    if (name.length == 1) {
-      final code = name.codeUnitAt(0);
-      if (code >= 0x61 && code <= 0x7A) {
-        return 0x41 + (code - 0x61);
-      }
-      if (code >= 0x30 && code <= 0x39) {
-        return 0x30 + (code - 0x30);
-      }
-    }
+  /// Mapeia ações de mídia para comandos nativos do nircmd.
+String? _mediaCommand(String combo) {
+  switch (combo.trim().toLowerCase()) {
+    case 'media_play_pause':
+    case 'play_pause':
+      return '0xB3';
+    case 'media_next':
+    case 'next':
+      return '0xB0';
+    case 'media_prev':
+    case 'prev':
+      return '0xB1';
+    case 'media_stop':
+    case 'stop':
+      return '0xB2';
+    case 'volume_up':
+      return '0xAF';
+    case 'volume_down':
+      return '0xAE';
+    case 'volume_mute':
+      return '0xAD';
+    default:
+      return null;
+  }
+}
 
-    const special = <String, int>{
-      'enter': 0x0D,
-      'return': 0x0D,
-      'esc': 0x1B,
-      'escape': 0x1B,
-      'tab': 0x09,
-      'space': 0x20,
-      'backspace': 0x08,
-      'delete': 0x2E,
-      'del': 0x2E,
-      'insert': 0x2D,
-      'ins': 0x2D,
-      'home': 0x24,
-      'end': 0x23,
-      'page_up': 0x21,
-      'pgup': 0x21,
-      'page_down': 0x22,
-      'pgdn': 0x22,
-      'up': 0x26,
-      'down': 0x28,
-      'left': 0x25,
-      'right': 0x27,
-      'media_play_pause': 0xB3,
-      'media_next': 0xB0,
-      'media_prev': 0xB1,
-      'media_stop': 0xB2,
-      'volume_up': 0xAF,
-      'volume_down': 0xAE,
-      'volume_mute': 0xAD,
+  /// Converte "ctrl+shift+s" para o formato que o nircmd aceita.
+  ///
+  /// O nircmd aceita nomes como "ctrl", "shift", "alt", "enter", "esc",
+  /// "f1".."f24", e usa "+" como separador de modificadores — o mesmo
+  /// formato que o usuário digita no CMS.
+  String? _normalizeCombo(String combo) {
+    final trimmed = combo.trim().toLowerCase();
+    if (trimmed.isEmpty) return null;
+
+    // Aliases de nomes comuns.
+    const aliases = <String, String>{
+      'control': 'ctrl',
+      'escape': 'esc',
+      'return': 'enter',
+      'del': 'delete',
+      'ins': 'insert',
+      'pgup': 'pageup',
+      'pgdn': 'pagedown',
+      'meta': 'win',
+      'super': 'win',
     };
 
-    if (special.containsKey(name)) return special[name];
+    final parts = trimmed.split('+').map((p) {
+      final k = p.trim();
+      return aliases[k] ?? k;
+    }).where((s) => s.isNotEmpty).toList();
 
-    final m = RegExp(r'^f(\d{1,2})$').firstMatch(name);
-    if (m != null) {
-      final n = int.parse(m.group(1)!);
-      if (n >= 1 && n <= 24) return 0x70 + (n - 1);
-    }
-
-    return null;
+    if (parts.isEmpty) return null;
+    return parts.join('+');
   }
 
-  void _sendKey(int vk, bool down) {
-    final input = calloc<INPUT>();
-    input.ref.type = INPUT_KEYBOARD;
-    input.ref.ki.wVk = vk;
-    input.ref.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
+  Future<bool> _run(List<String> args) async {
+    try {
+      final r = await Process.run(
+        _nircmdPath!,
+        args,
+        runInShell: false,
+      );
+      return r.exitCode == 0;
+    } catch (e) {
+      stderr.writeln('key_sender: nircmd ${args.join(' ')} falhou: $e');
+      return false;
+    }
+  }
 
-    SendInput(1, input, sizeOf<INPUT>());
-
-    free(input);
+  Future<String?> _resolveNircmdPath() async {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    final candidates = <String>[
+      '$exeDir${Platform.pathSeparator}nircmd.exe',
+      '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}nircmd.exe',
+    ];
+    for (final c in candidates) {
+      if (await File(c).exists()) return c;
+    }
+    // Fallback: procura no PATH.
+    try {
+      final r = await Process.run('where', ['nircmd.exe']);
+      if (r.exitCode == 0) {
+        final first = (r.stdout as String).trim().split('\n').first.trim();
+        if (first.isNotEmpty) return first;
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override

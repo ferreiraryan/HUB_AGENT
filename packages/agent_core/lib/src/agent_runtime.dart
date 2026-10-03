@@ -5,15 +5,17 @@ import 'models/audio_state.dart';
 import 'models/layout.dart';
 import 'models/media_state.dart';
 import 'models/tile.dart';
+import 'services/layout_repository.dart';
+import 'services/media_factory.dart';
+import 'services/media_service.dart';
+import 'services/mqtt_service.dart';
+import 'services/key_sender.dart';
+// ...
 import 'services/audio/audio_controller.dart';
 import 'services/audio/audio_factory_stub.dart'
     if (dart.library.io) 'services/audio/audio_factory_io.dart';
 import 'services/brightness_controller.dart';
 import 'services/command_dispatcher.dart';
-import 'services/layout_repository.dart';
-import 'services/media_service.dart';
-import 'services/mqtt_service.dart';
-import 'services/key_sender.dart';
 import 'services/key_sender_stub.dart'
     if (dart.library.io) 'services/key_sender_factory_io.dart';
 
@@ -33,7 +35,7 @@ class AgentRuntime {
   DateTime _suppressUntil = DateTime.fromMillisecondsSinceEpoch(0);
   bool _started = false;
 
-  AgentRuntime({
+AgentRuntime({
     required this.repository,
     required this.mqtt,
     AudioController? audio,
@@ -44,7 +46,7 @@ class AgentRuntime {
     this.echoGuard = const Duration(milliseconds: 200),
   })  : audio = audio ?? createDefaultAudioController(),
         brightness = brightness ?? _defaultBrightness(),
-        media = media ?? MediaService(),
+        media = media ?? createDefaultMediaService(),
         keySender = keySender ?? createDefaultKeySender() {
     dispatcher = CommandDispatcher(
       audio: this.audio,

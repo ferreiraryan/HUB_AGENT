@@ -9,7 +9,6 @@ environment:
 dependencies:
   mqtt_client: ^10.5.1
   meta: ^1.15.0
-  win32: ^5.5.0
   ffi: ^2.1.2
 
 dev_dependencies:
