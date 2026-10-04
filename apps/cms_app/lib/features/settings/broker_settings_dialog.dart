@@ -1,281 +1,170 @@
-import 'dart:io';
+// apps/cms_app/lib/features/settings/broker_settings_dialog.dart
 
-import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
 import '../../system/agent_config.dart';
+import '../../system/autostart_controller.dart';
 
 Future<void> showBrokerSettingsDialog(BuildContext context, WidgetRef ref) {
   return showDialog(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => _BrokerSettingsDialog(ref: ref),
+    builder: (context) => const _BrokerSettingsDialog(),
   );
 }
 
-class _TestStatus {
-  final bool isTesting;
-  final bool? ok;
-  final String? message;
-
-  const _TestStatus({this.isTesting = false, this.ok, this.message});
-
-  factory _TestStatus.testing() => const _TestStatus(isTesting: true);
-  factory _TestStatus.ok(String msg) => _TestStatus(ok: true, message: msg);
-  factory _TestStatus.erro(String msg) => _TestStatus(ok: false, message: msg);
-}
-
-class _BrokerSettingsDialog extends StatefulWidget {
-  final WidgetRef ref;
-
-  const _BrokerSettingsDialog({required this.ref});
+class _BrokerSettingsDialog extends ConsumerStatefulWidget {
+  const _BrokerSettingsDialog();
 
   @override
-  State<_BrokerSettingsDialog> createState() => _BrokerSettingsDialogState();
+  ConsumerState<_BrokerSettingsDialog> createState() =>
+      _BrokerSettingsDialogState();
 }
 
-class _BrokerSettingsDialogState extends State<_BrokerSettingsDialog> {
-  late TextEditingController _hostCtrl;
-  late TextEditingController _portCtrl;
-  late TextEditingController _deviceIdCtrl;
+class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
+  late final TextEditingController _hostController;
+  late final TextEditingController _portController;
+  late final TextEditingController _deviceIdController;
 
-  _TestStatus? _status;
-  bool _podeSalvar = false;
+  bool? _autostartEnabled;
 
   @override
   void initState() {
     super.initState();
-    final config = widget.ref.read(agentConfigProvider);
-    _hostCtrl = TextEditingController(text: config.host);
-    _portCtrl = TextEditingController(text: config.port.toString());
-    _deviceIdCtrl = TextEditingController(text: config.deviceId);
+    final config = ref.read(agentConfigProvider);
+    _hostController = TextEditingController(text: config.host);
+    _portController = TextEditingController(text: config.port.toString());
+    _deviceIdController = TextEditingController(text: config.deviceId);
 
-    _hostCtrl.addListener(_validar);
-    _portCtrl.addListener(_validar);
-    _deviceIdCtrl.addListener(_validar);
-    _validar();
+    _loadAutostart();
+  }
+
+  Future<void> _loadAutostart() async {
+    try {
+      final v = await AutostartController.isEnabled();
+      if (mounted) setState(() => _autostartEnabled = v);
+    } catch (_) {
+      if (mounted) setState(() => _autostartEnabled = false);
+    }
+  }
+
+  Future<void> _toggleAutostart(bool value) async {
+    setState(() => _autostartEnabled = value);
+    try {
+      if (value) {
+        await AutostartController.enable();
+      } else {
+        await AutostartController.disable();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(value ? 'Autostart ativado' : 'Autostart desativado'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _autostartEnabled = !value);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Falha: $e')),
+        );
+      }
+    }
   }
 
   @override
   void dispose() {
-    _hostCtrl.dispose();
-    _portCtrl.dispose();
-    _deviceIdCtrl.dispose();
+    _hostController.dispose();
+    _portController.dispose();
+    _deviceIdController.dispose();
     super.dispose();
   }
 
-  void _validar() {
-    final host = _hostCtrl.text.trim();
-    final portRaw = _portCtrl.text.trim();
-    final devId = _deviceIdCtrl.text.trim();
+  Future<void> _save({required bool restart}) async {
+    final config = ref.read(agentConfigProvider);
 
-    bool valid = true;
-
-    if (host.isEmpty) valid = false;
-
-    final port = int.tryParse(portRaw);
-    if (port == null || port < 1 || port > 65535) valid = false;
-
-    if (!RegExp(r'^[a-z0-9_]+$').hasMatch(devId)) valid = false;
-
-    if (valid != _podeSalvar) {
-      setState(() => _podeSalvar = valid);
-    }
-  }
-
-  Future<void> _testar() async {
-    if (!_podeSalvar) return;
-    setState(() => _status = _TestStatus.testing());
-
-    final testConfig = AgentConfig(
-      host: _hostCtrl.text.trim(),
-      port: int.parse(_portCtrl.text.trim()),
-      deviceId: '__cms_test__${DateTime.now().millisecondsSinceEpoch}',
+    // AgentConfig é imutável: criar um novo com os valores editados.
+    final updated = AgentConfig(
+      host: _hostController.text.trim(),
+      port: int.tryParse(_portController.text.trim()) ?? 1883,
+      deviceId: _deviceIdController.text.trim(),
     );
 
-    final testClient = MqttService(
-      host: testConfig.host,
-      port: testConfig.port,
-      deviceId: testConfig.deviceId,
-    );
-
-    try {
-      await testClient.connect().timeout(const Duration(seconds: 5));
-      if (testClient.isConnected) {
-        if (mounted)
-          setState(() => _status = _TestStatus.ok('Conectado com sucesso'));
-      } else {
-        if (mounted)
-          setState(() => _status =
-              _TestStatus.erro('Conectou mas estado não é connected'));
-      }
-    } catch (e) {
-      if (mounted) setState(() => _status = _TestStatus.erro('Falha: $e'));
-    } finally {
-      await testClient.dispose();
-    }
-  }
-
-  Future<void> _salvar(bool reiniciar) async {
-    final novoConfig = AgentConfig(
-      host: _hostCtrl.text.trim(),
-      port: int.parse(_portCtrl.text.trim()),
-      deviceId: _deviceIdCtrl.text.trim(),
-    );
-
-    await novoConfig.save();
+    await updated.save();
 
     if (!mounted) return;
-    Navigator.pop(context);
 
-    if (reiniciar) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reiniciando...')),
-      );
-      Future.delayed(const Duration(milliseconds: 500), () => exit(0));
-    } else {
+    Navigator.of(context).pop();
+
+    if (restart) {
+      final runtime = ref.read(agentRuntimeProvider);
+      await runtime.dispose();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Configuração salva. Reinicie o CMS para aplicar.')),
+          content: Text('Configurações salvas. Reinicie o CMS para aplicar.'),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Configurações salvas')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isTesting = _status?.isTesting ?? false;
-
-    return Dialog(
-      backgroundColor: const Color(0xFF1E1E2E),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 500,
-        padding: const EdgeInsets.all(20),
+    return AlertDialog(
+      title: const Text('Configurações do Broker'),
+      content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                const Text('Configurações do Broker',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const Spacer(),
-                IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-            const Divider(),
-            const SizedBox(height: 12),
             TextField(
-              controller: _hostCtrl,
-              enabled: !isTesting,
-              decoration: const InputDecoration(
-                labelText: 'Host',
-                hintText: 'ex: 192.168.1.100 ou localhost',
-                border: OutlineInputBorder(),
-              ),
+              controller: _hostController,
+              decoration: const InputDecoration(labelText: 'Host (IP ou domínio)'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             TextField(
-              controller: _portCtrl,
-              enabled: !isTesting,
+              controller: _portController,
+              decoration: const InputDecoration(labelText: 'Porta'),
               keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'Porta',
-                border: OutlineInputBorder(),
-              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             TextField(
-              controller: _deviceIdCtrl,
-              enabled: !isTesting,
-              decoration: const InputDecoration(
-                labelText: 'Device ID',
-                helperText: 'Apenas letras minúsculas, números e _',
-                border: OutlineInputBorder(),
-              ),
+              controller: _deviceIdController,
+              decoration: const InputDecoration(labelText: 'Device ID'),
             ),
             const SizedBox(height: 16),
-            if (_status != null)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black26,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(
-                  children: [
-                    if (_status!.isTesting)
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else if (_status!.ok == true)
-                      const Icon(Icons.check_circle,
-                          color: Colors.green, size: 18)
-                    else
-                      const Icon(Icons.error, color: Colors.red, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _status!.isTesting
-                            ? 'Testando conexão...'
-                            : _status!.message!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _status!.ok == true
-                              ? Colors.green
-                              : (_status!.isTesting
-                                  ? Colors.white
-                                  : Colors.red),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 24),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                TextButton(
-                  onPressed: isTesting ? null : () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.wifi_tethering),
-                  label: const Text('Testar conexão'),
-                  onPressed: !_podeSalvar || isTesting ? null : _testar,
-                ),
-                FilledButton(
-                  onPressed:
-                      !_podeSalvar || isTesting ? null : () => _salvar(false),
-                  child: const Text('Salvar'),
-                ),
-                FilledButton.icon(
-                  icon: const Icon(Icons.restart_alt),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.orange.shade700,
-                    foregroundColor: Colors.white,
-                  ),
-                  label: const Text('Salvar e reiniciar'),
-                  onPressed:
-                      !_podeSalvar || isTesting ? null : () => _salvar(true),
-                ),
-              ],
+            SwitchListTile(
+              title: const Text('Iniciar com o sistema'),
+              subtitle: const Text('O agente abre escondido no boot'),
+              value: _autostartEnabled ?? false,
+              onChanged: _autostartEnabled == null ? null : _toggleAutostart,
+              contentPadding: EdgeInsets.zero,
             ),
           ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () => _save(restart: false),
+          child: const Text('Salvar'),
+        ),
+        FilledButton(
+          onPressed: () => _save(restart: true),
+          child: const Text('Salvar e reiniciar'),
+        ),
+      ],
     );
   }
 }
