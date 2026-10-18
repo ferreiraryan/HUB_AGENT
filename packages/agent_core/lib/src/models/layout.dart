@@ -168,6 +168,19 @@ class Layout {
   /// Lista de comandos associada ao id. Retorna null se não houver.
   List<List<String>>? bindingFor(String id) => bindings[id];
 
+  /// Gera um novo ID único não utilizado com o prefixo dado (ex: 'shortcut_1').
+  String nextTileId(String prefix) {
+    final allIds = pages.values
+        .expand((list) => list)
+        .map((t) => t.id)
+        .toSet();
+    int i = 1;
+    while (allIds.contains('${prefix}_$i')) {
+      i++;
+    }
+    return '${prefix}_$i';
+  }
+
   Layout copyWith({
     String? deviceName,
     HubTheme? theme,
@@ -194,6 +207,34 @@ class Layout {
       list.add(tile);
     }
     return copyWith(pages: next);
+  }
+
+  /// Substitui um tile existente com [oldId] por [newTile] na página [pageId].
+  /// Preserva a posição/ordem exata do tile na lista da página.
+  /// Se [oldId] != [newTile.id], migra os bindings associados a [oldId] para [newTile.id].
+  Layout replaceTile(String pageId, String oldId, Tile newTile) {
+    final nextPages = _mutablePages();
+    final list = nextPages[pageId];
+    if (list != null) {
+      final i = list.indexWhere((t) => t.id == oldId);
+      if (i >= 0) {
+        list[i] = newTile;
+      } else {
+        list.add(newTile);
+      }
+    } else {
+      nextPages[pageId] = [newTile];
+    }
+
+    final nextBindings = Map<String, List<List<String>>>.of(bindings);
+    if (oldId != newTile.id && nextBindings.containsKey(oldId)) {
+      final b = nextBindings.remove(oldId);
+      if (b != null && b.isNotEmpty) {
+        nextBindings[newTile.id] = b;
+      }
+    }
+
+    return copyWith(pages: nextPages, bindings: nextBindings);
   }
 
   Layout removeTile(String pageId, String tileId) {

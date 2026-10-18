@@ -22,57 +22,72 @@ class WindowsKeySender implements KeySender {
       return _run(['sendkeypress', media]);
     }
 
-    final normalized = _normalizeCombo(combo);
+    final normalized = normalizeCombo(combo);
     if (normalized == null) return false;
     return _run(['sendkeypress', normalized]);
   }
 
   /// Mapeia ações de mídia para comandos nativos do nircmd.
-String? _mediaCommand(String combo) {
-  switch (combo.trim().toLowerCase()) {
-    case 'media_play_pause':
-    case 'play_pause':
-      return '0xB3';
-    case 'media_next':
-    case 'next':
-      return '0xB0';
-    case 'media_prev':
-    case 'prev':
-      return '0xB1';
-    case 'media_stop':
-    case 'stop':
-      return '0xB2';
-    case 'volume_up':
-      return '0xAF';
-    case 'volume_down':
-      return '0xAE';
-    case 'volume_mute':
-      return '0xAD';
-    default:
-      return null;
+  String? _mediaCommand(String combo) {
+    switch (combo.trim().toLowerCase()) {
+      case 'media_play_pause':
+      case 'play_pause':
+        return '0xB3';
+      case 'media_next':
+      case 'next':
+        return '0xB0';
+      case 'media_prev':
+      case 'prev':
+        return '0xB1';
+      case 'media_stop':
+      case 'stop':
+        return '0xB2';
+      case 'volume_up':
+        return '0xAF';
+      case 'volume_down':
+        return '0xAE';
+      case 'volume_mute':
+        return '0xAD';
+      default:
+        return null;
+    }
   }
-}
 
-  /// Converte "ctrl+shift+s" para o formato que o nircmd aceita.
+  /// Converte "win+tab", "ctrl+shift+s" para o formato que o nircmd aceita.
   ///
-  /// O nircmd aceita nomes como "ctrl", "shift", "alt", "enter", "esc",
-  /// "f1".."f24", e usa "+" como separador de modificadores — o mesmo
-  /// formato que o usuário digita no CMS.
-  String? _normalizeCombo(String combo) {
+  /// O nircmd exige "lwin" ou "rwin" para a tecla Windows (não reconhece "win" nem "windows").
+  /// Usa "+" como separador de modificadores.
+  static String? normalizeCombo(String combo) {
     final trimmed = combo.trim().toLowerCase();
     if (trimmed.isEmpty) return null;
 
-    // Aliases de nomes comuns.
+    // Aliases e normalização para os termos canônicos do nircmd.
     const aliases = <String, String>{
+      'win': 'lwin',
+      'windows': 'lwin',
+      'leftwin': 'lwin',
+      'super': 'lwin',
+      'meta': 'lwin',
+      'cmd': 'lwin',
+      'command': 'lwin',
+      'rightwin': 'rwin',
       'control': 'ctrl',
       'escape': 'esc',
       'return': 'enter',
       'del': 'delete',
       'ins': 'insert',
+      'space': 'spc',
+      'espaço': 'spc',
+      'espaco': 'spc',
+      'back': 'backspace',
+      'bksp': 'backspace',
       'pgup': 'pageup',
+      'page_up': 'pageup',
       'pgdn': 'pagedown',
-      'meta': 'win',
-      'super': 'win',
+      'page_down': 'pagedown',
+      'prtscn': 'printscreen',
+      'prtsc': 'printscreen',
+      'print_screen': 'printscreen',
     };
 
     final parts = trimmed.split('+').map((p) {
@@ -103,6 +118,12 @@ String? _mediaCommand(String combo) {
     final candidates = <String>[
       '$exeDir${Platform.pathSeparator}nircmd.exe',
       '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}nircmd.exe',
+      'apps/cms_app/windows/runner/resources/nircmd.exe',
+      '../apps/cms_app/windows/runner/resources/nircmd.exe',
+      '../../apps/cms_app/windows/runner/resources/nircmd.exe',
+      'apps/cms_app/build/windows/x64/runner/Debug/nircmd.exe',
+      '../apps/cms_app/build/windows/x64/runner/Debug/nircmd.exe',
+      '../../apps/cms_app/build/windows/x64/runner/Debug/nircmd.exe',
     ];
     for (final c in candidates) {
       if (await File(c).exists()) return c;

@@ -46,11 +46,21 @@ body {
   overflow: hidden;
   background: var(--bg-color);
   color: var(--ctp-text);
-  /* Noto Color Emoji entra como fallback: texto normal usa a fonte do
-     sistema, e só os caracteres de emoji (ICON_MAP etc.) caem nela —
-     necessário porque o Android antigo do tablet não tem boa fonte
-     de emoji nativa. */
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Noto Color Emoji", sans-serif;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* =========================================================
+   EMOJI / TWEMOJI (SVGs vetoriais para Android 6+)
+   ========================================================= */
+img.emoji {
+  height: 1em;
+  width: 1em;
+  margin: 0 .05em 0 .1em;
+  vertical-align: -0.1em;
+  display: inline-block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 button {
@@ -423,6 +433,9 @@ button {
   font-size: 2rem;
   line-height: 1;
   color: var(--accent-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* VARIANTES: Card de Slider */

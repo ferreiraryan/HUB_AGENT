@@ -106,7 +106,7 @@ Tópico de subscrição do agente: `nodes/{deviceId}/cmd`
 
 ### Windows:
 - **Áudio Master**: Controlado via `nircmd.exe` empacotado (`windows_audio_controller.dart`). Polling de estado a cada 800 ms.
-- **Áudio por App**: Não disponível via `nircmd`; retorna lista vazia.
+- **Áudio por App**: Ajuste de volume de aplicativos individuais via `nircmd setappvolume <process.exe> <0.0-1.0>` (suporta executáveis como `Spotify.exe`, `chrome.exe`, `Discord.exe` ou PIDs `/<pid>`). A lista passiva de apps retorna vazia sem causar erros.
 - **Controle de Mídia**: `WindowsMediaService` via `nircmd.exe sendkeypress` com VK codes em hex (`0xB3` play/pause, `0xB0` next, `0xB1` prev). **Nunca usar `sendkey`** (abre diálogo de help no NirCmd).
 - **Atalhos / Teclado**: `WindowsKeySender` via `nircmd.exe sendkeypress`.
 - **Estatísticas**: `WindowsStatsProvider` executa PowerShell (`Get-CimInstance Win32_Processor`, `Win32_OperatingSystem`, `Win32_LogicalDisk`). O comando legado `wmic` foi expressamente removido por não existir mais no Windows 11.

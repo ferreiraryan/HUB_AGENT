@@ -67,6 +67,11 @@ class WindowsAudioController implements AudioController {
       '$exeDir${Platform.pathSeparator}nircmd.exe',
       '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}nircmd.exe',
       '$exeDir${Platform.pathSeparator}resources${Platform.pathSeparator}nircmd.exe',
+      // Fallbacks para ambiente de desenvolvimento/testes
+      '${Directory.current.path}${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}nircmd.exe',
+      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}nircmd.exe',
+      '${Directory.current.path}${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}nircmd.exe',
+      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}nircmd.exe',
     ];
     for (final c in candidates) {
       if (await File(c).exists()) return c;
@@ -145,19 +150,29 @@ class WindowsAudioController implements AudioController {
 
   @override
   Future<void> setAppVolume(String id, int value) async {
-    // Fase 2: nircmd setappvolume exige nome do processo, não id.
-    // Quando integrarmos o mixer, resolvemos.
+    final clean = id.trim();
+    if (clean.isEmpty) return;
+    if (int.tryParse(clean) != null || clean.startsWith('/')) {
+      if (!_available || _nircmdPath == null) return;
+      final v = value.clamp(0, 100);
+      final floatVal = (v / 100.0).toStringAsFixed(2);
+      final pidArg = clean.startsWith('/') ? clean : '/$clean';
+      await _run(['setappvolume', pidArg, floatVal]);
+    } else {
+      await setAppVolumeByName(clean, value);
+    }
   }
 
   @override
   Future<void> setAppVolumeByName(String name, int value) async {
     if (!_available || _nircmdPath == null) return;
+    final clean = name.trim();
+    if (clean.isEmpty) return;
     final v = value.clamp(0, 100);
-    final nircmdValue = (v * 65535 ~/ 100).clamp(0, 65535);
-    // nircmd setappvolume <process.exe> <volume 0-65535>
-    // O nome precisa ter .exe no final.
-    final proc = name.endsWith('.exe') ? name : '$name.exe';
-    await _run(['setappvolume', proc, '$nircmdValue']);
+    // nircmd setappvolume <process.exe> <volume 0.0-1.0>
+    final floatVal = (v / 100.0).toStringAsFixed(2);
+    final proc = clean.toLowerCase().endsWith('.exe') ? clean : '$clean.exe';
+    await _run(['setappvolume', proc, floatVal]);
   }
 
   Future<void> _run(List<String> args) async {

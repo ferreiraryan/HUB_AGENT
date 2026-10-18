@@ -85,8 +85,6 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   }
 
   Future<void> _save({required bool restart}) async {
-    final config = ref.read(agentConfigProvider);
-
     // AgentConfig é imutável: criar um novo com os valores editados.
     final updated = AgentConfig(
       host: _hostController.text.trim(),

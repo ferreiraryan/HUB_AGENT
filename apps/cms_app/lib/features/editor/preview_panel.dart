@@ -2,6 +2,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'create_tile_dialog.dart';
 import 'editor_controller.dart';
 import 'tile_card.dart';
 
@@ -303,7 +304,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Atalho'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _createTile(ref, state, 'shortcut', context);
+                  _handleCreateTile(ref, state, 'shortcut', context);
                 },
               ),
               ListTile(
@@ -311,7 +312,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Pasta'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _createTile(ref, state, 'folder', context);
+                  _handleCreateTile(ref, state, 'folder', context);
                 },
               ),
               ListTile(
@@ -319,7 +320,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Voltar'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _createTile(ref, state, 'back', context);
+                  _handleCreateTile(ref, state, 'back', context);
                 },
               ),
               ListTile(
@@ -327,7 +328,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Slider'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _createTile(ref, state, 'slider', context);
+                  _handleCreateTile(ref, state, 'slider', context);
                 },
               ),
               ListTile(
@@ -335,7 +336,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Stat (CPU/RAM/Disco)'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _createTile(ref, state, 'stat', context);
+                  _handleCreateTile(ref, state, 'stat', context);
                 },
               ),
             ],
@@ -345,91 +346,18 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     );
   }
 
-  String _generateId(EditorState state, String prefix) {
-    final allIds = state.layout.pages.values
-        .expand((list) => list)
-        .map((t) => t.id)
-        .toSet();
-    int i = 1;
-    while (allIds.contains('${prefix}_$i')) {
-      i++;
-    }
-    return '${prefix}_$i';
-  }
-
-  void _createTile(
-      WidgetRef ref, EditorState state, String type, BuildContext context) {
-    Tile newTile;
-
-    switch (type) {
-      case 'shortcut':
-        final id = _generateId(state, type);
-        newTile = ShortcutTile(id: id, icon: '⚡', label: 'Novo atalho');
-        break;
-      case 'folder':
-        final id = _generateId(state, type);
-        final availablePages = state.layout.pages.keys
-            .where((k) => k != state.currentPage)
-            .toList();
-        if (availablePages.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Crie uma página antes de adicionar uma pasta')),
-          );
-          return;
-        }
-        newTile = FolderTile(
-            id: id,
-            icon: '📁',
-            label: 'Nova pasta',
-            target: availablePages.first);
-        break;
-      case 'back':
-        final id = _generateId(state, type);
-        newTile = BackTile(id: id, icon: '⬅️', label: 'Voltar');
-        break;
-      case 'slider':
-        final allIds = state.layout.pages.values
-            .expand((list) => list)
-            .map((t) => t.id)
-            .toSet();
-        if (!allIds.contains('master_volume')) {
-          newTile = const SliderTile(
-            id: 'master_volume',
-            icon: '🔊',
-            label: 'Volume Principal',
-            source: SliderSource(kind: SliderSource.kindMasterVolume),
-          );
-        } else {
-          final dynId = _generateId(state, 'slider');
-          newTile = SliderTile(
-            id: dynId,
-            icon: '🎚️',
-            label: 'Novo Slider',
-            source: const SliderSource(kind: SliderSource.kindMasterVolume),
-          );
-        }
-        break;
-      case 'stat':
-        final id = _generateId(state, type);
-        newTile = StatTile(
-          id: id,
-          icon: '📊',
-          label: 'Novo Stat',
-          source: const StatSource(
-            kind: StatSource.kindCpu,
-            field: 'load',
-            unit: '%',
-          ),
-        );
-        break;
-      default:
-        return;
-    }
+  Future<void> _handleCreateTile(
+      WidgetRef ref, EditorState state, String type, BuildContext context) async {
+    final tile = await showCreateTileDialog(
+      context: context,
+      type: type,
+      state: state,
+    );
+    if (tile == null) return;
 
     final notifier = ref.read(editorControllerProvider.notifier);
-    notifier.upsertTile(state.currentPage, newTile);
-    notifier.selectTile(newTile.id);
+    notifier.upsertTile(state.currentPage, tile);
+    notifier.selectTile(tile.id);
   }
 }
 

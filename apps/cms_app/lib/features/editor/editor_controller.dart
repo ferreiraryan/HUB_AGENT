@@ -151,6 +151,13 @@ class EditorController extends Notifier<EditorState> {
   void upsertTile(String pageId, Tile tile) =>
       _mutate((l) => l.upsertTile(pageId, tile));
 
+  void replaceTile(String pageId, String oldId, Tile newTile) {
+    _mutate((l) => l.replaceTile(pageId, oldId, newTile));
+    if (state.selectedTileId == oldId) {
+      selectTile(newTile.id);
+    }
+  }
+
   void removeTile(String pageId, String tileId) =>
       _mutate((l) => l.removeTile(pageId, tileId));
 

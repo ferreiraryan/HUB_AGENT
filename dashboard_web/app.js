@@ -2,27 +2,44 @@
    0. ICON MAP
    ========================================================= */
 const ICON_MAP = {
-  'play_arrow': '▶', 'pause': '‖', 'stop': '■', 'fiber_manual_record': '●',
-  'skip_next': '»', 'skip_previous': '«', 'fast_forward': '≫', 'fast_rewind': '≪',
-  'shuffle': '⇄', 'repeat': '↻', 'volume_up': '🔊', 'volume_down': '🔉',
-  'volume_mute': '🔇', 'volume_off': '🔇', 'music_note': '♪', 'headphones': '🎧',
-  'radio': '📻', 'mic': '🎙️', 'tv': '▭', 'arrow_back': '←', 'arrow_forward': '→',
-  'arrow_upward': '↑', 'arrow_downward': '↓', 'home': '⌂', 'refresh': '↺',
-  'search': '🔍', 'settings': '⚙', 'close': '✕', 'check': '✓', 'add': '+',
-  'remove': '−', 'delete': '⌫', 'push_pin': '📌', 'location_on': '◎', 'link': '🔗',
-  'notifications': '🔔', 'notifications_off': '🔕', 'folder': '📁', 'folder_open': '📂',
-  'insert_drive_file': '📄', 'bar_chart': '📊', 'show_chart': '↗', 'content_paste': '📋',
-  'inventory_2': '📦', 'computer': '💻', 'desktop_windows': '🖥️', 'smartphone': '📱',
-  'watch': '⌚', 'keyboard': '⌨️', 'mouse': '🖱️', 'print': '🖨️', 'battery_full': '🔋',
+  // Mídia & Controles
+  'play_arrow': '▶️', 'pause': '⏸️', 'stop': '⏹️', 'fiber_manual_record': '⏺️',
+  'skip_next': '⏭️', 'skip_previous': '⏮️', 'fast_forward': '⏩', 'fast_rewind': '⏪',
+  'shuffle': '🔀', 'repeat': '🔁', 'loop': '🔄',
+
+  // Áudio & Som
+  'volume_up': '🔊', 'volume_down': '🔉', 'volume_mute': '🔇', 'volume_off': '🔇',
+  'music_note': '🎵', 'headphones': '🎧', 'radio': '📻', 'mic': '🎙️', 'tv': '📺',
+
+  // Navegação & UI
+  'arrow_back': '⬅️', 'arrow_forward': '➡️', 'arrow_upward': '⬆️', 'arrow_downward': '⬇️',
+  'home': '🏠', 'refresh': '🔄', 'search': '🔍', 'settings': '⚙️', 'close': '❌',
+  'check': '✔️', 'add': '➕', 'remove': '➖', 'delete': '🗑️', 'push_pin': '📌',
+  'location_on': '📍', 'link': '🔗', 'notifications': '🔔', 'notifications_off': '🔕',
+
+  // Pastas & Arquivos
+  'folder': '📁', 'folder_open': '📂', 'insert_drive_file': '📄', 'bar_chart': '📊',
+  'show_chart': '📈', 'content_paste': '📋', 'inventory_2': '📦',
+
+  // Dispositivos & Hardware
+  'computer': '💻', 'desktop_windows': '🖥️', 'smartphone': '📱', 'watch': '⌚',
+  'keyboard': '⌨️', 'mouse': '🖱️', 'print': '🖨️', 'battery_full': '🔋',
   'power': '🔌', 'lightbulb': '💡', 'flashlight_on': '🔦', 'photo_camera': '📷',
-  'videocam': '📹', 'language': '🌐', 'local_fire_department': '🔥', 'chat': '💬',
-  'smart_toy': '🤖', 'sports_esports': '🎮', 'mail': '📧', 'call': '📞',
-  'terminal': '💻', 'build': '🔧', 'science': '🧪', 'radar': '📡', 'calculate': '🧮',
-  'chair': '🛋️', 'shower': '🚿', 'wb_sunny': '☀', 'cloud': '☁', 'water_drop': '💧',
-  'bolt': '⚡', 'ac_unit': '❄', 'dark_mode': '☾', 'star': '★', 'warning': '⚠',
-  'block': '⊘', 'help_outline': '?', 'priority_high': '!', 'verified': '✓', 'loop': '↻',
-  'looks_one': '①', 'looks_two': '②', 'looks_3': '③', 'looks_4': '④', 'looks_5': '⑤',
-  'looks_6': '⑥', 'filter_7': '⑦', 'filter_8': '⑧', 'filter_9': '⑨',
+  'videocam': '📹', 'language': '🌐',
+
+  // Comunicação & Apps
+  'local_fire_department': '🔥', 'chat': '💬', 'smart_toy': '🤖', 'sports_esports': '🎮',
+  'mail': '📧', 'call': '📞', 'terminal': '💻', 'build': '🔧', 'science': '🧪',
+  'radar': '📡', 'calculate': '🧮',
+
+  // Diversos & Clima
+  'chair': '🛋️', 'shower': '🚿', 'wb_sunny': '☀️', 'cloud': '☁️', 'water_drop': '💧',
+  'bolt': '⚡', 'ac_unit': '❄️', 'dark_mode': '🌙', 'star': '⭐', 'warning': '⚠️',
+  'block': '🚫', 'help_outline': '❓', 'priority_high': '❗', 'verified': '✅',
+
+  // Números
+  'looks_one': '1️⃣', 'looks_two': '2️⃣', 'looks_3': '3️⃣', 'looks_4': '4️⃣', 'looks_5': '5️⃣',
+  'looks_6': '6️⃣', 'filter_7': '7️⃣', 'filter_8': '8️⃣', 'filter_9': '9️⃣',
 };
 
 /* =========================================================
@@ -222,6 +239,20 @@ const UI = {
     dom.brokerStatus.classList.toggle('broker-status--offline', !connected);
   },
 
+  parseEmojis(target) {
+    if (typeof twemoji !== 'undefined' && twemoji && typeof twemoji.parse === 'function') {
+      try {
+        twemoji.parse(target || document.body, {
+          folder: 'svg',
+          ext: '.svg',
+          base: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/'
+        });
+      } catch (e) {
+        console.warn('[Twemoji] Erro ao processar:', e);
+      }
+    }
+  },
+
   renderDeviceTabs() {
     // Substituindo Object.values para compatibilidade com Chrome antigo
     const devices = Object.keys(state.devices).map(function(k) { return state.devices[k]; });
@@ -247,6 +278,7 @@ const UI = {
       tab.addEventListener('click', () => Navigation.selectDevice(device.id));
       dom.deviceTabs.appendChild(tab);
     });
+    this.parseEmojis(dom.deviceTabs);
   },
 
   setOfflineOverlay(isOffline) {
@@ -435,6 +467,7 @@ const UI = {
         dom.shortcutsGrid.appendChild(btn);
       }
     });
+    this.parseEmojis(dom.shortcutsGrid);
   },
 
   renderNowPlaying(data) {
@@ -444,6 +477,7 @@ const UI = {
       dom.npIcon.textContent = '\u{1F3B5}';
       dom.npIcon.classList.remove('np-icon--playing');
       dom.nowPlaying.classList.add('now-playing--empty');
+      this.parseEmojis(dom.npIcon);
       return;
     }
     const isPlaying = data.status === 'Playing';
@@ -452,6 +486,7 @@ const UI = {
     dom.npIcon.textContent = isPlaying ? '\u25B6\uFE0F' : '\u23F8\uFE0F';
     dom.npIcon.classList.toggle('np-icon--playing', isPlaying);
     dom.nowPlaying.classList.remove('now-playing--empty');
+    this.parseEmojis(dom.npIcon);
   },
 
   renderAppMixer(apps) {
@@ -528,6 +563,7 @@ function bindEvents() {
 function init() {
   UI.renderDeviceTabs();
   bindEvents();
+  UI.parseEmojis(document.body);
   MqttLayer.connect();
 }
 document.addEventListener('DOMContentLoaded', init);

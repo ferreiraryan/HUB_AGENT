@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../../providers.dart';
 import 'editor_controller.dart';
 import 'emoji_picker.dart';
 import 'brightness_picker.dart';
+import 'process_discovery.dart';
 
 class InspectorPanel extends ConsumerWidget {
   const InspectorPanel({super.key});
@@ -289,28 +291,49 @@ class _ShortcutInspector extends ConsumerStatefulWidget {
   ConsumerState<_ShortcutInspector> createState() => _ShortcutInspectorState();
 }
 
+enum _ShortcutBehavior {
+  builtin,
+  hotkey,
+  custom,
+}
+
+const _builtinMediaActions = <String, String>{
+  'play_pause': 'Reproduzir / Pausar',
+  'next': 'Próxima faixa',
+  'prev': 'Faixa anterior',
+};
+
 class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
-  late bool _isBuiltinMode;
+  late _ShortcutBehavior _behavior;
+
+  static _ShortcutBehavior _detectBehavior(
+      Tile tile, Map<String, List<List<String>>> bindings) {
+    if (tile is! ShortcutTile) return _ShortcutBehavior.custom;
+    if (_builtinMediaActions.containsKey(tile.id)) {
+      return _ShortcutBehavior.builtin;
+    }
+    final cmds = bindings[tile.id];
+    if (cmds != null &&
+        cmds.length == 1 &&
+        cmds.first.isNotEmpty &&
+        cmds.first.first == '__sendkeys__') {
+      return _ShortcutBehavior.hotkey;
+    }
+    return _ShortcutBehavior.custom;
+  }
 
   @override
   void initState() {
     super.initState();
-    if (widget.tile is ShortcutTile) {
-      _isBuiltinMode = Layout.builtinActions.contains(widget.tile.id);
-    } else {
-      _isBuiltinMode = false;
-    }
+    _behavior = _detectBehavior(widget.tile, widget.state.layout.bindings);
   }
 
   @override
   void didUpdateWidget(covariant _ShortcutInspector oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.tile.id != widget.tile.id) {
-      if (widget.tile is ShortcutTile) {
-        _isBuiltinMode = Layout.builtinActions.contains(widget.tile.id);
-      } else {
-        _isBuiltinMode = false;
-      }
+    if (oldWidget.tile.id != widget.tile.id ||
+        oldWidget.state.layout.bindings != widget.state.layout.bindings) {
+      _behavior = _detectBehavior(widget.tile, widget.state.layout.bindings);
     }
   }
 
@@ -352,15 +375,21 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                 widget.state.currentPage, _updateTile(icon: newIcon));
           },
         ),
-        const Divider(height: 32, color: Colors.white10),
-        _IdField(
-          initialValue: widget.tile.id,
-          hasBinding: widget.state.layout.bindings.containsKey(widget.tile.id),
-          onSubmitted: (newId) {
-            notifier.upsertTile(
-                widget.state.currentPage, _updateTile(id: newId));
-          },
-        ),
+        if (!isShortcut || _behavior != _ShortcutBehavior.builtin) ...[
+          const Divider(height: 32, color: Colors.white10),
+          _IdField(
+            initialValue: widget.tile.id,
+            hasBinding: widget.state.layout.bindings.containsKey(widget.tile.id),
+            existingIds: widget.state.layout.pages.values
+                .expand((list) => list)
+                .map((t) => t.id)
+                .toSet(),
+            onSubmitted: (newId) {
+              notifier.replaceTile(
+                  widget.state.currentPage, widget.tile.id, _updateTile(id: newId));
+            },
+          ),
+        ],
         if (widget.tile is SliderTile) ...[
           const Divider(height: 32, color: Colors.white10),
           const Text('Fonte do Slider',
@@ -414,15 +443,10 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           ] else if ((widget.tile as SliderTile).source.kind ==
               SliderSource.kindAppVolume) ...[
             const SizedBox(height: 12),
-            TextFormField(
-              initialValue: (widget.tile as SliderTile).source.match ?? '',
-              decoration: const InputDecoration(
-                labelText: 'Nome do App (match)',
-                hintText: 'ex: Firefox, Spotify, mpv',
-                border: OutlineInputBorder(),
-                helperText: 'Case-sensitive. É o application.name do pactl.',
-              ),
-              onFieldSubmitted: (value) {
+            _AppVolumeEditor(
+              currentMatch: (widget.tile as SliderTile).source.match,
+              audio: ref.read(agentRuntimeProvider).audio,
+              onChanged: (val) {
                 final current = widget.tile as SliderTile;
                 notifier.upsertTile(
                   widget.state.currentPage,
@@ -431,7 +455,25 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                     icon: current.icon,
                     label: current.label,
                     source: current.source.copyWith(
-                        match: value.trim(), clearMatch: value.trim().isEmpty),
+                        match: val.trim(), clearMatch: val.trim().isEmpty),
+                  ),
+                );
+              },
+              onApplyPreset: (preset) {
+                final current = widget.tile as SliderTile;
+                final newLabel = (current.label.isEmpty || current.label == 'Novo Slider')
+                    ? 'Volume ${preset.name}'
+                    : current.label;
+                final newIcon = (current.icon.isEmpty || current.icon == '🎚️')
+                    ? preset.icon
+                    : current.icon;
+                notifier.upsertTile(
+                  widget.state.currentPage,
+                  SliderTile(
+                    id: current.id,
+                    icon: newIcon,
+                    label: newLabel,
+                    source: current.source.copyWith(match: preset.match),
                   ),
                 );
               },
@@ -558,55 +600,145 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           const Text('Comportamento',
               style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          RadioGroup<bool>(
-            groupValue: _isBuiltinMode,
-            onChanged: (v) {
-              if (v != null) setState(() => _isBuiltinMode = v);
+          SegmentedButton<_ShortcutBehavior>(
+            segments: const [
+              ButtonSegment(
+                value: _ShortcutBehavior.builtin,
+                label: Text('Mídia', style: TextStyle(fontSize: 12)),
+                icon: Icon(Icons.music_note, size: 16),
+              ),
+              ButtonSegment(
+                value: _ShortcutBehavior.hotkey,
+                label: Text('Teclado', style: TextStyle(fontSize: 12)),
+                icon: Icon(Icons.keyboard, size: 16),
+              ),
+              ButtonSegment(
+                value: _ShortcutBehavior.custom,
+                label: Text('Terminal', style: TextStyle(fontSize: 12)),
+                icon: Icon(Icons.terminal, size: 16),
+              ),
+            ],
+            selected: {_behavior},
+            onSelectionChanged: (newSelection) {
+              final newBehavior = newSelection.first;
+              setState(() => _behavior = newBehavior);
+
+              if (newBehavior == _ShortcutBehavior.builtin) {
+                const targetAction = 'play_pause';
+                notifier.setBinding(widget.tile.id, null);
+                notifier.replaceTile(
+                    widget.state.currentPage, widget.tile.id, _updateTile(id: targetAction));
+                notifier.selectTile(targetAction);
+              } else if (newBehavior == _ShortcutBehavior.hotkey) {
+                String targetId = widget.tile.id;
+                if (_builtinMediaActions.containsKey(targetId)) {
+                  targetId = widget.state.layout.nextTileId('shortcut');
+                  notifier.replaceTile(
+                      widget.state.currentPage, widget.tile.id, _updateTile(id: targetId));
+                  notifier.selectTile(targetId);
+                }
+                final existing = widget.state.layout.bindings[targetId];
+                final currentCombo = (existing != null &&
+                        existing.isNotEmpty &&
+                        existing.first.length > 1 &&
+                        existing.first.first == '__sendkeys__')
+                    ? existing.first[1]
+                    : 'ctrl+shift+esc';
+                notifier.setBinding(
+                    targetId, [
+                  ['__sendkeys__', currentCombo]
+                ]);
+              } else if (newBehavior == _ShortcutBehavior.custom) {
+                String targetId = widget.tile.id;
+                if (_builtinMediaActions.containsKey(targetId)) {
+                  targetId = widget.state.layout.nextTileId('shortcut');
+                  notifier.replaceTile(
+                      widget.state.currentPage, widget.tile.id, _updateTile(id: targetId));
+                  notifier.selectTile(targetId);
+                  notifier.setBinding(targetId, null);
+                }
+              }
             },
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Radio<bool>(
-                        value: true, visualDensity: VisualDensity.compact),
-                    const Text('Ação embutida', style: TextStyle(fontSize: 13)),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Radio<bool>(
-                        value: false, visualDensity: VisualDensity.compact),
-                    const Text('Comando personalizado',
-                        style: TextStyle(fontSize: 13)),
-                  ],
-                ),
-              ],
-            ),
           ),
-          if (_isBuiltinMode) ...[
-            const SizedBox(height: 8),
+          const SizedBox(height: 16),
+          if (_behavior == _ShortcutBehavior.builtin) ...[
             DropdownButtonFormField<String>(
-              initialValue: Layout.builtinActions.contains(widget.tile.id)
+              initialValue: _builtinMediaActions.containsKey(widget.tile.id)
                   ? widget.tile.id
-                  : Layout.builtinActions.first,
+                  : 'play_pause',
               isExpanded: true,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-              items: Layout.builtinActions
-                  .map((a) => DropdownMenuItem(value: a, child: Text(a)))
+              decoration: const InputDecoration(
+                labelText: 'Ação de Mídia',
+                border: OutlineInputBorder(),
+              ),
+              items: _builtinMediaActions.entries
+                  .map((e) => DropdownMenuItem(
+                      value: e.key, child: Text(e.value)))
                   .toList(),
               onChanged: (val) {
                 if (val != null) {
-                  notifier.upsertTile(
-                      widget.state.currentPage, _updateTile(id: val));
+                  notifier.setBinding(widget.tile.id, null);
+                  notifier.replaceTile(
+                      widget.state.currentPage, widget.tile.id, _updateTile(id: val));
+                  notifier.selectTile(val);
                 }
               },
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             const Text(
-                'Esta ação é tratada pelo agente; não precisa de comando.',
+                'Esta ação controla o player de mídia nativo via NirCmd.',
                 style: TextStyle(fontSize: 11, color: Colors.white54)),
+          ] else if (_behavior == _ShortcutBehavior.hotkey) ...[
+            _HotkeyEditor(
+              initialCombo: () {
+                final b = widget.state.layout.bindings[widget.tile.id];
+                if (b != null &&
+                    b.isNotEmpty &&
+                    b.first.length > 1 &&
+                    b.first.first == '__sendkeys__') {
+                  return b.first[1];
+                }
+                return 'ctrl+shift+esc';
+              }(),
+              onChanged: (combo) {
+                if (combo.isEmpty) {
+                  notifier.setBinding(widget.tile.id, null);
+                } else {
+                  notifier.setBinding(
+                      widget.tile.id, [
+                    ['__sendkeys__', combo]
+                  ]);
+                }
+              },
+              onTest: (combo) async {
+                return dispatcher.keySender.send(combo);
+              },
+            ),
           ] else ...[
-            const SizedBox(height: 8),
+            if ((widget.state.layout.bindings[widget.tile.id] ?? []).isEmpty)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border:
+                      Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        color: Colors.amber, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Nenhum comando adicionado. O botão não fará nada até que você adicione um comando.',
+                        style: TextStyle(fontSize: 11, color: Colors.amber),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             _CommandsEditor(
               initialCommands:
                   widget.state.layout.bindings[widget.tile.id] ?? const [],
@@ -672,6 +804,27 @@ class _FolderInspector extends ConsumerWidget {
           },
         ),
         const Divider(height: 32, color: Colors.white10),
+        _IdField(
+          initialValue: tile.id,
+          hasBinding: false,
+          existingIds: state.layout.pages.values
+              .expand((list) => list)
+              .map((t) => t.id)
+              .toSet(),
+          onSubmitted: (newId) {
+            notifier.replaceTile(
+              state.currentPage,
+              tile.id,
+              FolderTile(
+                id: newId,
+                icon: tile.icon,
+                label: tile.label,
+                target: tile.target,
+              ),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
         const Text('Destino', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
@@ -685,9 +838,9 @@ class _FolderInspector extends ConsumerWidget {
               .toList(),
           onChanged: (newTarget) {
             if (newTarget != null && newTarget != tile.target) {
-              notifier.removeTile(state.currentPage, tile.id);
-              notifier.upsertTile(
+              notifier.replaceTile(
                 state.currentPage,
+                tile.id,
                 FolderTile(
                     id: tile.id,
                     icon: tile.icon,
@@ -734,6 +887,22 @@ class _BackInspector extends ConsumerWidget {
             notifier.upsertTile(
               state.currentPage,
               BackTile(id: tile.id, icon: newIcon, label: tile.label),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        _IdField(
+          initialValue: tile.id,
+          hasBinding: false,
+          existingIds: state.layout.pages.values
+              .expand((list) => list)
+              .map((t) => t.id)
+              .toSet(),
+          onSubmitted: (newId) {
+            notifier.replaceTile(
+              state.currentPage,
+              tile.id,
+              BackTile(id: newId, icon: tile.icon, label: tile.label),
             );
           },
         ),
@@ -798,12 +967,15 @@ class _LabelFieldState extends State<_LabelField> {
 class _IdField extends StatefulWidget {
   final String initialValue;
   final bool hasBinding;
+  final Set<String> existingIds;
   final ValueChanged<String> onSubmitted;
 
-  const _IdField(
-      {required this.initialValue,
-      required this.hasBinding,
-      required this.onSubmitted});
+  const _IdField({
+    required this.initialValue,
+    required this.hasBinding,
+    this.existingIds = const {},
+    required this.onSubmitted,
+  });
 
   @override
   State<_IdField> createState() => _IdFieldState();
@@ -812,6 +984,7 @@ class _IdField extends StatefulWidget {
 class _IdFieldState extends State<_IdField> {
   late final TextEditingController _ctrl;
   String? _errorText;
+  bool _canApply = false;
 
   @override
   void initState() {
@@ -826,6 +999,7 @@ class _IdFieldState extends State<_IdField> {
         _ctrl.text != widget.initialValue) {
       _ctrl.text = widget.initialValue;
       _errorText = null;
+      _canApply = false;
     }
   }
 
@@ -836,10 +1010,40 @@ class _IdFieldState extends State<_IdField> {
   }
 
   void _validate(String val) {
-    if (!RegExp(r'^[a-z0-9_]+$').hasMatch(val)) {
-      setState(() => _errorText = 'Apenas letras minúsculas, números e _');
-    } else {
-      setState(() => _errorText = null);
+    final trimmed = val.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _errorText = 'O ID não pode ser vazio';
+        _canApply = false;
+      });
+      return;
+    }
+    if (!RegExp(r'^[a-z0-9_-]+$').hasMatch(trimmed)) {
+      setState(() {
+        _errorText = 'Apenas letras minúsculas, números, _ e -';
+        _canApply = false;
+      });
+      return;
+    }
+    if (trimmed != widget.initialValue && widget.existingIds.contains(trimmed)) {
+      setState(() {
+        _errorText = 'Este ID já está em uso em outro tile';
+        _canApply = false;
+      });
+      return;
+    }
+    setState(() {
+      _errorText = null;
+      _canApply = trimmed != widget.initialValue;
+    });
+  }
+
+  void _apply() {
+    _validate(_ctrl.text);
+    final trimmed = _ctrl.text.trim();
+    if (_errorText == null && trimmed.isNotEmpty && trimmed != widget.initialValue) {
+      widget.onSubmitted(trimmed);
+      setState(() => _canApply = false);
     }
   }
 
@@ -853,32 +1057,38 @@ class _IdFieldState extends State<_IdField> {
           decoration: InputDecoration(
             labelText: 'ID do Tile',
             errorText: _errorText,
+            suffixIcon: _canApply
+                ? IconButton(
+                    icon: const Icon(Icons.check, color: Colors.greenAccent),
+                    tooltip: 'Salvar ID (Enter)',
+                    onPressed: _apply,
+                  )
+                : null,
             border: const OutlineInputBorder(
                 borderRadius: BorderRadius.all(Radius.circular(8))),
+            helperText:
+                _canApply ? 'Pressione Enter ou clique no ícone para salvar' : null,
           ),
           onChanged: _validate,
-          onSubmitted: (val) {
-            _validate(val);
-            if (_errorText == null && val != widget.initialValue) {
-              widget.onSubmitted(val);
-            }
-          },
+          onSubmitted: (_) => _apply(),
         ),
         if (widget.hasBinding) ...[
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(4)),
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.3))),
             child: const Row(
               children: [
-                Icon(Icons.warning_amber, color: Colors.orange, size: 16),
+                Icon(Icons.info_outline, color: Colors.lightBlueAccent, size: 16),
                 SizedBox(width: 8),
                 Expanded(
                     child: Text(
-                        'Este id tem comando associado. Renomear não move o comando.',
-                        style: TextStyle(color: Colors.orange, fontSize: 11))),
+                        'Este id tem comando configurado. Ao alterar o ID, os comandos serão transferidos automaticamente.',
+                        style: TextStyle(
+                            color: Colors.lightBlueAccent, fontSize: 11))),
               ],
             ),
           )
@@ -936,6 +1146,206 @@ class _CmdCtrl {
     for (final c in args) {
       c.dispose();
     }
+  }
+}
+
+class _HotkeyEditor extends StatefulWidget {
+  final String initialCombo;
+  final ValueChanged<String> onChanged;
+  final Future<bool> Function(String combo) onTest;
+
+  const _HotkeyEditor({
+    required this.initialCombo,
+    required this.onChanged,
+    required this.onTest,
+  });
+
+  @override
+  State<_HotkeyEditor> createState() => _HotkeyEditorState();
+}
+
+class _HotkeyEditorState extends State<_HotkeyEditor> {
+  late final TextEditingController _ctrl;
+  bool _testing = false;
+  bool? _testSuccess;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialCombo);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HotkeyEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialCombo != widget.initialCombo &&
+        _ctrl.text.trim().toLowerCase() !=
+            widget.initialCombo.trim().toLowerCase()) {
+      _ctrl.text = widget.initialCombo;
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _insertModifier(String mod) {
+    final cur = _ctrl.text.trim();
+    if (cur.isEmpty) {
+      _ctrl.text = '$mod+';
+    } else if (cur.endsWith('+')) {
+      _ctrl.text = '$cur$mod+';
+    } else {
+      _ctrl.text = '$cur+$mod+';
+    }
+    _onTextChange(_ctrl.text);
+  }
+
+  void _setPreset(String preset) {
+    _ctrl.text = preset;
+    _onTextChange(preset);
+  }
+
+  void _onTextChange(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      widget.onChanged(_ctrl.text.trim().toLowerCase());
+    });
+  }
+
+  Future<void> _testKey() async {
+    final combo = _ctrl.text.trim();
+    if (combo.isEmpty) return;
+    setState(() {
+      _testing = true;
+      _testSuccess = null;
+    });
+    final ok = await widget.onTest(combo);
+    if (mounted) {
+      setState(() {
+        _testing = false;
+        _testSuccess = ok;
+      });
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _testSuccess = null);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _ctrl,
+          decoration: InputDecoration(
+            labelText: 'Combinação de teclas',
+            hintText: 'ex: ctrl+shift+esc, alt+f4, win+d',
+            border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.clear, size: 18),
+              onPressed: () {
+                _ctrl.clear();
+                _onTextChange('');
+              },
+            ),
+          ),
+          onChanged: _onTextChange,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            ActionChip(
+              label: const Text('+ Ctrl', style: TextStyle(fontSize: 12)),
+              onPressed: () => _insertModifier('ctrl'),
+            ),
+            ActionChip(
+              label: const Text('+ Alt', style: TextStyle(fontSize: 12)),
+              onPressed: () => _insertModifier('alt'),
+            ),
+            ActionChip(
+              label: const Text('+ Shift', style: TextStyle(fontSize: 12)),
+              onPressed: () => _insertModifier('shift'),
+            ),
+            ActionChip(
+              label: const Text('+ Win', style: TextStyle(fontSize: 12)),
+              onPressed: () => _insertModifier('win'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Atalhos populares:',
+          style: TextStyle(fontSize: 12, color: Colors.white70),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            _PresetChip(
+                label: 'Alt+F4', onSelected: () => _setPreset('alt+f4')),
+            _PresetChip(label: 'Win+D', onSelected: () => _setPreset('win+d')),
+            _PresetChip(
+                label: 'Ctrl+Shift+Esc',
+                onSelected: () => _setPreset('ctrl+shift+esc')),
+            _PresetChip(label: 'F11', onSelected: () => _setPreset('f11')),
+            _PresetChip(
+                label: 'Win+Tab', onSelected: () => _setPreset('win+tab')),
+            _PresetChip(
+                label: 'Ctrl+W', onSelected: () => _setPreset('ctrl+w')),
+          ],
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: _testing || _ctrl.text.trim().isEmpty ? null : _testKey,
+          icon: _testing
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : Icon(_testSuccess == true ? Icons.check : Icons.keyboard,
+                  size: 18),
+          label: Text(_testing
+              ? 'Enviando...'
+              : _testSuccess == true
+                  ? 'Enviado com sucesso!'
+                  : 'Testar tecla no PC'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PresetChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onSelected;
+
+  const _PresetChip({required this.label, required this.onSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onSelected,
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 11)),
+      ),
+    );
   }
 }
 
@@ -1323,3 +1733,282 @@ class _ArgTextField extends StatelessWidget {
     );
   }
 }
+
+class _AppVolumeEditor extends StatefulWidget {
+  final String? currentMatch;
+  final ValueChanged<String> onChanged;
+  final void Function(AppPreset preset)? onApplyPreset;
+  final AudioController? audio;
+
+  const _AppVolumeEditor({
+    required this.currentMatch,
+    required this.onChanged,
+    this.onApplyPreset,
+    this.audio,
+  });
+
+  @override
+  State<_AppVolumeEditor> createState() => _AppVolumeEditorState();
+}
+
+class _AppVolumeEditorState extends State<_AppVolumeEditor> {
+  late TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+  List<String> _runningProcesses = [];
+  bool _loadingProcesses = false;
+  String? _testMessage;
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.currentMatch ?? '');
+    _loadProcesses();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AppVolumeEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentMatch != oldWidget.currentMatch &&
+        widget.currentMatch != _controller.text) {
+      _controller.text = widget.currentMatch ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProcesses() async {
+    setState(() => _loadingProcesses = true);
+    try {
+      final list = await ProcessDiscovery.getRunningProcesses();
+      if (mounted) {
+        setState(() {
+          _runningProcesses = list;
+          _loadingProcesses = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingProcesses = false);
+    }
+  }
+
+  Future<void> _runTest() async {
+    final match = _controller.text.trim();
+    if (match.isEmpty) {
+      setState(() => _testMessage = 'Selecione ou digite o nome do app primeiro.');
+      return;
+    }
+    setState(() {
+      _testing = true;
+      _testMessage = null;
+    });
+    try {
+      if (widget.audio != null) {
+        await widget.audio!.setAppVolumeByName(match, 50);
+        if (mounted) {
+          setState(() {
+            _testing = false;
+            _testMessage = 'Volume de "$match" ajustado para 50%! Confira no Windows.';
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _testing = false;
+            _testMessage = 'Controlador de áudio não inicializado.';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _testing = false;
+          _testMessage = 'Erro no teste: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Presets Rápidos',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
+            ),
+            IconButton(
+              icon: _loadingProcesses
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh, size: 16),
+              tooltip: 'Recarregar processos ativos',
+              onPressed: _loadingProcesses ? null : _loadProcesses,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: ProcessDiscovery.commonPresets.map((preset) {
+            final isSelected = _controller.text.toLowerCase() == preset.match.toLowerCase() ||
+                _controller.text.toLowerCase() == preset.name.toLowerCase();
+            return ActionChip(
+              avatar: Text(preset.icon, style: const TextStyle(fontSize: 12)),
+              label: Text(preset.name, style: const TextStyle(fontSize: 11)),
+              backgroundColor: isSelected ? Colors.deepPurple.shade700 : const Color(0xFF2E2E3E),
+              side: BorderSide(
+                color: isSelected ? Colors.deepPurpleAccent : Colors.white12,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+              onPressed: () {
+                _controller.text = preset.match;
+                widget.onChanged(preset.match);
+                widget.onApplyPreset?.call(preset);
+              },
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+        RawAutocomplete<String>(
+          textEditingController: _controller,
+          focusNode: _focusNode,
+          optionsBuilder: (TextEditingValue textVal) {
+            final query = textVal.text.trim().toLowerCase();
+            final allOptions = <String>{
+              ...ProcessDiscovery.commonPresets.map((p) => p.match),
+              ..._runningProcesses,
+            };
+            if (query.isEmpty) {
+              return allOptions.take(15);
+            }
+            return allOptions.where((opt) => opt.toLowerCase().contains(query)).take(15);
+          },
+          onSelected: (String selection) {
+            _controller.text = selection;
+            widget.onChanged(selection);
+          },
+          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+            return TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              decoration: InputDecoration(
+                labelText: 'Nome do App (Processo / Executável)',
+                hintText: 'ex: Spotify.exe, Discord.exe, chrome.exe',
+                border: const OutlineInputBorder(),
+                helperText: Platform.isWindows
+                    ? 'Nome do .exe no Windows (ex: Spotify.exe)'
+                    : 'application.name no PulseAudio/PipeWire',
+                helperMaxLines: 2,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.arrow_drop_down),
+                  onPressed: () {
+                    focusNode.requestFocus();
+                  },
+                ),
+              ),
+              onChanged: (val) {
+                widget.onChanged(val.trim());
+              },
+            );
+          },
+          optionsViewBuilder: (context, onSelected, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 8,
+                color: const Color(0xFF2A2A3C),
+                borderRadius: BorderRadius.circular(8),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200, maxWidth: 288),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(4),
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    itemBuilder: (context, index) {
+                      final option = options.elementAt(index);
+                      final isRunning = _runningProcesses.any(
+                          (p) => p.toLowerCase() == option.toLowerCase());
+                      return InkWell(
+                        onTap: () => onSelected(option),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isRunning ? Icons.circle : Icons.apps,
+                                size: 10,
+                                color: isRunning ? Colors.greenAccent : Colors.white38,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  option,
+                                  style: const TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isRunning)
+                                const Text(
+                                  'aberto',
+                                  style: TextStyle(fontSize: 10, color: Colors.greenAccent),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _testing ? null : _runTest,
+          icon: _testing
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.volume_up, size: 16),
+          label: Text(_testing ? 'Testando...' : 'Testar Volume no PC (50%)'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+          ),
+        ),
+        if (_testMessage != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            _testMessage!,
+            style: TextStyle(
+              fontSize: 11,
+              color: _testMessage!.contains('ajustado')
+                  ? Colors.greenAccent
+                  : Colors.orangeAccent,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+

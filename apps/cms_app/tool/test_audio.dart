@@ -4,7 +4,7 @@ import 'package:agent_core/agent_core.dart';
 void main() async {
   print('=== Testando WindowsAudioController ===');
   
-  final audio = createDefaultAudioController();
+  final audio = WindowsAudioController();
   print('Tipo: ${audio.runtimeType}');
   
   try {
@@ -17,6 +17,10 @@ void main() async {
     await audio.setMasterVolume(50);
     await Future.delayed(const Duration(milliseconds: 500));
     print('Depois de set: ${audio.master.value}%');
+
+    print('Tentando setAppVolumeByName("Spotify", 50)...');
+    await audio.setAppVolumeByName('Spotify', 50);
+    await Future.delayed(const Duration(milliseconds: 500));
     
     print('Dispose...');
     await audio.dispose();

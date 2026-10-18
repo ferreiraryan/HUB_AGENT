@@ -226,6 +226,54 @@ void main() {
       expect(result, isTrue);
       expect(fakeSender.receivedCombos, equals(['ctrl+shift+s']));
     });
+
+    test('WindowsKeySender normaliza tecla Windows para lwin e alias comuns', () {
+      expect(WindowsKeySender.normalizeCombo('win+tab'), equals('lwin+tab'));
+      expect(WindowsKeySender.normalizeCombo('windows+tab'), equals('lwin+tab'));
+      expect(WindowsKeySender.normalizeCombo('win+d'), equals('lwin+d'));
+      expect(WindowsKeySender.normalizeCombo('super+tab'), equals('lwin+tab'));
+      expect(WindowsKeySender.normalizeCombo('meta+e'), equals('lwin+e'));
+      expect(WindowsKeySender.normalizeCombo('win'), equals('lwin'));
+      expect(WindowsKeySender.normalizeCombo('rightwin+l'), equals('rwin+l'));
+      expect(WindowsKeySender.normalizeCombo('ctrl+shift+esc'), equals('ctrl+shift+esc'));
+      expect(WindowsKeySender.normalizeCombo('control+alt+del'), equals('ctrl+alt+delete'));
+      expect(WindowsKeySender.normalizeCombo('space'), equals('spc'));
+    });
+
+    test('replaceTile substitui in-place e migra bindings ao alterar id', () {
+      final initial = Layout(
+        deviceName: 'PC',
+        theme: HubTheme.fallback,
+        pages: const {
+          'home': [
+            ShortcutTile(id: 'tile_1', icon: '1️⃣', label: 'Um'),
+            ShortcutTile(id: 'tile_2', icon: '2️⃣', label: 'Dois'),
+            ShortcutTile(id: 'tile_3', icon: '3️⃣', label: 'Tres'),
+          ],
+        },
+      ).setBinding('tile_2', [
+        ['echo', 'hello']
+      ]);
+
+      // Substitui tile_2 por tile_renamed
+      final updated = initial.replaceTile(
+        'home',
+        'tile_2',
+        const ShortcutTile(id: 'tile_renamed', icon: '⭐', label: 'Dois Editado'),
+      );
+
+      final tiles = updated.tilesOf('home');
+      // Deve manter exatamente 3 tiles e a ordem 1 -> 2 -> 3
+      expect(tiles.length, equals(3));
+      expect(tiles[0].id, equals('tile_1'));
+      expect(tiles[1].id, equals('tile_renamed'));
+      expect(tiles[1].label, equals('Dois Editado'));
+      expect(tiles[2].id, equals('tile_3'));
+
+      // O binding do id antigo deve ter sido migrado para o novo id
+      expect(updated.bindingFor('tile_2'), isNull);
+      expect(updated.bindingFor('tile_renamed'), equals([['echo', 'hello']]));
+    });
   });
 
   group('payloads auxiliares', () {

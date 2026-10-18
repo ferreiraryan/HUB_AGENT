@@ -202,7 +202,7 @@ class CommandDispatcher {
         final proc = await Process.start(
           argv.first,
           argv.skip(1).toList(),
-          runInShell: false,
+          runInShell: Platform.isWindows,
         );
 
         proc.stdout.listen((_) {});
