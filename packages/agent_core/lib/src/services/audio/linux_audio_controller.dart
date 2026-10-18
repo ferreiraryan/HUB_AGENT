@@ -162,18 +162,29 @@ class LinuxAudioController implements AudioController {
   @override
   Future<void> setAppVolume(String id, int value) async {
     if (!_available) return;
-    final v = value.clamp(0, 100);
-    // id e o index do sink-input. Se o app morreu, pactl falha e ignoramos:
-    // o proximo refresh ja remove o item da lista.
-    await _run('pactl', ['set-sink-input-volume', id, '$v%']);
+    final clean = id.trim();
+    if (clean.isEmpty) return;
+    if (int.tryParse(clean) != null) {
+      final v = value.clamp(0, 100);
+      // id e o index do sink-input. Se o app morreu, pactl falha e ignoramos:
+      // o proximo refresh ja remove o item da lista.
+      await _run('pactl', ['set-sink-input-volume', clean, '$v%']);
+    } else {
+      await setAppVolumeByName(clean, value);
+    }
   }
 
   @override
   Future<void> setAppVolumeByName(String name, int value) async {
     if (!_available) return;
+    final clean = name.trim();
+    if (clean.isEmpty) return;
     final v = value.clamp(0, 100);
+    final needle = clean.toLowerCase().endsWith('.exe')
+        ? clean.substring(0, clean.length - 4).toLowerCase()
+        : clean.toLowerCase();
 
-    // Lista sink-inputs em JSON e filtra por application.name.
+    // Lista sink-inputs em JSON e filtra por application.name / binary.
     // Requer pactl >= 16 (2021). Se falhar, ignora silenciosamente.
     try {
       final r =
@@ -182,8 +193,21 @@ class LinuxAudioController implements AudioController {
       final list = jsonDecode(r.stdout as String) as List;
       for (final item in list) {
         final props = (item as Map)['properties'] as Map?;
-        final appName = props?['application.name'] as String?;
-        if (appName == name) {
+        final candidates = <String>[
+          if (props?['application.name'] != null)
+            props!['application.name'].toString(),
+          if (props?['application.process.binary'] != null)
+            props!['application.process.binary'].toString(),
+          if (props?['node.name'] != null) props!['node.name'].toString(),
+          if (props?['media.name'] != null) props!['media.name'].toString(),
+        ];
+
+        final matched = candidates.any((c) {
+          final lc = c.trim().toLowerCase();
+          return lc == needle || lc.contains(needle);
+        });
+
+        if (matched) {
           final index = item['index'].toString();
           await _run('pactl', ['set-sink-input-volume', index, '$v%']);
         }

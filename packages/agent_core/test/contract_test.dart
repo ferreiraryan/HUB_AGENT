@@ -240,6 +240,16 @@ void main() {
       expect(WindowsKeySender.normalizeCombo('space'), equals('spc'));
     });
 
+    test('LinuxKeySender normaliza tecla Windows para Super_L e keysyms do xdotool', () {
+      expect(LinuxKeySender.normalizeCombo('win+tab'), equals('Super_L+Tab'));
+      expect(LinuxKeySender.normalizeCombo('windows+d'), equals('Super_L+d'));
+      expect(LinuxKeySender.normalizeCombo('super+e'), equals('Super_L+e'));
+      expect(LinuxKeySender.normalizeCombo('ctrl+shift+esc'), equals('ctrl+shift+Escape'));
+      expect(LinuxKeySender.normalizeCombo('alt+f4'), equals('alt+F4'));
+      expect(LinuxKeySender.normalizeCombo('f11'), equals('F11'));
+      expect(LinuxKeySender.normalizeCombo('space'), equals('space'));
+    });
+
     test('replaceTile substitui in-place e migra bindings ao alterar id', () {
       final initial = Layout(
         deviceName: 'PC',

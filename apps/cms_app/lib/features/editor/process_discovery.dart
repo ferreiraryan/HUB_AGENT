@@ -14,7 +14,7 @@ class AppPreset {
 }
 
 class ProcessDiscovery {
-  static const List<AppPreset> commonPresets = [
+  static const List<AppPreset> _windowsPresets = [
     AppPreset(name: 'Spotify', match: 'Spotify.exe', icon: '🎵'),
     AppPreset(name: 'Chrome', match: 'chrome.exe', icon: '🌐'),
     AppPreset(name: 'Discord', match: 'Discord.exe', icon: '💬'),
@@ -26,6 +26,22 @@ class ProcessDiscovery {
     AppPreset(name: 'OBS', match: 'obs64.exe', icon: '📹'),
     AppPreset(name: 'Telegram', match: 'Telegram.exe', icon: '✈️'),
   ];
+
+  static const List<AppPreset> _linuxPresets = [
+    AppPreset(name: 'Spotify', match: 'Spotify', icon: '🎵'),
+    AppPreset(name: 'Chrome', match: 'Chromium', icon: '🌐'),
+    AppPreset(name: 'Discord', match: 'Discord', icon: '💬'),
+    AppPreset(name: 'Firefox', match: 'Firefox', icon: '🦊'),
+    AppPreset(name: 'Brave', match: 'Brave', icon: '🦁'),
+    AppPreset(name: 'Edge', match: 'Edge', icon: '🌀'),
+    AppPreset(name: 'VLC', match: 'VLC', icon: '🎬'),
+    AppPreset(name: 'Steam', match: 'Steam', icon: '🎮'),
+    AppPreset(name: 'OBS', match: 'OBS', icon: '📹'),
+    AppPreset(name: 'Telegram', match: 'Telegram', icon: '✈️'),
+  ];
+
+  static List<AppPreset> get commonPresets =>
+      Platform.isWindows ? _windowsPresets : _linuxPresets;
 
   static const Set<String> _windowsIgnore = {
     'system idle process',

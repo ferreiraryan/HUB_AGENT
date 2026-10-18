@@ -685,9 +685,11 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
               },
             ),
             const SizedBox(height: 6),
-            const Text(
-                'Esta ação controla o player de mídia nativo via NirCmd.',
-                style: TextStyle(fontSize: 11, color: Colors.white54)),
+            Text(
+                Platform.isWindows
+                    ? 'Esta ação controla o player de mídia nativo via NirCmd.'
+                    : 'Esta ação controla o player de mídia ativo via playerctl.',
+                style: const TextStyle(fontSize: 11, color: Colors.white54)),
           ] else if (_behavior == _ShortcutBehavior.hotkey) ...[
             _HotkeyEditor(
               initialCombo: () {
@@ -1813,7 +1815,8 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
         if (mounted) {
           setState(() {
             _testing = false;
-            _testMessage = 'Volume de "$match" ajustado para 50%! Confira no Windows.';
+            _testMessage =
+                'Volume de "$match" ajustado para 50%! Confira no mixer do sistema.';
           });
         }
       } else {
@@ -1909,11 +1912,13 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
               focusNode: focusNode,
               decoration: InputDecoration(
                 labelText: 'Nome do App (Processo / Executável)',
-                hintText: 'ex: Spotify.exe, Discord.exe, chrome.exe',
+                hintText: Platform.isWindows
+                    ? 'ex: Spotify.exe, Discord.exe, chrome.exe'
+                    : 'ex: Spotify, Discord, Firefox',
                 border: const OutlineInputBorder(),
                 helperText: Platform.isWindows
                     ? 'Nome do .exe no Windows (ex: Spotify.exe)'
-                    : 'application.name no PulseAudio/PipeWire',
+                    : 'application.name ou processo no PulseAudio/PipeWire',
                 helperMaxLines: 2,
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.arrow_drop_down),

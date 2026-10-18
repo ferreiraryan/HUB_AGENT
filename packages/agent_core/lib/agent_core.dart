@@ -16,6 +16,7 @@ export 'src/services/audio/windows_audio_controller.dart';
 export 'src/services/brightness_controller.dart';
 export 'src/services/command_dispatcher.dart';
 export 'src/services/key_sender.dart';
+export 'src/services/key_sender_linux.dart' show LinuxKeySender;
 export 'src/services/key_sender_windows.dart' show WindowsKeySender;
 export 'src/services/layout_repository.dart';
 export 'src/services/media_factory.dart' show createDefaultMediaService;
