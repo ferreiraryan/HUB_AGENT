@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'stats_provider.dart';
+import 'stats_provider_windows.dart';
 import 'stats_provider_linux.dart';
 
 class StatsSnapshot {
@@ -90,8 +91,11 @@ class StatsService {
     StatsProvider? provider,
   }) : provider = provider ?? _defaultProvider();
 
-  static StatsProvider _defaultProvider() =>
-      Platform.isLinux ? LinuxStatsProvider() : UnsupportedStatsProvider();
+  static StatsProvider _defaultProvider() {
+      if (Platform.isLinux) return LinuxStatsProvider();
+      if (Platform.isWindows) return WindowsStatsProvider();
+      return UnsupportedStatsProvider();
+    }
 
   Stream<StatsSnapshot> get changes => _controller.stream;
   StatsSnapshot? get current => _last;

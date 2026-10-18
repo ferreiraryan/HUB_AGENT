@@ -142,28 +142,28 @@ void main() {
     });
 
     test('testChain para no primeiro erro', () async {
-  final disp = CommandDispatcher(
-    audio: UnsupportedAudioController(),
-    brightness: UnsupportedBrightnessController(),
-    media: MediaService(),
-    keySender: FakeKeySender(),
-    layoutProvider: () => Layout.initial(''),
-  );
+      final disp = CommandDispatcher(
+        audio: UnsupportedAudioController(),
+        brightness: UnsupportedBrightnessController(),
+        media: MediaService(),
+        keySender: FakeKeySender(),
+        layoutProvider: () => Layout.initial(''),
+      );
 
-  // `echo` existe em qualquer SO (via cmd no Windows, nativo no Linux).
-  final okCmd = Platform.isWindows
-      ? ['cmd', '/c', 'echo', 'ok']
-      : ['echo', 'ok'];
+      // `echo` existe em qualquer SO (via cmd no Windows, nativo no Linux).
+      final okCmd = Platform.isWindows
+          ? ['cmd', '/c', 'echo', 'ok']
+          : ['echo', 'ok'];
 
-  final res = await disp.testChain([
-    okCmd,
-    ['comando_que_nao_existe_jamais_xyz123'],
-    okCmd,
-  ]);
+      final res = await disp.testChain([
+        okCmd,
+        ['comando_que_nao_existe_jamais_xyz123'],
+        okCmd,
+      ]);
 
-  expect(res.length, equals(2));
-  expect(res[1].ok, isFalse);
-});
+      expect(res.length, equals(2));
+      expect(res[1].ok, isFalse);
+    });
 
     test('mesmo id em paginas diferentes e valido (é a mesma acao)', () {
       final ids = Layout.fromJson(golden)
