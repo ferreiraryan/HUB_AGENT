@@ -46,7 +46,11 @@ body {
   overflow: hidden;
   background: var(--bg-color);
   color: var(--ctp-text);
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Noto Color Emoji entra como fallback: texto normal usa a fonte do
+     sistema, e só os caracteres de emoji (ICON_MAP etc.) caem nela —
+     necessário porque o Android antigo do tablet não tem boa fonte
+     de emoji nativa. */
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Noto Color Emoji", sans-serif;
 }
 
 button {
@@ -702,7 +706,6 @@ button {
   .shortcut-btn--stat {
     grid-column: span 2;
   }
-
   .stat-card__value {
     font-size: 1.5rem;
   }

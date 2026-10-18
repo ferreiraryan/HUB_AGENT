@@ -5,6 +5,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Smart Kiosk Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Fonte de emoji colorida do Google Fonts: garante que os emojis do -->
+  <!-- ICON_MAP (e qualquer outro emoji usado no app) renderizem de forma -->
+  <!-- consistente, já que o Android antigo do tablet não tem uma boa -->
+  <!-- fonte de emoji nativa. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 
@@ -86,9 +93,21 @@
       </div>
     </div>
   </div>
+<div id="debug-log" style="position:fixed;bottom:0;left:0;right:0;height:150px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:12px;padding:10px;z-index:9999;overflow-y:auto;pointer-events:none;backdrop-filter:blur(4px);"></div>
+  <script>
+    var dbg = document.getElementById('debug-log');
+    window.logMsg = function(msg, color) {
+      var c = color ? color : '#0f0';
+      dbg.innerHTML += '<div style="color:' + c + '">[' + new Date().toLocaleTimeString() + '] ' + msg + '</div>';
+      dbg.scrollTop = dbg.scrollHeight;
+    };
+    window.onerror = function(msg, src, line) { 
+      window.logMsg('JS ERROR: ' + msg + ' (Linha ' + line + ')', '#f55'); 
+    };
+  </script>
 
   <script src="mqtt.min.js"></script>
+  <!-- ALERTA: MUDE O NOME DO ARQUIVO AQUI PARA QUEBRAR O CACHE -->
   <script src="app.js"></script>
 </body>
-
 </html>

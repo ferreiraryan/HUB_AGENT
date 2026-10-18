@@ -1,13 +1,35 @@
 /* =========================================================
+   0. ICON MAP
+   ========================================================= */
+const ICON_MAP = {
+  'play_arrow': '▶', 'pause': '‖', 'stop': '■', 'fiber_manual_record': '●',
+  'skip_next': '»', 'skip_previous': '«', 'fast_forward': '≫', 'fast_rewind': '≪',
+  'shuffle': '⇄', 'repeat': '↻', 'volume_up': '🔊', 'volume_down': '🔉',
+  'volume_mute': '🔇', 'volume_off': '🔇', 'music_note': '♪', 'headphones': '🎧',
+  'radio': '📻', 'mic': '🎙️', 'tv': '▭', 'arrow_back': '←', 'arrow_forward': '→',
+  'arrow_upward': '↑', 'arrow_downward': '↓', 'home': '⌂', 'refresh': '↺',
+  'search': '🔍', 'settings': '⚙', 'close': '✕', 'check': '✓', 'add': '+',
+  'remove': '−', 'delete': '⌫', 'push_pin': '📌', 'location_on': '◎', 'link': '🔗',
+  'notifications': '🔔', 'notifications_off': '🔕', 'folder': '📁', 'folder_open': '📂',
+  'insert_drive_file': '📄', 'bar_chart': '📊', 'show_chart': '↗', 'content_paste': '📋',
+  'inventory_2': '📦', 'computer': '💻', 'desktop_windows': '🖥️', 'smartphone': '📱',
+  'watch': '⌚', 'keyboard': '⌨️', 'mouse': '🖱️', 'print': '🖨️', 'battery_full': '🔋',
+  'power': '🔌', 'lightbulb': '💡', 'flashlight_on': '🔦', 'photo_camera': '📷',
+  'videocam': '📹', 'language': '🌐', 'local_fire_department': '🔥', 'chat': '💬',
+  'smart_toy': '🤖', 'sports_esports': '🎮', 'mail': '📧', 'call': '📞',
+  'terminal': '💻', 'build': '🔧', 'science': '🧪', 'radar': '📡', 'calculate': '🧮',
+  'chair': '🛋️', 'shower': '🚿', 'wb_sunny': '☀', 'cloud': '☁', 'water_drop': '💧',
+  'bolt': '⚡', 'ac_unit': '❄', 'dark_mode': '☾', 'star': '★', 'warning': '⚠',
+  'block': '⊘', 'help_outline': '?', 'priority_high': '!', 'verified': '✓', 'loop': '↻',
+  'looks_one': '①', 'looks_two': '②', 'looks_3': '③', 'looks_4': '④', 'looks_5': '⑤',
+  'looks_6': '⑥', 'filter_7': '⑦', 'filter_8': '⑧', 'filter_9': '⑨',
+};
+
+/* =========================================================
    1. CONFIG
    ========================================================= */
 const MQTT_CONFIG = {
-  brokerUrl: (() => {
-    if (!window.location.hostname) {
-      console.error('[MQTT] Página aberta via file:// — window.location.hostname está vazio.');
-    }
-    return 'ws://' + window.location.hostname + ':9001';
-  })(),
+  brokerUrl: 'ws://127.0.0.1:9001',
   options: {
     clientId: 'kiosk-dashboard-' + Math.random().toString(16).slice(2, 8),
     reconnectPeriod: 3000,
@@ -25,12 +47,12 @@ const state = {
   devices: {},
   currentDeviceId: null,
   appsCache: {},
-  volumeCache: {},    // Para o master_volume vindo do topic legado
-  slidersCache: {},   // Cache genérico para sliders novos { [deviceId]: { 'brilho': 45, ... } }
+  volumeCache: {},
+  slidersCache: {},
   mediaCache: {},
   shortcutsCache: {},
   currentPageCache: {},
-  statsCache: {},      // { [deviceId]: { cpu: {...}, ram: {...}, disk: {...} } }
+  statsCache: {},
 };
 
 /* =========================================================
@@ -63,18 +85,26 @@ const dom = {
    ========================================================= */
 const MqttLayer = {
   connect() {
+    const log = typeof window.logMsg === 'function' ? window.logMsg : function(msg) { console.log(msg); };
+
+    log('Tentando conectar em: ' + MQTT_CONFIG.brokerUrl, '#0ff');
     state.mqttClient = mqtt.connect(MQTT_CONFIG.brokerUrl, MQTT_CONFIG.options);
 
     state.mqttClient.on('connect', () => {
+      log('MQTT CONNECTED!', '#0f0');
       state.isBrokerConnected = true;
       UI.updateBrokerStatus(true);
       this.subscribeAll();
     });
 
-    state.mqttClient.on('reconnect', () => { state.isBrokerConnected = false; UI.updateBrokerStatus(false); });
-    state.mqttClient.on('close', () => { state.isBrokerConnected = false; UI.updateBrokerStatus(false); });
-    state.mqttClient.on('error', (err) => console.error('[MQTT] erro:', err));
-
+    state.mqttClient.on('reconnect', () => log('MQTT RECONNECTING...', '#fa0'));
+    state.mqttClient.on('close', () => log('MQTT CONNECTION CLOSED', '#f55'));
+    state.mqttClient.on('offline', () => log('MQTT OFFLINE', '#f55'));
+    state.mqttClient.on('error', (err) => {
+      log('MQTT ERROR: ' + (err.message || err), '#f55');
+      console.error('[MQTT] erro:', err);
+    });
+    
     state.mqttClient.on('message', (topic, payloadBuffer) => {
       this.handleMessage(topic, payloadBuffer);
     });
@@ -86,9 +116,7 @@ const MqttLayer = {
     state.mqttClient.subscribe('nodes/+/audio/volume');
     state.mqttClient.subscribe('nodes/+/audio/apps');
     state.mqttClient.subscribe('nodes/+/media');
-    // Prepara para os futuros sensores genéricos:
     state.mqttClient.subscribe('nodes/+/state/+');
-    // Métricas do PC (stat cards: CPU/RAM/disco)
     state.mqttClient.subscribe('nodes/+/stats/cpu');
     state.mqttClient.subscribe('nodes/+/stats/ram');
     state.mqttClient.subscribe('nodes/+/stats/disk');
@@ -106,15 +134,13 @@ const MqttLayer = {
     const deviceId = topicParts[1];
     const topicType = topicParts.slice(2).join('/');
 
-    // AUTO-DISCOVERY
     if (!state.devices[deviceId]) {
-      state.devices[deviceId] = { id: deviceId, name: deviceId, online: false, cmdTopic: `nodes/${deviceId}/cmd` };
+      state.devices[deviceId] = { id: deviceId, name: deviceId, online: false, cmdTopic: 'nodes/' + deviceId + '/cmd' };
       state.slidersCache[deviceId] = {};
       if (!state.currentDeviceId) Navigation.selectDevice(deviceId);
     }
     const device = state.devices[deviceId];
 
-    // ROTEAMENTO
     if (topicType === 'status') {
       device.online = !!data.online;
       UI.renderDeviceTabs();
@@ -133,7 +159,6 @@ const MqttLayer = {
         if (state.currentDeviceId === device.id) UI.updateSliderUI('master_volume', data.value);
       }
     }
-    // Captura estado genérico de sensores (ex: brilho)
     else if (topicType.startsWith('state/')) {
       const sliderId = topicParts[3];
       if (!state.slidersCache[device.id]) state.slidersCache[device.id] = {};
@@ -141,12 +166,10 @@ const MqttLayer = {
 
       if (state.currentDeviceId === device.id) UI.updateSliderUI(sliderId, data.value);
     }
-    // Métricas do PC (cpu/ram/disco) — tópico "nodes/<id>/stats/<kind>"
     else if (topicType.startsWith('stats/')) {
-      const kind = topicParts[3]; // "cpu" | "ram" | "disk"
+      const kind = topicParts[3];
       if (!state.statsCache[device.id]) state.statsCache[device.id] = {};
       state.statsCache[device.id][kind] = data;
-      // Atualização cirúrgica: evita destruir/reconstruir a grid a cada 3s
       if (state.currentDeviceId === device.id) UI.updateStatsInPlace(device.id);
     }
     else if (topicType === 'media') {
@@ -170,10 +193,12 @@ const MqttLayer = {
     }
   },
 
-  publishCommand(device, action, payloadExtra = {}) {
+  // Ajustado para não usar default parameters
+  publishCommand(device, action, payloadExtra) {
     if (!state.isBrokerConnected) return;
-    const payload = { action, ...payloadExtra };
-    state.mqttClient.publish(device.cmdTopic, JSON.stringify(payload));
+    payloadExtra = payloadExtra || {};
+    payloadExtra.action = action;
+    state.mqttClient.publish(device.cmdTopic, JSON.stringify(payloadExtra));
   },
 
   publishMasterVolume(device, value) {
@@ -198,7 +223,9 @@ const UI = {
   },
 
   renderDeviceTabs() {
-    const devices = Object.values(state.devices);
+    // Substituindo Object.values para compatibilidade com Chrome antigo
+    const devices = Object.keys(state.devices).map(function(k) { return state.devices[k]; });
+    
     if (devices.length === 0) {
       dom.deviceTabs.innerHTML = '<p class="device-tabs__empty">Procurando dispositivos&hellip;</p>';
       return;
@@ -211,12 +238,12 @@ const UI = {
 
       const tab = document.createElement('button');
       tab.type = 'button';
-      tab.className = `device-tab ${device.online ? 'device-tab--online' : 'device-tab--offline'} ${isActive ? 'device-tab--active' : ''}`;
-      tab.innerHTML = `
-        <span class="device-tab__dot"></span>
-        <span class="device-tab__name">${UI.escapeHtml(device.name)}</span>
-        ${isPlaying ? '<span class="device-tab__media">&#127925;</span>' : ''}
-      `;
+      tab.className = 'device-tab ' + (device.online ? 'device-tab--online' : 'device-tab--offline') + ' ' + (isActive ? 'device-tab--active' : '');
+      tab.innerHTML = 
+        '<span class="device-tab__dot"></span>' +
+        '<span class="device-tab__name">' + UI.escapeHtml(device.name) + '</span>' +
+        (isPlaying ? '<span class="device-tab__media">&#127925;</span>' : '');
+      
       tab.addEventListener('click', () => Navigation.selectDevice(device.id));
       dom.deviceTabs.appendChild(tab);
     });
@@ -233,6 +260,11 @@ const UI = {
     return div.innerHTML;
   },
 
+  iconFor(item) {
+    const raw = item.icon || '';
+    return ICON_MAP[raw] || raw || '⚡';
+  },
+
   applyTheme(theme) {
     const root = document.documentElement.style;
     if (theme.bgColor) root.setProperty('--bg-color', theme.bgColor);
@@ -241,7 +273,7 @@ const UI = {
       root.setProperty('--accent-color', theme.accentColor);
       const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(theme.accentColor);
       if (match) {
-        root.setProperty('--accent-glow', `rgba(${parseInt(match[1], 16)}, ${parseInt(match[2], 16)}, ${parseInt(match[3], 16)}, 0.35)`);
+        root.setProperty('--accent-glow', 'rgba(' + parseInt(match[1], 16) + ', ' + parseInt(match[2], 16) + ', ' + parseInt(match[3], 16) + ', 0.35)');
       }
     }
   },
@@ -252,22 +284,17 @@ const UI = {
     dom.deviceStatusBadge.classList.toggle('badge--offline', !online);
   },
 
-  // Atualiza via ID do sensor no DOM sem re-renderizar a grid inteira
   updateSliderUI(id, value) {
-    const input = dom.shortcutsGrid.querySelector(`input[data-slider-id="${id}"]`);
+    const input = dom.shortcutsGrid.querySelector('input[data-slider-id="' + id + '"]');
     if (input && document.activeElement !== input) {
       input.value = value;
-      const label = dom.shortcutsGrid.querySelector(`output[data-slider-value="${id}"]`);
+      const label = dom.shortcutsGrid.querySelector('output[data-slider-value="' + id + '"]');
       if (label) label.textContent = value + '%';
     }
   },
 
-  /**
-   * Atualiza só os stat cards já renderizados, sem re-renderizar a grid.
-   * Chamado a cada mensagem de stats (3s) para não causar flicker.
-   */
   updateStatsInPlace(deviceId) {
-    const stats = state.statsCache?.[deviceId] ?? {};
+    const stats = state.statsCache[deviceId] || {};
     const cards = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--stat');
 
     cards.forEach((card) => {
@@ -275,19 +302,20 @@ const UI = {
       const field = card.dataset.statField;
       const unit = card.dataset.statUnit;
 
-      const payload = stats[kind] ?? {};
+      // Remoção do operador ?? (Nullish Coalescing)
+      const payload = stats[kind] || {};
       const raw = payload[field];
       const display = (raw === undefined || raw === null) ? '--' : raw;
 
       const valueEl = card.querySelector('.stat-card__value');
       if (valueEl) {
-        valueEl.textContent = `${display}${unit || ''}`;
+        valueEl.textContent = String(display) + (unit || '');
       }
 
       const barFill = card.querySelector('.stat-card__bar-fill');
       if (barFill && unit === '%' && typeof raw === 'number') {
         const pct = Math.max(0, Math.min(100, raw));
-        barFill.style.width = `${pct}%`;
+        barFill.style.width = pct + '%';
       }
     });
   },
@@ -302,35 +330,34 @@ const UI = {
     const hasExplicitBack = items.some((item) => item.type === 'back');
 
     const renderList = (currentPageId !== 'home' && !hasExplicitBack)
-      ? [{ type: 'back', icon: '⬅️', label: 'Voltar' }, ...items]
+      ? [{ type: 'back', icon: '⬅️', label: 'Voltar' }].concat(items)
       : items;
 
     renderList.forEach((item, index) => {
-
-      // ====== RENDERIZAÇÃO DO SLIDER ======
       if (item.type === 'slider') {
         const card = document.createElement('div');
         card.className = 'shortcut-btn shortcut-btn--slider';
         card.style.setProperty('--i', index);
 
-        // Resolve o valor inicial (master volume tem tratamento especial provisório)
         let val = 50;
         if (item.id === 'master_volume') {
           val = typeof state.volumeCache[deviceId] === 'number' ? state.volumeCache[deviceId] : 50;
         } else {
-          val = state.slidersCache[deviceId]?.[item.id] ?? 50;
+          // Remoção segura do operador ?. e ??
+          if (state.slidersCache[deviceId] && state.slidersCache[deviceId][item.id] !== undefined) {
+            val = state.slidersCache[deviceId][item.id];
+          }
         }
 
-        card.innerHTML = `
-          <div class="shortcut-slider__header">
-            <div class="shortcut-slider__title">
-              <span class="shortcut-slider__icon">${UI.escapeHtml(item.icon || '⎚')}</span>
-              <span>${UI.escapeHtml(item.label || item.id)}</span>
-            </div>
-            <output class="shortcut-slider__value" data-slider-value="${item.id}">${val}%</output>
-          </div>
-          <input type="range" class="slider-horizontal" data-slider-id="${item.id}" min="0" max="100" value="${val}">
-        `;
+        card.innerHTML = 
+          '<div class="shortcut-slider__header">' +
+            '<div class="shortcut-slider__title">' +
+              '<span class="shortcut-slider__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+              '<span>' + UI.escapeHtml(item.label || item.id) + '</span>' +
+            '</div>' +
+            '<output class="shortcut-slider__value" data-slider-value="' + item.id + '">' + val + '%</output>' +
+          '</div>' +
+          '<input type="range" class="slider-horizontal" data-slider-id="' + item.id + '" min="0" max="100" value="' + val + '">';
 
         const input = card.querySelector('input');
         const output = card.querySelector('output');
@@ -348,7 +375,6 @@ const UI = {
               if (item.id === 'master_volume') {
                 MqttLayer.publishMasterVolume(device, v);
               } else {
-                // Publica a intenção de mudança de qualquer outro slider via Action
                 MqttLayer.publishCommand(device, 'set_slider', { id: item.id, value: Number(v) });
               }
             }
@@ -356,51 +382,43 @@ const UI = {
         });
         dom.shortcutsGrid.appendChild(card);
       }
-
-      // ====== RENDERIZAÇÃO DO STAT CARD (CPU/RAM/DISCO) ======
       else if (item.type === 'stat') {
-        const stats = state.statsCache?.[deviceId] ?? {};
-        const payload = stats[item.source.kind] ?? {};
+        const stats = state.statsCache[deviceId] || {};
+        const payload = stats[item.source.kind] || {};
         const raw = payload[item.source.field];
         const display = (raw === undefined || raw === null) ? '--' : raw;
 
         const card = document.createElement('div');
         card.className = 'shortcut-btn shortcut-btn--stat';
         card.style.setProperty('--i', index);
-        // Guarda a fonte do dado no próprio elemento p/ updateStatsInPlace achá-lo depois
         card.dataset.statKind = item.source.kind;
         card.dataset.statField = item.source.field;
         card.dataset.statUnit = item.source.unit || '';
 
-        // Barra de progresso só faz sentido para valores percentuais
         const pct = item.source.unit === '%' && typeof raw === 'number'
           ? Math.max(0, Math.min(100, raw))
           : 0;
 
-        card.innerHTML = `
-          <div class="stat-card__header">
-            <span class="stat-card__icon">${UI.escapeHtml(item.icon || '📊')}</span>
-            <span class="stat-card__label">${UI.escapeHtml(item.label || item.id)}</span>
-          </div>
-          <div class="stat-card__value">${UI.escapeHtml(String(display))}${UI.escapeHtml(item.source.unit || '')}</div>
-          <div class="stat-card__bar">
-            <div class="stat-card__bar-fill" style="width: ${pct}%"></div>
-          </div>
-        `;
+        card.innerHTML = 
+          '<div class="stat-card__header">' +
+            '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+            '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
+          '</div>' +
+          '<div class="stat-card__value">' + UI.escapeHtml(String(display)) + UI.escapeHtml(item.source.unit || '') + '</div>' +
+          '<div class="stat-card__bar">' +
+            '<div class="stat-card__bar-fill" style="width: ' + pct + '%"></div>' +
+          '</div>';
 
         dom.shortcutsGrid.appendChild(card);
       }
-
-      // ====== RENDERIZAÇÃO DOS BOTÕES COMUNS ======
       else {
         const btn = document.createElement('button');
         btn.className = 'shortcut-btn';
         btn.type = 'button';
         btn.style.setProperty('--i', index);
-        btn.innerHTML = `
-          <span class="shortcut-btn__icon">${UI.escapeHtml(item.icon || '⚡')}</span>
-          <span>${UI.escapeHtml(item.label || item.id || 'Sem Nome')}</span>
-        `;
+        btn.innerHTML = 
+          '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+          '<span>' + UI.escapeHtml(item.label || item.id || 'Sem Nome') + '</span>';
 
         btn.addEventListener('click', () => {
           if (item.type === 'folder' && item.target) {
@@ -445,19 +463,21 @@ const UI = {
     apps.forEach((app) => {
       const row = document.createElement('div');
       row.className = 'app-mixer-row';
-      row.innerHTML = `
-        <div class="app-mixer-row__label">
-          <span class="app-mixer-row__name">${app.name || app.id}</span>
-          <span class="app-mixer-row__value">${app.volume ?? 0}%</span>
-        </div>
-        <input type="range" min="0" max="100" step="1" value="${app.volume ?? 0}" data-app-id="${app.id}">
-      `;
+      const vol = app.volume !== undefined ? app.volume : 0;
+      
+      row.innerHTML = 
+        '<div class="app-mixer-row__label">' +
+          '<span class="app-mixer-row__name">' + (app.name || app.id) + '</span>' +
+          '<span class="app-mixer-row__value">' + vol + '%</span>' +
+        '</div>' +
+        '<input type="range" min="0" max="100" step="1" value="' + vol + '" data-app-id="' + app.id + '">';
+      
       const input = row.querySelector('input');
       const valueLabel = row.querySelector('.app-mixer-row__value');
       let lastPublish = 0;
       input.addEventListener('input', (e) => {
         const val = e.target.value;
-        valueLabel.textContent = `${val}%`;
+        valueLabel.textContent = val + '%';
         const now = Date.now();
         if (now - lastPublish > 120) {
           lastPublish = now;
@@ -510,5 +530,4 @@ function init() {
   bindEvents();
   MqttLayer.connect();
 }
-
 document.addEventListener('DOMContentLoaded', init);
