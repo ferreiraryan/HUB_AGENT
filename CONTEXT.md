@@ -76,6 +76,7 @@ nodes/{deviceId}/
 | `audio/volume` | `{"value": 0..100}` | Sem retain / QoS 0 | Volume master do sistema. |
 | `audio/apps` | `[{"id": "...", "name": "...", "volume": 0..100}]` | Sem retain / QoS 0 | Mixer de apps (suportado em Linux e Windows). |
 | `media` | `{"status": "playing"\|"paused"\|"stopped", "title": "...", "artist": "..."}` | Sem retain / QoS 0 | Faixa em reprodução. |
+| `sound/state` | `{"current_sound_id": "id"\|null, "is_playing": bool}` | Sem retain / QoS 0 | Estado em tempo real do Sound Pad. |
 | `state/{sliderId}` | `{"value": int}` | Sem retain / QoS 0 | Estado atual de um slider genérico. |
 | `stats/cpu` | `{"load": int, "temp": int?, "freq_mhz": int?}` | Sem retain / QoS 0 | Estatísticas de CPU do PC. |
 | `stats/ram` | `{"used_mb": int, "total_mb": int, "percent": int}` | Sem retain / QoS 0 | Uso de memória RAM. |
@@ -92,6 +93,8 @@ Tópico de subscrição do agente: `nodes/{deviceId}/cmd`
 {"action": "set_app_volume", "app_id": "spotify", "value": 50}
 {"action": "run_shortcut", "id": "shortcut_id"}
 {"action": "set_slider", "id": "slider_id", "value": 40}
+{"action": "play_sound", "sound_id": "sound_id"}
+{"action": "stop_sound"}
 ```
 
 > [!IMPORTANT]
@@ -106,6 +109,7 @@ Tópico de subscrição do agente: `nodes/{deviceId}/cmd`
 
 ### Windows:
 - **Áudio Master e Apps**: Controlado nativamente via `hub_audio_helper.exe` (WASAPI / Core Audio em C++, com fallback para `nircmd.exe`). Enumera sessões de áudio ativas (`IAudioSessionEnumerator`), lê o volume master e individual com precisão e ajusta o volume de aplicativos multiprocesso (`Spotify.exe`, `chrome.exe`, `Discord.exe` ou PIDs). Polling de estado e sincronização via MQTT a cada 1000 ms.
+- **Sound Pad (Mesa de Sons)**: `SystemSoundController` integrado com `hub_audio_helper.exe play-sound` (WASAPI + Media Foundation com resample dinâmico) e `list-devices` (enumeração de endpoints). Suporta envio para Cabo Virtual (Discord/OBS/Meet) ou saída padrão, biblioteca gerenciada em `%APPDATA%/sounds/` isolada de pastas externas e cancelamento automático de som anterior ("um som por vez").
 - **Controle de Mídia**: `WindowsMediaService` via `nircmd.exe sendkeypress` com VK codes em hex (`0xB3` play/pause, `0xB0` next, `0xB1` prev). **Nunca usar `sendkey`** (abre diálogo de help no NirCmd).
 - **Atalhos / Teclado**: `WindowsKeySender` via `nircmd.exe sendkeypress`.
 - **Estatísticas**: `WindowsStatsProvider` executa PowerShell (`Get-CimInstance Win32_Processor`, `Win32_OperatingSystem`, `Win32_LogicalDisk`). O comando legado `wmic` foi expressamente removido por não existir mais no Windows 11.
