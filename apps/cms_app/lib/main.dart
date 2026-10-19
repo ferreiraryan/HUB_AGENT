@@ -40,11 +40,18 @@ void main(List<String> args) async {
     port: config.port,
     deviceId: config.deviceId,
   );
-  // TESTE TEMPORÁRIO: força o WindowsAudioController em vez do stub.
+  final soundsDir = Directory('${supportDir.path}/sounds');
+  final soundLibrary = SoundLibraryRepository(soundsDir: soundsDir);
+
+  final soundController = SystemSoundController(
+    soundsDir: soundsDir,
+    defaultTargetDeviceProvider: () => config.soundOutputDevice,
+  );
+
   final runtime = AgentRuntime(
     repository: repository,
     mqtt: mqtt,
-    // sem `audio:` — deixa o default (agora vai pegar WindowsAudioController)
+    sound: soundController,
   );
 
   await runtime.start(fallbackDeviceName: Platform.localHostname);
@@ -70,6 +77,7 @@ void main(List<String> args) async {
       overrides: [
         agentConfigProvider.overrideWithValue(config),
         agentRuntimeProvider.overrideWithValue(runtime),
+        soundLibraryRepositoryProvider.overrideWithValue(soundLibrary),
       ],
       child: const CmsApp(),
     ),

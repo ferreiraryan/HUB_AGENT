@@ -339,6 +339,14 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                   _handleCreateTile(ref, state, 'stat', context);
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.music_note, color: Colors.deepPurpleAccent),
+                title: const Text('Som (Sound Pad)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _handleCreateTile(ref, state, 'sound', context);
+                },
+              ),
             ],
           ),
         );

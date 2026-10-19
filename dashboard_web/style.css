@@ -438,6 +438,24 @@ button {
   justify-content: center;
 }
 
+/* VARIANTES: Botão de Som (Sound Pad) */
+.shortcut-btn--sound {
+  position: relative;
+  transition: transform var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast), filter var(--transition-fast), border-color var(--transition-fast);
+}
+
+.shortcut-btn--playing {
+  opacity: 0.5;
+  filter: grayscale(0.85);
+  border-color: var(--ctp-surface2);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.shortcut-btn--playing:active {
+  transform: none;
+}
+
 /* VARIANTES: Card de Slider */
 .shortcut-btn--slider {
   grid-column: span 2;

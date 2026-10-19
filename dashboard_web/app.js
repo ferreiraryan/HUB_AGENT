@@ -10,6 +10,7 @@ const ICON_MAP = {
   // Áudio & Som
   'volume_up': '🔊', 'volume_down': '🔉', 'volume_mute': '🔇', 'volume_off': '🔇',
   'music_note': '🎵', 'headphones': '🎧', 'radio': '📻', 'mic': '🎙️', 'tv': '📺',
+  'graphic_eq': '🎛️',
 
   // Navegação & UI
   'arrow_back': '⬅️', 'arrow_forward': '➡️', 'arrow_upward': '⬆️', 'arrow_downward': '⬇️',
@@ -70,6 +71,7 @@ const state = {
   shortcutsCache: {},
   currentPageCache: {},
   statsCache: {},
+  soundStateCache: {},
 };
 
 /* =========================================================
@@ -133,6 +135,7 @@ const MqttLayer = {
     state.mqttClient.subscribe('nodes/+/audio/volume');
     state.mqttClient.subscribe('nodes/+/audio/apps');
     state.mqttClient.subscribe('nodes/+/media');
+    state.mqttClient.subscribe('nodes/+/sound/state');
     state.mqttClient.subscribe('nodes/+/state/+');
     state.mqttClient.subscribe('nodes/+/stats/cpu');
     state.mqttClient.subscribe('nodes/+/stats/ram');
@@ -175,6 +178,10 @@ const MqttLayer = {
         state.volumeCache[device.id] = data.value;
         if (state.currentDeviceId === device.id) UI.updateSliderUI('master_volume', data.value);
       }
+    }
+    else if (topicType === 'sound/state') {
+      state.soundStateCache[device.id] = data;
+      if (state.currentDeviceId === device.id) UI.updateSoundStateInPlace(device.id);
     }
     else if (topicType.startsWith('state/')) {
       const sliderId = topicParts[3];
@@ -352,6 +359,21 @@ const UI = {
     });
   },
 
+  updateSoundStateInPlace(deviceId) {
+    const soundState = state.soundStateCache[deviceId] || {};
+    const isPlaying = !!soundState.is_playing;
+    const currentSoundId = soundState.current_sound_id;
+
+    const soundButtons = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--sound');
+    soundButtons.forEach((btn) => {
+      const soundId = btn.dataset.soundId;
+      const isThisPlaying = isPlaying && (soundId === currentSoundId);
+
+      btn.classList.toggle('shortcut-btn--playing', isThisPlaying);
+      btn.disabled = isThisPlaying;
+    });
+  },
+
   renderShortcuts(deviceId) {
     dom.shortcutsGrid.innerHTML = '';
     const pages = state.shortcutsCache[deviceId];
@@ -442,6 +464,35 @@ const UI = {
           '</div>';
 
         dom.shortcutsGrid.appendChild(card);
+      }
+      else if (item.type === 'sound') {
+        const soundState = state.soundStateCache[deviceId] || {};
+        const isPlaying = !!soundState.is_playing;
+        const currentSoundId = soundState.current_sound_id;
+        const isThisPlaying = isPlaying && (currentSoundId === item.sound_id);
+
+        const btn = document.createElement('button');
+        btn.className = 'shortcut-btn shortcut-btn--sound' + (isThisPlaying ? ' shortcut-btn--playing' : '');
+        btn.type = 'button';
+        btn.style.setProperty('--i', index);
+        btn.dataset.soundId = item.sound_id;
+        btn.disabled = isThisPlaying;
+
+        btn.innerHTML = 
+          '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+          '<span>' + UI.escapeHtml(item.label || 'Som') + '</span>';
+
+        btn.addEventListener('click', () => {
+          const currentState = state.soundStateCache[deviceId] || {};
+          if (currentState.is_playing && currentState.current_sound_id === item.sound_id) {
+            return;
+          }
+          const device = state.devices[deviceId];
+          if (device) {
+            MqttLayer.publishCommand(device, 'play_sound', { sound_id: item.sound_id });
+          }
+        });
+        dom.shortcutsGrid.appendChild(btn);
       }
       else {
         const btn = document.createElement('button');

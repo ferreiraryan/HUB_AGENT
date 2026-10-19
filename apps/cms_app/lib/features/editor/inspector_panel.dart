@@ -10,6 +10,7 @@ import 'editor_controller.dart';
 import 'emoji_picker.dart';
 import 'brightness_picker.dart';
 import 'process_discovery.dart';
+import 'sound_library_dialog.dart';
 
 class InspectorPanel extends ConsumerWidget {
   const InspectorPanel({super.key});
@@ -105,6 +106,7 @@ class InspectorPanel extends ConsumerWidget {
       ShortcutTile() => _ShortcutInspector(tile: tile, state: state),
       SliderTile() => _ShortcutInspector(tile: tile, state: state),
       StatTile() => _ShortcutInspector(tile: tile, state: state),
+      SoundTile() => _SoundInspector(tile: tile, state: state),
       FolderTile() => _FolderInspector(tile: tile, state: state),
       BackTile() => _BackInspector(tile: tile, state: state),
     };
@@ -186,6 +188,10 @@ class _InspectorFooter extends ConsumerWidget {
           id: newId, icon: tile.icon, label: tile.label, target: f.target);
     } else if (tile is BackTile) {
       newTile = BackTile(id: newId, icon: tile.icon, label: tile.label);
+    } else if (tile is SoundTile) {
+      final s = tile as SoundTile;
+      newTile = SoundTile(
+          id: newId, icon: tile.icon, label: tile.label, soundId: s.soundId);
     } else {
       return;
     }
@@ -2055,4 +2061,216 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
     );
   }
 }
+
+class _SoundInspector extends ConsumerStatefulWidget {
+  final SoundTile tile;
+  final EditorState state;
+
+  const _SoundInspector({required this.tile, required this.state});
+
+  @override
+  ConsumerState<_SoundInspector> createState() => _SoundInspectorState();
+}
+
+class _SoundInspectorState extends ConsumerState<_SoundInspector> {
+  List<SoundItem> _sounds = [];
+  bool _isLoading = true;
+  bool _isPlaying = false;
+  StreamSubscription<SoundPlaybackState>? _soundSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSounds();
+    final runtime = ref.read(agentRuntimeProvider);
+    _isPlaying = runtime.sound?.current.soundId == widget.tile.soundId &&
+        (runtime.sound?.current.isPlaying ?? false);
+
+    _soundSub = runtime.sound?.stateChanges.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.isPlaying && state.soundId == widget.tile.soundId;
+        });
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _SoundInspector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tile.soundId != widget.tile.soundId) {
+      _loadSounds();
+      final runtime = ref.read(agentRuntimeProvider);
+      _isPlaying = runtime.sound?.current.soundId == widget.tile.soundId &&
+          (runtime.sound?.current.isPlaying ?? false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _soundSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadSounds() async {
+    final repo = ref.read(soundLibraryRepositoryProvider);
+    final list = await repo.listSounds();
+    if (mounted) {
+      setState(() {
+        _sounds = list;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _togglePreview() async {
+    final runtime = ref.read(agentRuntimeProvider);
+    if (_isPlaying) {
+      await runtime.sound?.stop();
+    } else {
+      await runtime.sound?.play(widget.tile.soundId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final notifier = ref.read(editorControllerProvider.notifier);
+    final existingIds = widget.state.layout.pages.values
+        .expand((list) => list)
+        .map((t) => t.id)
+        .toSet();
+
+    final soundExists = _sounds.any((s) => s.id == widget.tile.soundId);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _LabelField(
+          initialValue: widget.tile.label,
+          onSubmitted: (newLabel) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(label: newLabel),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        _IconField(
+          icon: widget.tile.icon,
+          onPicked: (newIcon) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(icon: newIcon),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        _IdField(
+          initialValue: widget.tile.id,
+          hasBinding: false,
+          existingIds: existingIds,
+          onSubmitted: (newId) {
+            notifier.replaceTile(
+              widget.state.currentPage,
+              widget.tile.id,
+              widget.tile.copyWith(id: newId),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        const Text('Som da Biblioteca',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        if (!soundExists && !_isLoading) ...[
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+              border:
+                  Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber, color: Colors.amber, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Arquivo "${widget.tile.soundId}" não encontrado na biblioteca deste PC.',
+                    style: const TextStyle(color: Colors.amber, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                initialValue: soundExists ? widget.tile.soundId : null,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                hint: const Text('Selecione um som'),
+                items: _sounds
+                    .map(
+                      (s) => DropdownMenuItem(
+                        value: s.id,
+                        child: Text(s.name, overflow: TextOverflow.ellipsis),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (newSoundId) {
+                  if (newSoundId != null &&
+                      newSoundId != widget.tile.soundId) {
+                    notifier.upsertTile(
+                      widget.state.currentPage,
+                      widget.tile.copyWith(soundId: newSoundId),
+                    );
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow),
+              tooltip: _isPlaying ? 'Parar som' : 'Ouvir prévia no PC',
+              onPressed: soundExists ? _togglePreview : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.library_music, size: 16),
+          label: const Text('Gerenciar Biblioteca de Sons'),
+          onPressed: () async {
+            final selected = await showSoundLibraryDialog(
+              context: context,
+              ref: ref,
+              selectMode: true,
+            );
+            if (selected != null) {
+              await _loadSounds();
+              notifier.upsertTile(
+                widget.state.currentPage,
+                widget.tile.copyWith(
+                  soundId: selected.id,
+                  label: widget.tile.label == 'Novo Som'
+                      ? selected.name
+                      : widget.tile.label,
+                ),
+              );
+            }
+          },
+        ),
+      ],
+    );
+  }
+}
+
 

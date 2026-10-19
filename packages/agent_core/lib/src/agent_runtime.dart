@@ -18,6 +18,7 @@ import 'services/brightness_controller.dart';
 import 'services/command_dispatcher.dart';
 import 'services/key_sender_stub.dart'
     if (dart.library.io) 'services/key_sender_factory_io.dart';
+import 'services/sound/sound_controller.dart';
 
 class AgentRuntime {
   final LayoutRepository repository;
@@ -27,6 +28,7 @@ class AgentRuntime {
   final MediaService media;
   final KeySender keySender;
   final StatsService stats;
+  final SoundController? sound;
   late final CommandDispatcher dispatcher;
 
   final Duration echoGuard;
@@ -44,18 +46,24 @@ class AgentRuntime {
     MediaService? media,
     KeySender? keySender,
     StatsService? stats,
+    SoundController? sound,
     Set<String> allowedBinaries = const {},
     this.echoGuard = const Duration(milliseconds: 200),
   })  : audio = audio ?? createDefaultAudioController(),
         brightness = brightness ?? _defaultBrightness(),
         media = media ?? createDefaultMediaService(),
         keySender = keySender ?? createDefaultKeySender(),
-        stats = stats ?? StatsService() {
+        stats = stats ?? StatsService(),
+        sound = sound ??
+            SystemSoundController(
+              soundsDir: Directory('${repository.file.parent.path}/sounds'),
+            ) {
     dispatcher = CommandDispatcher(
       audio: this.audio,
       brightness: this.brightness,
       media: this.media,
       keySender: this.keySender,
+      sound: this.sound,
       layoutProvider: () => repository.current,
       allowedBinaries: allowedBinaries,
       onLocalVolumeChange: _armEchoGuard,
@@ -89,6 +97,10 @@ class AgentRuntime {
       ..add(audio.appsChanges.listen(mqtt.publishApps))
       ..add(brightness.changes.listen((_) => _publishBrightness()))
       ..add(media.changes.listen(mqtt.publishMedia));
+
+    if (sound != null) {
+      _subs.add(sound!.stateChanges.listen(mqtt.publishSoundState));
+    }
 
     _subs.add(mqtt.connectionState.listen((s) {
       if (s == AgentConnectionState.connected) _publishSnapshot();
@@ -124,6 +136,9 @@ class AgentRuntime {
     }
     _publishBrightness();
     mqtt.publishMedia(media.current);
+    if (sound != null) {
+      mqtt.publishSoundState(sound!.current);
+    }
   }
 
   Future<void> _publishBrightness() async {
@@ -165,6 +180,7 @@ class AgentRuntime {
     }
     _subs.clear();
     _brightnessPublishTimer?.cancel();
+    await sound?.dispose();
     await keySender.dispose();
     await stats.dispose();
     await media.dispose();

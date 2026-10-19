@@ -64,7 +64,9 @@ class Layout {
     'prev',
     'set_volume',
     'set_app_volume',
-    'set_slider', // ← novo
+    'set_slider',
+    'play_sound',
+    'stop_sound',
   };
   factory Layout.initial(String deviceName) => Layout(
         deviceName: deviceName,
@@ -366,6 +368,12 @@ class Layout {
             if (source.field.trim().isEmpty) {
               issues.add(LayoutIssue(
                   IssueLevel.error, 'StatTile sem field definido',
+                  pageId: entry.key, tileId: tile.id));
+            }
+          case SoundTile(:final soundId):
+            if (soundId.trim().isEmpty) {
+              issues.add(LayoutIssue(
+                  IssueLevel.error, 'SoundTile sem sound_id definido',
                   pageId: entry.key, tileId: tile.id));
             }
           case BackTile():

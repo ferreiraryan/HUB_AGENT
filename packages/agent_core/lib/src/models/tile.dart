@@ -42,6 +42,12 @@ sealed class Tile {
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'cpu', 'field': 'load', 'unit': '%'}),
         ),
+      'sound' => SoundTile(
+          id: id,
+          icon: icon,
+          label: label,
+          soundId: (json['sound_id'] as String?) ?? id,
+        ),
       _ => throw FormatException('tipo de tile desconhecido: "$type"'),
     };
   }
@@ -359,3 +365,51 @@ final class StatTile extends Tile {
   @override
   int get hashCode => Object.hash(type, id, icon, label, source);
 }
+
+final class SoundTile extends Tile {
+  final String soundId;
+
+  const SoundTile({
+    required super.id,
+    required super.icon,
+    required super.label,
+    required this.soundId,
+  });
+
+  @override
+  String get type => 'sound';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'sound',
+        'id': id,
+        'icon': icon,
+        'label': label,
+        'sound_id': soundId,
+      };
+
+  SoundTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    String? soundId,
+  }) =>
+      SoundTile(
+        id: id ?? this.id,
+        icon: icon ?? this.icon,
+        label: label ?? this.label,
+        soundId: soundId ?? this.soundId,
+      );
+
+  @override
+  bool operator ==(Object o) =>
+      o is SoundTile &&
+      o.id == id &&
+      o.icon == icon &&
+      o.label == label &&
+      o.soundId == soundId;
+
+  @override
+  int get hashCode => Object.hash(type, id, icon, label, soundId);
+}
+

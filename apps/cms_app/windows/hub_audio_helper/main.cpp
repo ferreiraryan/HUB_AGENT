@@ -5,6 +5,10 @@
 #include <endpointvolume.h>
 #include <audiopolicy.h>
 #include <psapi.h>
+#include <functiondiscoverykeys_devpkey.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
 #include <wrl/client.h>
 #include <iostream>
 #include <string>
@@ -16,6 +20,10 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "version.lib")
+#pragma comment(lib, "propsys.lib")
+#pragma comment(lib, "mfplat.lib")
+#pragma comment(lib, "mfreadwrite.lib")
+#pragma comment(lib, "mfuuid.lib")
 
 using Microsoft::WRL::ComPtr;
 
@@ -26,6 +34,14 @@ std::string WideToUtf8(const std::wstring& wstr) {
     int size = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), NULL, 0, NULL, NULL);
     std::string result(size, 0);
     WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), &result[0], size, NULL, NULL);
+    return result;
+}
+
+std::wstring Utf8ToWide(const std::string& str) {
+    if (str.empty()) return L"";
+    int size = MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
+    std::wstring result(size, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &result[0], size);
     return result;
 }
 
@@ -113,7 +129,6 @@ int DoStatus() {
     hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDevice);
     if (FAILED(hr)) return 1;
 
-    // Master volume & mute
     int masterVol = 0;
     bool masterMuted = false;
     ComPtr<IAudioEndpointVolume> pEndpointVolume;
@@ -126,7 +141,6 @@ int DoStatus() {
         masterMuted = bMute ? true : false;
     }
 
-    // Enumerar sessões de áudio ativas
     std::map<std::string, AppInfo> appMap;
 
     ComPtr<IAudioSessionManager2> pSessionManager;
@@ -166,7 +180,7 @@ int DoStatus() {
                     name = "Sons do Sistema";
                 } else {
                     std::wstring path = GetProcessPath(pid);
-                    if (path.empty()) continue; // Processo já finalizado
+                    if (path.empty()) continue;
                     std::wstring filename;
                     size_t lastSlash = path.find_last_of(L"\\/");
                     if (lastSlash != std::wstring::npos) filename = path.substr(lastSlash + 1);
@@ -177,7 +191,6 @@ int DoStatus() {
                     if (!desc.empty()) {
                         name = WideToUtf8(desc);
                     } else {
-                        // Nome base capitalizado sem .exe
                         std::wstring base = filename;
                         if (base.size() > 4 && base.substr(base.size() - 4) == L".exe") {
                             base = base.substr(0, base.size() - 4);
@@ -190,7 +203,6 @@ int DoStatus() {
                 if (appMap.find(id) == appMap.end()) {
                     appMap[id] = AppInfo{ id, name, volPct, mute ? true : false, pid };
                 } else {
-                    // Mantém o maior volume se houver múltiplos canais/subprocessos
                     if (volPct > appMap[id].volume) {
                         appMap[id].volume = volPct;
                     }
@@ -199,7 +211,6 @@ int DoStatus() {
         }
     }
 
-    // Saída JSON limpa
     std::cout << "{\"master\":{\"volume\":" << masterVol << ",\"muted\":" << (masterMuted ? "true" : "false") << "},\"apps\":[";
     bool first = true;
     for (const auto& pair : appMap) {
@@ -359,11 +370,284 @@ int DoSetAppMute(const std::string& targetStr, bool mute) {
     return 0;
 }
 
+int DoListDevices() {
+    ComPtr<IMMDeviceEnumerator> pEnumerator;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pEnumerator)))) return 1;
+
+    ComPtr<IMMDevice> pDefaultDevice;
+    std::wstring defaultId = L"";
+    if (SUCCEEDED(pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDefaultDevice))) {
+        LPWSTR pStrId = NULL;
+        if (SUCCEEDED(pDefaultDevice->GetId(&pStrId)) && pStrId) {
+            defaultId = pStrId;
+            CoTaskMemFree(pStrId);
+        }
+    }
+
+    ComPtr<IMMDeviceCollection> pCollection;
+    if (FAILED(pEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &pCollection))) return 1;
+
+    UINT count = 0;
+    pCollection->GetCount(&count);
+
+    std::cout << "[";
+    bool first = true;
+    for (UINT i = 0; i < count; ++i) {
+        ComPtr<IMMDevice> pDevice;
+        if (FAILED(pCollection->Item(i, &pDevice))) continue;
+
+        LPWSTR pStrId = NULL;
+        if (FAILED(pDevice->GetId(&pStrId)) || !pStrId) continue;
+        std::wstring devId = pStrId;
+        CoTaskMemFree(pStrId);
+
+        std::wstring devFriendlyName = devId;
+        ComPtr<IPropertyStore> pProps;
+        if (SUCCEEDED(pDevice->OpenPropertyStore(STGM_READ, &pProps))) {
+            PROPVARIANT varName;
+            PropVariantInit(&varName);
+            if (SUCCEEDED(pProps->GetValue(PKEY_Device_FriendlyName, &varName))) {
+                if (varName.vt == VT_LPWSTR && varName.pwszVal) {
+                    devFriendlyName = varName.pwszVal;
+                }
+                PropVariantClear(&varName);
+            }
+        }
+
+        bool isDefault = (!defaultId.empty() && devId == defaultId);
+
+        if (!first) std::cout << ",";
+        first = false;
+
+        std::cout << "{\"id\":\"" << EscapeJsonString(WideToUtf8(devId)) << "\","
+                  << "\"name\":\"" << EscapeJsonString(WideToUtf8(devFriendlyName)) << "\","
+                  << "\"is_default\":" << (isDefault ? "true" : "false") << "}";
+    }
+    std::cout << "]\n";
+    return 0;
+}
+
+ComPtr<IMMDevice> FindDevice(IMMDeviceEnumerator* pEnumerator, const std::string& target) {
+    if (!pEnumerator) return nullptr;
+
+    if (target.empty() || target == "default") {
+        ComPtr<IMMDevice> pDef;
+        pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDef);
+        return pDef;
+    }
+
+    std::wstring wTarget = ToLower(Utf8ToWide(target));
+
+    ComPtr<IMMDeviceCollection> pCollection;
+    if (SUCCEEDED(pEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &pCollection))) {
+        UINT count = 0;
+        pCollection->GetCount(&count);
+        ComPtr<IMMDevice> pPartialMatch = nullptr;
+
+        for (UINT i = 0; i < count; ++i) {
+            ComPtr<IMMDevice> pDev;
+            if (FAILED(pCollection->Item(i, &pDev))) continue;
+
+            LPWSTR pStrId = NULL;
+            if (FAILED(pDev->GetId(&pStrId)) || !pStrId) continue;
+            std::wstring devId = pStrId;
+            CoTaskMemFree(pStrId);
+
+            std::wstring devName = devId;
+            ComPtr<IPropertyStore> pProps;
+            if (SUCCEEDED(pDev->OpenPropertyStore(STGM_READ, &pProps))) {
+                PROPVARIANT var;
+                PropVariantInit(&var);
+                if (SUCCEEDED(pProps->GetValue(PKEY_Device_FriendlyName, &var))) {
+                    if (var.vt == VT_LPWSTR && var.pwszVal) {
+                        devName = var.pwszVal;
+                    }
+                    PropVariantClear(&var);
+                }
+            }
+
+            std::wstring wDevId = ToLower(devId);
+            std::wstring wDevName = ToLower(devName);
+
+            if (wDevId == wTarget || wDevName == wTarget) {
+                return pDev;
+            }
+
+            if (pPartialMatch == nullptr && wDevName.find(wTarget) != std::wstring::npos) {
+                pPartialMatch = pDev;
+            }
+        }
+
+        if (pPartialMatch != nullptr) {
+            return pPartialMatch;
+        }
+    }
+
+    ComPtr<IMMDevice> pFallback;
+    pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pFallback);
+    return pFallback;
+}
+
+int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice) {
+    HRESULT hr = MFStartup(MF_VERSION);
+    if (FAILED(hr)) return 1;
+
+    int exitCode = 0;
+    {
+        ComPtr<IMMDeviceEnumerator> pEnumerator;
+        hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pEnumerator));
+        if (FAILED(hr)) {
+            MFShutdown();
+            return 1;
+        }
+
+        ComPtr<IMMDevice> pDevice = FindDevice(pEnumerator.Get(), targetDevice);
+        if (!pDevice) {
+            MFShutdown();
+            return 1;
+        }
+
+        ComPtr<IAudioClient> pAudioClient;
+        hr = pDevice->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, (void**)&pAudioClient);
+        if (FAILED(hr)) {
+            MFShutdown();
+            return 1;
+        }
+
+        WAVEFORMATEX* pMixFormat = NULL;
+        hr = pAudioClient->GetMixFormat(&pMixFormat);
+        if (FAILED(hr) || !pMixFormat) {
+            MFShutdown();
+            return 1;
+        }
+
+        ComPtr<IMFSourceReader> pReader;
+        ComPtr<IMFAttributes> pAttributes;
+        MFCreateAttributes(&pAttributes, 1);
+        if (pAttributes) {
+            pAttributes->SetUINT32(MF_LOW_LATENCY, TRUE);
+        }
+
+        hr = MFCreateSourceReaderFromURL(filePath.c_str(), pAttributes.Get(), &pReader);
+        if (FAILED(hr)) {
+            CoTaskMemFree(pMixFormat);
+            MFShutdown();
+            return 2;
+        }
+
+        pReader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        pReader->SetStreamSelection(MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE);
+
+        ComPtr<IMFMediaType> pTargetType;
+        MFCreateMediaType(&pTargetType);
+        MFInitMediaTypeFromWaveFormatEx(pTargetType.Get(), pMixFormat, sizeof(WAVEFORMATEX) + pMixFormat->cbSize);
+        hr = pReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, pTargetType.Get());
+        if (FAILED(hr)) {
+            pTargetType.Reset();
+            MFCreateMediaType(&pTargetType);
+            pTargetType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+            pTargetType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+            pReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, pTargetType.Get());
+        }
+
+        REFERENCE_TIME hnsBufferDuration = 5000000; // 500 ms
+        hr = pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, hnsBufferDuration, 0, pMixFormat, NULL);
+        if (FAILED(hr)) {
+            CoTaskMemFree(pMixFormat);
+            MFShutdown();
+            return 3;
+        }
+
+        UINT32 bufferFrameCount = 0;
+        pAudioClient->GetBufferSize(&bufferFrameCount);
+
+        ComPtr<IAudioRenderClient> pRenderClient;
+        pAudioClient->GetService(IID_PPV_ARGS(&pRenderClient));
+
+        UINT32 bytesPerFrame = pMixFormat->nBlockAlign;
+        if (bytesPerFrame == 0) bytesPerFrame = 4;
+
+        hr = pAudioClient->Start();
+        if (FAILED(hr)) {
+            CoTaskMemFree(pMixFormat);
+            MFShutdown();
+            return 4;
+        }
+
+        bool eos = false;
+        std::vector<BYTE> pendingData;
+
+        while (!eos) {
+            if (pendingData.empty()) {
+                DWORD streamIndex = 0;
+                DWORD flags = 0;
+                LONGLONG llTimeStamp = 0;
+                ComPtr<IMFSample> pSample;
+                hr = pReader->ReadSample(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &streamIndex, &flags, &llTimeStamp, &pSample);
+                if (FAILED(hr) || (flags & MF_SOURCE_READERF_ENDOFSTREAM)) {
+                    eos = true;
+                    break;
+                }
+
+                if (pSample) {
+                    ComPtr<IMFMediaBuffer> pBuffer;
+                    if (SUCCEEDED(pSample->ConvertToContiguousBuffer(&pBuffer))) {
+                        BYTE* pAudioData = NULL;
+                        DWORD currentLength = 0;
+                        if (SUCCEEDED(pBuffer->Lock(&pAudioData, NULL, &currentLength))) {
+                            pendingData.assign(pAudioData, pAudioData + currentLength);
+                            pBuffer->Unlock();
+                        }
+                    }
+                }
+            }
+
+            UINT32 padding = 0;
+            pAudioClient->GetCurrentPadding(&padding);
+            UINT32 framesAvailable = (bufferFrameCount > padding) ? (bufferFrameCount - padding) : 0;
+
+            if (framesAvailable > 0 && !pendingData.empty()) {
+                UINT32 framesToWrite = (UINT32)(pendingData.size() / bytesPerFrame);
+                if (framesToWrite > framesAvailable) {
+                    framesToWrite = framesAvailable;
+                }
+
+                if (framesToWrite > 0) {
+                    BYTE* pData = NULL;
+                    if (SUCCEEDED(pRenderClient->GetBuffer(framesToWrite, &pData))) {
+                        DWORD bytesToWrite = framesToWrite * bytesPerFrame;
+                        memcpy(pData, pendingData.data(), bytesToWrite);
+                        pRenderClient->ReleaseBuffer(framesToWrite, 0);
+
+                        pendingData.erase(pendingData.begin(), pendingData.begin() + bytesToWrite);
+                    }
+                }
+            }
+
+            if (framesAvailable == 0 || pendingData.size() >= framesAvailable * bytesPerFrame) {
+                Sleep(15);
+            }
+        }
+
+        // Aguarda esvaziar o que restou no buffer de saída
+        UINT32 pad = 0;
+        while (SUCCEEDED(pAudioClient->GetCurrentPadding(&pad)) && pad > 0) {
+            Sleep(20);
+        }
+
+        pAudioClient->Stop();
+        CoTaskMemFree(pMixFormat);
+    }
+
+    MFShutdown();
+    return exitCode;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: hub_audio_helper <status|set-master <0-100>|set-master-mute <0|1>|set-app <target> <0-100>|set-app-mute <target> <0|1>>\n";
+        std::cerr << "Usage: hub_audio_helper <status|list-devices|play-sound <file> [device]|set-master <0-100>|set-master-mute <0|1>|set-app <target> <0-100>|set-app-mute <target> <0|1>>\n";
         return 1;
     }
 
@@ -373,6 +657,12 @@ int main(int argc, char* argv[]) {
 
     if (cmd == "status") {
         res = DoStatus();
+    } else if (cmd == "list-devices") {
+        res = DoListDevices();
+    } else if (cmd == "play-sound" && argc >= 3) {
+        std::wstring filePath = Utf8ToWide(argv[2]);
+        std::string targetDevice = (argc >= 4) ? argv[3] : "";
+        res = DoPlaySound(filePath, targetDevice);
     } else if (cmd == "set-master" && argc >= 3) {
         res = DoSetMaster(std::stoi(argv[2]));
     } else if (cmd == "set-master-mute" && argc >= 3) {
@@ -389,4 +679,3 @@ int main(int argc, char* argv[]) {
     CoUninitialize();
     return res;
 }
-

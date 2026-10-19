@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
 import '../settings/broker_settings_dialog.dart';
+import 'sound_library_dialog.dart';
 import 'editor_controller.dart';
 import 'import_layout_dialog.dart';
 import 'inspector_panel.dart';
@@ -130,6 +131,12 @@ class _TopBar extends ConsumerWidget {
             icon: const Icon(Icons.data_object, size: 18),
             tooltip: 'Importar/Editar JSON',
             onPressed: () => showImportLayoutDialog(context, ref),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.library_music, size: 18),
+            tooltip: 'Biblioteca de Sons',
+            onPressed: () => showSoundLibraryDialog(context: context, ref: ref),
           ),
           const SizedBox(width: 8),
           FilledButton.icon(

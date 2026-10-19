@@ -195,7 +195,24 @@ class _TileCardState extends State<TileCard>
               )
             : null,
       ),
-      child: content,
+      child: Stack(
+        children: [
+          Center(child: content),
+          if (widget.tile is SoundTile)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurpleAccent.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.music_note, size: 12, color: Colors.deepPurpleAccent),
+              ),
+            ),
+        ],
+      ),
     );
 
     // Se não existe interação, não adiciona GestureDetector/InkWell.

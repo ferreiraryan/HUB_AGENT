@@ -19,6 +19,7 @@ dependencies:
   path_provider: ^2.1.5
   flex_color_picker: ^3.7.1
   reorderable_grid_view: ^2.2.8
+  file_selector: ^1.1.0
 
 dev_dependencies:
   flutter_test:

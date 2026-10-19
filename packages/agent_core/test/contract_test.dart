@@ -292,4 +292,120 @@ void main() {
       expect(v.toJson(), equals({'value': 45}));
     });
   });
+
+  group('Sound Pad (Etapa 1: Modelo de Domínio e Contrato)', () {
+    test('SoundTile serializa e desserializa corretamente via Tile.fromJson', () {
+      const tile = SoundTile(
+        id: 'tile_horn',
+        icon: '📢',
+        label: 'Corneta',
+        soundId: 'horn_fx',
+      );
+
+      final json = tile.toJson();
+      expect(json, equals({
+        'type': 'sound',
+        'id': 'tile_horn',
+        'icon': '📢',
+        'label': 'Corneta',
+        'sound_id': 'horn_fx',
+      }));
+
+      final restored = Tile.fromJson(json);
+      expect(restored, isA<SoundTile>());
+      final restoredSound = restored as SoundTile;
+      expect(restoredSound.id, equals('tile_horn'));
+      expect(restoredSound.icon, equals('📢'));
+      expect(restoredSound.label, equals('Corneta'));
+      expect(restoredSound.soundId, equals('horn_fx'));
+      expect(restoredSound, equals(tile));
+    });
+
+    test('SoundTile no Layout e publicado no contrato canonical', () {
+      final layout = Layout(
+        deviceName: 'PC',
+        theme: HubTheme.fallback,
+        pages: const {
+          'home': [
+            SoundTile(
+              id: 'sound_1',
+              icon: '🎵',
+              label: 'Aplausos',
+              soundId: 'applause',
+            ),
+          ],
+        },
+      );
+
+      final published = layout.toPublishJson();
+      final pageTiles = (published['pages'] as Map)['home'] as List;
+      expect(pageTiles.length, equals(1));
+      expect(pageTiles.first, equals({
+        'type': 'sound',
+        'id': 'sound_1',
+        'icon': '🎵',
+        'label': 'Aplausos',
+        'sound_id': 'applause',
+      }));
+
+      // Garante que toPublishJson não contém bindings
+      expect(published.containsKey('bindings'), isFalse);
+    });
+
+    test('builtinActions reconhece play_sound e stop_sound sem exigir bindings', () {
+      expect(Layout.builtinActions.contains('play_sound'), isTrue);
+      expect(Layout.builtinActions.contains('stop_sound'), isTrue);
+
+      final layout = Layout(
+        deviceName: 'PC',
+        theme: HubTheme.fallback,
+        pages: const {
+          'home': [
+            SoundTile(
+              id: 'sound_1',
+              icon: '🎵',
+              label: 'Aplausos',
+              soundId: 'applause',
+            ),
+          ],
+        },
+      );
+
+      final issues = layout.validate();
+      // Não deve gerar erro nem warning de falta de binding para SoundTile válido
+      expect(issues.where((i) => i.level == IssueLevel.error), isEmpty);
+    });
+
+    test('SoundPlaybackState serializa playing e idle corretamente', () {
+      const idle = SoundPlaybackState.idle;
+      expect(idle.toJson(), equals({'playing': null, 'status': 'idle'}));
+      expect(idle.isPlaying, isFalse);
+      expect(idle.soundId, isNull);
+
+      final playing = SoundPlaybackState.playing('horn_fx');
+      expect(playing.toJson(), equals({'playing': 'horn_fx', 'status': 'playing'}));
+      expect(playing.isPlaying, isTrue);
+      expect(playing.soundId, equals('horn_fx'));
+
+      final parsedIdle = SoundPlaybackState.fromJson({'playing': null, 'status': 'idle'});
+      expect(parsedIdle, equals(idle));
+
+      final parsedPlaying = SoundPlaybackState.fromJson({'playing': 'horn_fx', 'status': 'playing'});
+      expect(parsedPlaying, equals(playing));
+    });
+
+    test('AgentTopics e AgentCommand suportam Sound Pad', () {
+      const topics = AgentTopics('desk-1');
+      expect(topics.soundState, equals('nodes/desk-1/sound/state'));
+
+      final cmd1 = AgentCommand.tryParse('{"action": "play_sound", "sound_id": "buzzer"}');
+      expect(cmd1, isNotNull);
+      expect(cmd1!.action, equals('play_sound'));
+      expect(cmd1.soundId, equals('buzzer'));
+
+      final cmd2 = AgentCommand.tryParse('{"action": "play_sound", "id": "buzzer_2"}');
+      expect(cmd2, isNotNull);
+      expect(cmd2!.soundId, equals('buzzer_2'));
+    });
+  });
 }

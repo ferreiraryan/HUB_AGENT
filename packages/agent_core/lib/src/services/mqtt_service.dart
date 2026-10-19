@@ -10,6 +10,7 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import '../models/audio_state.dart';
 import '../models/layout.dart';
 import '../models/media_state.dart';
+import '../models/sound_playback_state.dart';
 import '../util/notifier.dart';
 import 'stats/stats_service.dart';
 
@@ -25,6 +26,7 @@ class AgentTopics {
   String get volume => '$base/audio/volume';
   String get apps => '$base/audio/apps';
   String get media => '$base/media';
+  String get soundState => '$base/sound/state';
   String get cmd => '$base/cmd';
 }
 
@@ -46,6 +48,7 @@ class AgentCommand {
   String? get appId => raw['app_id']?.toString();
   String? get shortcutId => raw['id']?.toString();
   String? get sliderId => raw['id']?.toString();
+  String? get soundId => raw['sound_id']?.toString() ?? raw['id']?.toString();
 
   static AgentCommand? tryParse(String payload) {
     try {
@@ -197,6 +200,11 @@ class MqttService {
         retain: true, qos: MqttQos.atMostOnce);
   }
 
+  void publishSoundState(SoundPlaybackState soundState) {
+    _publish(topics.soundState, jsonEncode(soundState.toJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
   void publishSliderState(String sliderId, int value) {
     _publish(
       '${topics.base}/state/$sliderId',
@@ -228,6 +236,7 @@ class MqttService {
       topics.volume,
       topics.apps,
       topics.media,
+      topics.soundState,
       '${topics.base}/stats/cpu',
       '${topics.base}/stats/ram',
       '${topics.base}/stats/disk',

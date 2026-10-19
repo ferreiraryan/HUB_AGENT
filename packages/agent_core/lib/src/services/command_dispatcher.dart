@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import '../models/tile.dart';
 import '../models/layout.dart';
 import 'audio/audio_controller.dart';
@@ -7,6 +8,7 @@ import 'brightness_controller.dart';
 import 'key_sender.dart';
 import 'media_service.dart';
 import 'mqtt_service.dart';
+import 'sound/sound_controller.dart';
 
 class CommandResult {
   final bool started;
@@ -31,6 +33,7 @@ class CommandDispatcher {
   final BrightnessController brightness;
   final MediaService media;
   final KeySender keySender;
+  final SoundController? sound;
   final Set<String> allowedBinaries;
   final Layout Function() layoutProvider;
   final void Function()? onLocalVolumeChange;
@@ -41,6 +44,7 @@ class CommandDispatcher {
     required this.media,
     required this.keySender,
     required this.layoutProvider,
+    this.sound,
     this.allowedBinaries = const {},
     this.onLocalVolumeChange,
   });
@@ -96,9 +100,35 @@ class CommandDispatcher {
         }
         await _applySlider(tile.source, v);
 
+      case 'play_sound':
+        final soundId = cmd.soundId;
+        if (soundId == null || soundId.isEmpty) {
+          stderr.writeln('play_sound exige id ou sound_id');
+          return;
+        }
+        await sound?.play(soundId);
+
+      case 'stop_sound':
+        await sound?.stop();
+
       default:
+        final soundTile = _findSoundTile(cmd.action);
+        if (soundTile != null) {
+          await sound?.play(soundTile.soundId);
+          return;
+        }
         await runShortcut(cmd.action);
     }
+  }
+
+  SoundTile? _findSoundTile(String id) {
+    final layout = layoutProvider();
+    for (final tiles in layout.pages.values) {
+      for (final t in tiles) {
+        if (t is SoundTile && t.id == id) return t;
+      }
+    }
+    return null;
   }
 
   SliderTile? _findSliderTile(String id) {

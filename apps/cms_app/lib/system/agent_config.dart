@@ -7,30 +7,43 @@ class AgentConfig {
   final String host;
   final int port;
   final String deviceId;
+  final String? soundOutputDevice;
 
   const AgentConfig({
     required this.host,
     required this.port,
     required this.deviceId,
+    this.soundOutputDevice,
   });
 
   factory AgentConfig.fromJson(Map<String, dynamic> json) => AgentConfig(
         host: json['host'] as String? ?? 'localhost',
         port: json['port'] as int? ?? 1883,
         deviceId: json['deviceId'] as String? ?? Platform.localHostname,
+        soundOutputDevice: json['soundOutputDevice'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'host': host,
         'port': port,
         'deviceId': deviceId,
+        if (soundOutputDevice != null) 'soundOutputDevice': soundOutputDevice,
       };
 
-  AgentConfig copyWith({String? host, int? port, String? deviceId}) =>
+  AgentConfig copyWith({
+    String? host,
+    int? port,
+    String? deviceId,
+    String? soundOutputDevice,
+    bool clearSoundOutputDevice = false,
+  }) =>
       AgentConfig(
         host: host ?? this.host,
         port: port ?? this.port,
         deviceId: deviceId ?? this.deviceId,
+        soundOutputDevice: clearSoundOutputDevice
+            ? null
+            : (soundOutputDevice ?? this.soundOutputDevice),
       );
 
   static Future<File> _getFile() async {

@@ -1,5 +1,4 @@
-// apps/cms_app/lib/features/settings/broker_settings_dialog.dart
-
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,6 +28,8 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   late final TextEditingController _deviceIdController;
 
   bool? _autostartEnabled;
+  List<AudioOutputDevice> _devices = [];
+  String? _selectedSoundDevice;
 
   @override
   void initState() {
@@ -37,8 +38,18 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
     _hostController = TextEditingController(text: config.host);
     _portController = TextEditingController(text: config.port.toString());
     _deviceIdController = TextEditingController(text: config.deviceId);
+    _selectedSoundDevice = config.soundOutputDevice;
 
     _loadAutostart();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    final runtime = ref.read(agentRuntimeProvider);
+    final list = await (runtime.sound?.listDevices() ?? Future.value(<AudioOutputDevice>[]));
+    if (mounted) {
+      setState(() => _devices = list);
+    }
   }
 
   Future<void> _loadAutostart() async {
@@ -90,6 +101,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
       host: _hostController.text.trim(),
       port: int.tryParse(_portController.text.trim()) ?? 1883,
       deviceId: _deviceIdController.text.trim(),
+      soundOutputDevice: _selectedSoundDevice,
     );
 
     await updated.save();
@@ -117,7 +129,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Configurações do Broker'),
+      title: const Text('Configurações do Agente'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -145,6 +157,41 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
               value: _autostartEnabled ?? false,
               onChanged: _autostartEnabled == null ? null : _toggleAutostart,
               contentPadding: EdgeInsets.zero,
+            ),
+            const Divider(height: 32),
+            const Text(
+              'Sound Pad (Dispositivo de Saída)',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              initialValue: (_selectedSoundDevice != null &&
+                      _devices.any((d) => d.id == _selectedSoundDevice || d.name == _selectedSoundDevice))
+                  ? _selectedSoundDevice
+                  : null,
+              decoration: const InputDecoration(
+                labelText: 'Saída de áudio do microfone/pad',
+                hintText: 'Dispositivo Padrão do Sistema',
+              ),
+              items: [
+                const DropdownMenuItem<String>(
+                  value: null,
+                  child: Text('Dispositivo Padrão do Sistema'),
+                ),
+                ..._devices.map(
+                  (d) => DropdownMenuItem<String>(
+                    value: d.name,
+                    child: Text(
+                      d.isDefault ? '${d.name} (Padrão)' : d.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+              onChanged: (val) {
+                setState(() => _selectedSoundDevice = val);
+              },
             ),
           ],
         ),
