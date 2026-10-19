@@ -1,31 +1,38 @@
 # Hub Agent — Tablet (Dashboard)
 
-Dashboard kiosk em HTML/JS vanilla que consome o estado publicado pelo
-agente em `nodes/+/...` via MQTT sobre WebSocket.
+Dashboard kiosk vanilla (HTML5, CSS3, JavaScript puro) que consome o estado publicado pelo agente em `nodes/+/...` via MQTT sobre WebSocket. Otimizado para tablets com versões legadas do Android (Android 5/6).
 
-## Como rodar (Termux / Linux)
+## Como Executar no Tablet (Termux)
 
-Pré-requisitos:
-  - Node.js (>= 18)
-  - Mosquitto rodando com WebSocket nativo em `listener 9001`
+### Pré-requisitos
+```bash
+pkg install mosquitto python
+```
 
-Passos:
-  1. npm install
-  2. Ajuste o IP do mosquitto em `bridge.js` (constante MQTT_HOST)
-  3. npm start
-  4. Abra `http://localhost:8080` no navegador do tablet
+### Inicialização
+Copie os arquivos para a pasta `~/dashboard/` e execute:
+```bash
+bash ~/start-tablet.sh
+```
 
-## Contrato MQTT (resumo)
+O script inicia o Mosquitto (portas 1883 TCP e 9001 WebSocket) e o servidor HTTP em background na porta 8080. Em seguida, acesse no navegador:
+```text
+http://127.0.0.1:8080
+```
 
-Assina:
-  - nodes/+/status          → { online }
-  - nodes/+/layout          → { deviceName, theme, pages }
-  - nodes/+/audio/volume    → { value: 0..100 }
-  - nodes/+/audio/apps      → [ { id, name, volume } ]
-  - nodes/+/media           → { status, title, artist }
+## Tópicos MQTT Consumidos
 
-Publica:
-  - nodes/{deviceId}/cmd    → { action, value?, app_id? }
+### Assina:
+- `nodes/+/status`
+- `nodes/+/layout`
+- `nodes/+/audio/volume`
+- `nodes/+/audio/apps`
+- `nodes/+/media`
+- `nodes/+/sound/state`
+- `nodes/+/state/+`
+- `nodes/+/stats/cpu`
+- `nodes/+/stats/ram`
+- `nodes/+/stats/disk`
 
-O contrato completo está em `../packages/agent_core/test/fixtures/layout_golden.json`
-e em `../README.md`.
+### Publica:
+- `nodes/{deviceId}/cmd`

@@ -1,6 +1,6 @@
 # Hub Agent 🚀
 
-Um ecossistema modular e local de automação e controle distribuído baseado na arquitetura **Hub & Spoke** via **MQTT**. O sistema transforma um tablet Android legado em um painel touch kiosk responsivo com baixíssima latência, enquanto gerencia comandos, áudio e mídia de estações de trabalho satélites (Linux/Windows) controladas por um CMS visual desktop em Flutter.
+Um ecossistema modular e local de automação e controle distribuído baseado na arquitetura **Hub & Spoke** via **MQTT**. O sistema transforma um tablet Android legado em um painel touch kiosk responsivo com baixíssima latência, enquanto gerencia comandos, áudio, mídia, mesa de sons (Sound Pad) e estatísticas de computadores (Linux e Windows) controlados por um CMS visual desktop em Flutter.
 
 ---
 
@@ -10,206 +10,149 @@ Um ecossistema modular e local de automação e controle distribuído baseado na
  ┌────────────────────────────────────────────────────────┐
  │                   TABLET (Hub Central)                 │
  │                                                        │
- │   Mosquitto Broker (TCP :1883) ◄──────────┐            │
- │             ▲                             │            │
- │   bridge.js (WS :9001 -> TCP :1883)       │            │
- │             ▲                             │            │
- │   Web Dashboard (:8080)                   │            │
- │   (Vanilla JS / Fully Kiosk)              │            │
- └───────────────────────────────────────────┼────────────┘
-                                             │
-                                     MQTT TCP (:1883)
-                                             │
- ┌───────────────────────────────────────────┴────────────┐
+ │   Mosquitto Broker (TCP :1883 + WS :9001)              │
+ │             ▲                                          │
+ │   Web Dashboard (:8080 via Python HTTP Server)         │
+ │   (Vanilla JS / Fully Kiosk Browser)                   │
+ └─────────────────────────┬──────────────────────────────┘
+                           │
+                   MQTT TCP (:1883)
+                           │
+ ┌─────────────────────────┴──────────────────────────────┐
  │                    PC (Spoke / Satélite)               │
  │                                                        │
  │   [apps/cms_app]                                       │
  │   Flutter Desktop (Editor Visual 3-pane + Tray)        │
  │             │                                          │
  │   [packages/agent_core]                                │
- │   Dart Puro (MQTT Engine, Audio Mixer, Media IPC)      │
+ │   Dart Puro (MQTT Engine, Audio Mixer, Sound Pad, IPC) │
  └────────────────────────────────────────────────────────┘
 ```
 
-- **Tablet (O Hub):** Fica fixo na bancada rodando o broker MQTT e hospedando a interface web com WebSocket Bridge sobre o Termux.
-- **PC Satélite (O Spoke):** Executa o aplicativo desktop que publica layouts, telemetria de mídia e áudio, além de escutar e executar comandos locais (scripts, launchers e atalhos).
+- **Tablet (O Hub):** Fica fixo na bancada rodando o broker MQTT Mosquitto com suporte nativo a WebSocket e servindo a interface web estática sobre o Termux.
+- **PC Satélite (O Spoke):** Executa o aplicativo desktop que publica layouts, áudio, som e telemetria, além de escutar e executar comandos locais (scripts, launchers, mesa de som e atalhos).
 - **Zero Cloud:** Toda a comunicação opera estritamente na rede local (LAN).
 
 ---
 
 ## 📂 Estrutura do Monorepo
 
-O repositório adota um layout monorepo gerenciado via `melos` para os componentes em Dart/Flutter, mantendo o frontend e o bridge web do tablet isolados.
-
 ```text
 hub_agent/
 ├── .gitignore
 ├── README.md                      # Documentação central do projeto
-├── melos.yaml                     # Workspace Dart/Flutter
+├── CONTEXT.md                     # Documento arquitetural detalhado para desenvolvedores
+├── AGENT.md                       # Diretrizes de desenvolvimento para agentes de IA
 │
 ├── packages/
 │   └── agent_core/                # Dart puro (sem dependência de Flutter)
-│       ├── lib/                   # Models, clientes MQTT, pipes de áudio e playerctl
-│       └── test/                  # Golden tests e validação canônica de contrato
+│       ├── lib/                   # Models, clientes MQTT, pipes de áudio, mídia e soundpad
+│       └── test/                  # Golden tests, testes contratuais e testes unitários
 │
 ├── apps/
 │   └── cms_app/                   # Editor visual Flutter Desktop (Linux/Windows)
 │       ├── lib/                   # UI Three-pane (Páginas / Live Preview / Inspector)
-│       └── linux/ & windows/      # Configurações e runners nativos
+│       ├── linux/                 # Runners e integrações nativas Linux
+│       └── windows/               # Configurações Windows, hub_audio_helper (WASAPI) e nircmd
 │
-└── tablet/                        # Frontend Kiosk e servidor WebSocket
-    ├── index.html                 # Interface Touch Kiosk
-    ├── style.css                  # Folha de estilos (Variáveis dinâmicas CSS)
-    ├── app.js                     # Motor Vanilla JS (Auto-Discovery e navegação)
+└── dashboard_web/                 # Frontend Kiosk do tablet (HTML5/CSS3/Vanilla JS)
+    ├── index.html                 # Interface Touch Kiosk com tema dinâmico
+    ├── style.css                  # Estilos responsivos e animações
+    ├── app.js                     # Motor Vanilla JS (compatível com Android 5/6 WebView)
     ├── mqtt.min.js                # Cliente MQTT para WebSocket
-    ├── bridge.js                  # Proxy WebSocket (:9001) para TCP (:1883) + Servidor HTTP (:8080)
-    ├── package.json               # Dependências do bridge (Node.js/ws)
-    └── README.md                  # Instruções de setup isolado no Android/Termux
+    ├── twemoji.min.js             # Renderização cross-platform de emojis
+    └── start-tablet.sh            # Script Termux de inicialização dos serviços
 ```
 
 ---
 
 ## 📡 Contrato de Comunicação MQTT
 
-O ecossistema utiliza tópicos estruturados em torno de `nodes/{deviceId}/...` com auto-descoberta dinâmica.
+Todos os tópicos utilizam o prefixo `nodes/{deviceId}/...` com auto-descoberta dinâmica.
 
 ### Tópicos Publicados pelo Agente (Retained)
 
 | Tópico | Exemplo de Payload | Descrição |
 | :--- | :--- | :--- |
 | `nodes/{deviceId}/status` | `{"online": true, "os": "linux"}` | Presença do PC (mantido com LWT). |
-| `nodes/{deviceId}/layout` | *(Ver schema abaixo)* | Árvore de telas, temas e atalhos. |
+| `nodes/{deviceId}/layout` | `{"deviceName": "...", "theme": {...}, "pages": [...]}` | Telas, botões e temas do kiosk. |
 | `nodes/{deviceId}/audio/volume` | `{"value": 75}` | Nível de volume master (0-100). |
 | `nodes/{deviceId}/audio/apps` | `[{"id": "12", "name": "Spotify", "volume": 60}]` | Mixer por aplicação. |
-| `nodes/{deviceId}/media` | `{"status": "Playing", "title": "...", "artist": "..."}` | Metadados de reprodução (MPRIS). |
+| `nodes/{deviceId}/media` | `{"status": "Playing", "title": "...", "artist": "..."}` | Metadados de reprodução (MPRIS no Linux). |
+| `nodes/{deviceId}/sound/state` | `{"current_sound_id": "...", "is_playing": true, ...}` | Estado em tempo real da mesa de sons. |
+| `nodes/{deviceId}/state/{sliderId}` | `{"value": 80}` | Estado atual de sliders (brilho). |
+| `nodes/{deviceId}/stats/cpu` | `{"load": 25, "temp": 48, "freq_mhz": 3200}` | Telemetria de CPU do PC. |
+| `nodes/{deviceId}/stats/ram` | `{"used_mb": 4096, "total_mb": 16384, "percent": 25}` | Uso de memória RAM. |
+| `nodes/{deviceId}/stats/disk` | `{"mount": "/", "used_gb": 100, "total_gb": 500, "percent": 20}` | Uso do disco principal. |
 
-### Tópicos Publicados pelo Tablet (Comandos)
+### Comandos Recebidos pelo Agente
 
-| Tópico | Payload | Ação |
-| :--- | :--- | :--- |
-| `nodes/{deviceId}/cmd` | `{"action": "terminal"}` | Dispara o comando cadastrado no layout. |
-| `nodes/{deviceId}/audio/volume/set` | `{"value": 50}` | Altera o volume master do sistema. |
-| `nodes/{deviceId}/audio/app/set` | `{"app_id": "12", "value": 40}` | Altera o volume de um app específico. |
-
----
-
-### Schema do `layout.json` (Config-Driven UI)
+Tópico de subscrição: `nodes/{deviceId}/cmd`
 
 ```json
-{
-  "deviceName": "Arch Desktop",
-  "theme": {
-    "bgColor": "#11111b",
-    "cardColor": "#1e1e2e",
-    "accentColor": "#cba6f7",
-    "borderRadius": "16px"
-  },
-  "pages": {
-    "home": [
-      {
-        "type": "folder",
-        "id": "dev_tools",
-        "icon": "📁",
-        "label": "Dev Tools",
-        "target": "dev_tools"
-      },
-      {
-        "type": "shortcut",
-        "id": "lock",
-        "icon": "🔒",
-        "label": "Bloquear",
-        "cmd": ["loginctl", "lock-session"]
-      }
-    ],
-    "dev_tools": [
-      {
-        "type": "back",
-        "id": "back_home",
-        "icon": "⬅️",
-        "label": "Voltar"
-      },
-      {
-        "type": "shortcut",
-        "id": "terminal",
-        "icon": "💻",
-        "label": "Kitty",
-        "cmd": ["kitty"]
-      }
-    ]
-  }
-}
+{"action": "play_pause"}
+{"action": "next"}
+{"action": "prev"}
+{"action": "set_volume", "value": 75}
+{"action": "set_app_volume", "app_id": "spotify", "value": 50}
+{"action": "set_slider", "id": "slider_id", "value": 40}
+{"action": "play_sound", "sound_id": "som_1"}
+{"action": "stop_sound"}
+{"action": "tile_id"}
 ```
+
+> [!IMPORTANT]
+> **Segurança de Execução:** Comandos do shell nunca são transmitidos pela rede. O layout publicado para o tablet contém apenas as referências visuais (`toPublishJson()`). A resolução de comandos locais é realizada exclusivamente pelo `CommandDispatcher` na máquina anfitriã a partir do `layout.json` gravado em disco.
 
 ---
 
 ## 🚀 Como Inicializar
 
-### 1. No Tablet (O Servidor Central)
+### 1. No Tablet (O Hub Central)
 
 Pré-requisitos no Termux:
 ```bash
-pkg install nodejs-lts mosquitto
+pkg install mosquitto python
 ```
 
-Passos de execução:
+Execute o script de inicialização do tablet:
 ```bash
-# Evita suspensão de CPU pelo Android
-termux-wake-lock
-
-# Encerra eventuais processos órfãos
-killall mosquitto node 2>/dev/null
-
-# 1. Inicia o broker MQTT em background (TCP porta 1883)
-mosquitto -d
-
-# 2. Entra na pasta do tablet e inicia a ponte WebSocket + Servidor HTTP
-cd ~/dashboard
-npm install # Executado apenas na primeira vez
-node bridge.js
+bash ~/start-tablet.sh
 ```
+O script iniciará:
+- O broker Mosquitto nas portas `1883` (TCP) e `9001` (WebSocket).
+- O servidor estático Python na porta `8080`.
 
-Acesse no navegador (Chrome ou Fully Kiosk):
+Acesse no navegador (Chrome ou Fully Kiosk Browser):
 ```text
 http://127.0.0.1:8080
 ```
-> O indicador de status do broker mudará para verde assim que o socket for autenticado em `ws://127.0.0.1:9001`.
 
----
+### 2. No Computador (Host / CMS)
 
-### 2. No PC (O Satélite / CMS)
-
-#### Configuração das Ferramentas
-No diretório raiz do monorepo:
-```bash
-dart pub global activate melos
-melos bootstrap
-```
-
-#### Executando o CMS Desktop
+#### Linux:
 ```bash
 cd apps/cms_app
-flutter run -d linux # ou -d windows
+flutter pub get
+flutter run -d linux
 ```
 
-O CMS iniciará conectado ao IP configurado do tablet, publicará o LWT de status online e despachará o layout configurado no disco.
+#### Windows:
+```powershell
+cd apps/cms_app
+flutter pub get
+flutter run -d windows
+```
 
 ---
 
-## 🛠️ Diagnóstico e Troubleshooting
+## 🗺️ Estado do Projeto e Roadmap
 
-- **Bolinha do broker vermelha no tablet:** O `bridge.js` não está em execução ou o Mosquitto não subiu na porta `1883`. Verifique com `ps aux | grep -E "mosquitto|node"`.
-- **Card do PC não aparece ou fica offline:** Verifique se o endereço IP do tablet definido na inicialização do `agent_core`/`cms_app` confere com o IP local atribuído pelo Wi-Fi. Certifique-se de que a porta `1883` não está bloqueada pelo firewall (`ufw` ou `iptables`).
-- **Comandos de interface gráfica não disparam no Linux:** No Wayland/Hyprland, garanta que os subprocessos do agente herdem as variáveis `WAYLAND_DISPLAY` e `XDG_RUNTIME_DIR`.
-- **Alterações de layout não refletem no tablet:** Certifique-se de que a mensagem despachada em `nodes/{deviceId}/layout` utiliza a flag MQTT `retain: true`.
-
----
-
-## 🗺️ Roadmap e Próximos Passos
-
-- [x] **MVP:** Contrato MQTT validado e travado por testes contratuais.
-- [x] **Auto-Discovery:** Suporte multi-dispositivo dinâmico via `nodes/#`.
-- [x] **Config-Driven UI:** Suporte a temas CSS dinâmicos e navegação por pastas aninhadas.
+- [x] **Contrato MQTT Canônico:** Travado por testes automatizados e golden test.
+- [x] **Segurança de Bindings:** Comandos de terminal e atalhos isolados localmente.
 - [x] **CMS Visual:** Editor Three-Pane (Páginas, Live Preview, Inspector).
-- [ ] **Drag-and-Drop:** Reordenação interativa de botões no editor.
-- [ ] **Native Audio Daemon:** Migração completa da captura do PipeWire/wpctl para Dart FFI.
-- [ ] **Telemetria de Sistema:** Envio e exibição de uso de CPU/RAM/GPU no dashboard do tablet.
+- [x] **Mixer de Áudio:** Master e apps no Linux (PipeWire/pactl) e Windows (WASAPI nativo).
+- [x] **Mesa de Sons (Sound Pad):** Gerenciador de biblioteca de sons, suporte a cabo virtual e toggle por reclique.
+- [x] **Telemetria de Sistema:** Leitura em tempo real de CPU, RAM e Disco no Linux e Windows.
+- [ ] **Wayland no Linux:** Suporte a envio de teclas via `ydotool`.
+- [ ] **Brilho no Windows:** Implementação de suporte nativo DDC/CI.

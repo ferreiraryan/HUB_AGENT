@@ -29,7 +29,7 @@ descreve o estado atual, as decisões arquiteturais e as pendências conhecidas.
    comando de execução ou decisão arquitetural mudar.
 10. Valide a mudança com o menor comando adequado. Para o core, execute
     `dart test`; para o CMS, use `flutter analyze` e/ou os testes relevantes;
-    para o dashboard, valide o script Node e o fluxo MQTT quando aplicável.
+    para o dashboard, valide a interface e o fluxo MQTT quando aplicável.
     Se uma ferramenta não estiver instalada, informe isso em vez de declarar
     que a validação passou.
 
@@ -37,10 +37,9 @@ descreve o estado atual, as decisões arquiteturais e as pendências conhecidas.
 
 - O fluxo principal é UI -> repository -> disco -> stream -> MQTT -> tablet.
 - O contrato publicado por `Layout.toPublishJson()` não deve incluir
-  `bindings`; `Layout.toDiskJson()` é a representação local que pode incluí-los.
-- No Windows, preserve o uso de `nircmd` para áudio, mídia e teclas conforme
-  documentado no [CONTEXT.md](./CONTEXT.md); não reintroduza COM/FFI sem uma
-  justificativa e validação específica.
+  `bindings` nem comandos locais; `Layout.toDiskJson()` é a representação local que pode incluí-los.
+- No Windows, preserve o uso de `hub_audio_helper.exe` (WASAPI nativo) para áudio e `nircmd.exe`
+  para mídia e teclas conforme documentado no [CONTEXT.md](./CONTEXT.md); não reintroduza COM/FFI direto no processo Dart.
 - Ao mexer em `layout.json`, use `LayoutRepository` ou o CMS. Não edite o
   arquivo manualmente ignorando o cache em memória.
 - Considere Linux e Windows separadamente nas integrações de áudio, mídia,
