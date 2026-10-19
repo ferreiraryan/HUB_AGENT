@@ -98,7 +98,7 @@ class CommandDispatcher {
           stderr.writeln('set_slider: slider "$id" nao encontrado no layout');
           return;
         }
-        await _applySlider(tile.source, v);
+        await _applySlider(tile.id, tile.source, v);
 
       case 'play_sound':
         final soundId = cmd.soundId;
@@ -149,7 +149,7 @@ class CommandDispatcher {
     return null;
   }
 
-  Future<void> _applySlider(SliderSource source, int value) async {
+  Future<void> _applySlider(String sliderId, SliderSource source, int value) async {
     switch (source.kind) {
       case SliderSource.kindMasterVolume:
         onLocalVolumeChange?.call();
@@ -173,7 +173,10 @@ class CommandDispatcher {
         return;
 
       case SliderSource.kindCustom:
-        final cmd = source.cmd;
+        final bindingCmds = layoutProvider().bindingFor(sliderId);
+        final cmd = (bindingCmds != null && bindingCmds.isNotEmpty)
+            ? bindingCmds.first
+            : source.cmd;
         if (cmd == null || cmd.isEmpty) {
           stderr.writeln('slider custom sem cmd');
           return;

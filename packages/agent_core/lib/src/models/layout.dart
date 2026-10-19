@@ -124,6 +124,18 @@ class Layout {
       }
     }
 
+    // Migração de formato antigo: slider custom com source.cmd embutido
+    for (final page in pages.values) {
+      for (final tile in page) {
+        if (tile is SliderTile && tile.source.kind == SliderSource.kindCustom) {
+          final legacyCmd = tile.source.cmd;
+          if (legacyCmd != null && legacyCmd.isNotEmpty && !bindings.containsKey(tile.id)) {
+            bindings[tile.id] = [legacyCmd];
+          }
+        }
+      }
+    }
+
     return Layout(
       deviceName: json['deviceName'] as String,
       theme: HubTheme.fromJson((json['theme'] as Map).cast<String, dynamic>()),
@@ -132,14 +144,31 @@ class Layout {
     );
   }
 
-  Map<String, dynamic> _orderedPages() {
+  Map<String, dynamic> _orderedPages({bool publish = false}) {
     final ordered = <String, dynamic>{};
+    List<Map<String, dynamic>> serializeList(List<Tile> list) {
+      return list.map((t) {
+        if (t is SliderTile && t.source.kind == SliderSource.kindCustom) {
+          final sJson = t.source.toJson();
+          sJson.remove('cmd');
+          return {
+            'type': 'slider',
+            'id': t.id,
+            'icon': t.icon,
+            'label': t.label,
+            'source': sJson,
+          };
+        }
+        return t.toJson();
+      }).toList();
+    }
+
     if (pages.containsKey(homePage)) {
-      ordered[homePage] = pages[homePage]!.map((t) => t.toJson()).toList();
+      ordered[homePage] = serializeList(pages[homePage]!);
     }
     for (final e in pages.entries) {
       if (e.key == homePage) continue;
-      ordered[e.key] = e.value.map((t) => t.toJson()).toList();
+      ordered[e.key] = serializeList(e.value);
     }
     return ordered;
   }
@@ -148,7 +177,7 @@ class Layout {
   Map<String, dynamic> toPublishJson() => {
         'deviceName': deviceName,
         'theme': theme.toJson(),
-        'pages': _orderedPages(),
+        'pages': _orderedPages(publish: true),
       };
 
   /// O que vai para o layout.json em disco.
@@ -156,7 +185,7 @@ class Layout {
   Map<String, dynamic> toDiskJson() => {
         'deviceName': deviceName,
         'theme': theme.toJson(),
-        'pages': _orderedPages(),
+        'pages': _orderedPages(publish: false),
         'bindings': {
           for (final e in bindings.entries) e.key: e.value,
         },
@@ -359,6 +388,7 @@ class Layout {
                   pageId: entry.key, tileId: tile.id));
             }
             if (source.kind == SliderSource.kindCustom &&
+                !(bindings[tile.id]?.isNotEmpty ?? false) &&
                 (source.cmd == null || source.cmd!.isEmpty)) {
               issues.add(LayoutIssue(
                   IssueLevel.warning, 'slider custom sem comando configurado',

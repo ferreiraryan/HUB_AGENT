@@ -53,6 +53,54 @@ void main() {
           }));
     });
 
+    test('slider custom cmd NUNCA vaza para o payload publicado e usa bindings', () {
+      final slider = const SliderTile(
+        id: 'slider_custom_1',
+        icon: '🎚️',
+        label: 'Custom Slider',
+        source: SliderSource(
+          kind: SliderSource.kindCustom,
+          cmd: ['light', '-S'],
+        ),
+      );
+      final layout = Layout.fromJson(golden)
+          .upsertTile('home', slider)
+          .setBindingLegacy('slider_custom_1', ['light', '-S']);
+
+      final published = jsonEncode(layout.toPublishJson());
+      expect(published.contains('light'), isFalse);
+      expect(published.contains('"cmd"'), isFalse);
+      expect(published.contains('"kind":"custom"'), isTrue);
+
+      final disk = layout.toDiskJson();
+      expect(disk['bindings']['slider_custom_1'], equals([['light', '-S']]));
+
+      // Teste de migração no Layout.fromJson a partir de disco legado com source.cmd
+      final legacyDiskJson = {
+        'deviceName': 'PC',
+        'theme': HubTheme.fallback.toJson(),
+        'pages': {
+          'home': [
+            {
+              'type': 'slider',
+              'id': 'slider_legacy',
+              'icon': '🎚️',
+              'label': 'Legacy',
+              'source': {
+                'kind': 'custom',
+                'cmd': ['brightnessctl', 'set'],
+              },
+            }
+          ]
+        },
+      };
+      final migrated = Layout.fromJson(legacyDiskJson);
+      expect(migrated.bindingFor('slider_legacy'), equals([['brightnessctl', 'set']]));
+      final publishedMigrated = jsonEncode(migrated.toPublishJson());
+      expect(publishedMigrated.contains('brightnessctl'), isFalse);
+      expect(publishedMigrated.contains('"cmd"'), isFalse);
+    });
+
     test('disco -> memoria -> disco preserva bindings', () {
       final original = Layout.fromJson(golden)
           .setBindingLegacy('open_vscode', ['code', '--new-window']);
