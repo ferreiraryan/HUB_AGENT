@@ -187,6 +187,7 @@ class _MonitorDropdownState extends State<MonitorDropdown> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         DropdownButtonFormField<String>(
+          // ignore: deprecated_member_use
           value: _selectedValue,
           isExpanded: true,
           decoration: const InputDecoration(

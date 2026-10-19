@@ -281,6 +281,7 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
               if (isFolder) ...[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
+                  // ignore: deprecated_member_use
                   value: _targetPage,
                   decoration: const InputDecoration(
                     labelText: 'Página de Destino',
@@ -304,6 +305,7 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         isExpanded: true,
+                        // ignore: deprecated_member_use
                         value: (_selectedSoundId != null &&
                                 _availableSounds.any((s) => s.id == _selectedSoundId))
                             ? _selectedSoundId

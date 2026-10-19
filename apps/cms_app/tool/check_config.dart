@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:cms_app/system/agent_config.dart';

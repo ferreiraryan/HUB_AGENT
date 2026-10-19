@@ -26,10 +26,10 @@ void main(List<String> args) async {
     exit(0);
   }
 
-  print('=== CONFIG DIR: ${supportDir.path} ===');
+  stdout.writeln('=== CONFIG DIR: ${supportDir.path} ===');
 
   final config = await AgentConfig.load();
-  print('=== CONFIG: host=${config.host} port=${config.port} deviceId=${config.deviceId} ===');
+  stdout.writeln('=== CONFIG: host=${config.host} port=${config.port} deviceId=${config.deviceId} ===');
 
   final repository = LayoutRepository(
     file: File('${supportDir.path}/layout.json'),
