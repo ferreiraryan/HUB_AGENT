@@ -50,18 +50,18 @@ class StatsSnapshot {
       };
 
   @override
-  bool operator ==(Object o) =>
-      o is StatsSnapshot &&
-      o.cpuLoad == cpuLoad &&
-      o.cpuTemp == cpuTemp &&
-      o.cpuFreqMhz == cpuFreqMhz &&
-      o.ramUsedMb == ramUsedMb &&
-      o.ramTotalMb == ramTotalMb &&
-      o.ramPercent == ramPercent &&
-      o.diskMount == diskMount &&
-      o.diskUsedGb == diskUsedGb &&
-      o.diskTotalGb == diskTotalGb &&
-      o.diskPercent == diskPercent;
+  bool operator ==(Object other) =>
+      other is StatsSnapshot &&
+      other.cpuLoad == cpuLoad &&
+      other.cpuTemp == cpuTemp &&
+      other.cpuFreqMhz == cpuFreqMhz &&
+      other.ramUsedMb == ramUsedMb &&
+      other.ramTotalMb == ramTotalMb &&
+      other.ramPercent == ramPercent &&
+      other.diskMount == diskMount &&
+      other.diskUsedGb == diskUsedGb &&
+      other.diskTotalGb == diskTotalGb &&
+      other.diskPercent == diskPercent;
 
   @override
   int get hashCode => Object.hash(

@@ -81,7 +81,7 @@ class LinuxBrightnessController implements BrightnessController {
         void flush() {
           if (currentNum != null) {
             _displays.add(DisplayInfo(
-              number: currentNum!,
+              number: currentNum,
               bus: currentBus ?? '',
               connector: currentConn ?? '',
               serial: currentSerial ?? '',

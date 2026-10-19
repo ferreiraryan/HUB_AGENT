@@ -75,8 +75,11 @@ final class ShortcutTile extends Tile {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is ShortcutTile && o.id == id && o.icon == icon && o.label == label;
+  bool operator ==(Object other) =>
+      other is ShortcutTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label;
 
   @override
   int get hashCode => Object.hash(type, id, icon, label);
@@ -114,12 +117,12 @@ final class FolderTile extends Tile {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is FolderTile &&
-      o.id == id &&
-      o.icon == icon &&
-      o.label == label &&
-      o.target == target;
+  bool operator ==(Object other) =>
+      other is FolderTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label &&
+      other.target == target;
 
   @override
   int get hashCode => Object.hash(type, id, icon, label, target);
@@ -146,8 +149,8 @@ final class BackTile extends Tile {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is BackTile && o.id == id && o.icon == icon && o.label == label;
+  bool operator ==(Object other) =>
+      other is BackTile && other.id == id && other.icon == icon && other.label == label;
 
   @override
   int get hashCode => Object.hash(type, id, icon, label);
@@ -209,14 +212,14 @@ class SliderSource {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is SliderSource &&
-      o.kind == kind &&
-      o.match == match &&
-      (o.cmd == null && cmd == null ||
-          o.cmd != null &&
+  bool operator ==(Object other) =>
+      other is SliderSource &&
+      other.kind == kind &&
+      other.match == match &&
+      (other.cmd == null && cmd == null ||
+          other.cmd != null &&
               cmd != null &&
-              o.cmd!.join('\u0000') == cmd!.join('\u0000'));
+              other.cmd!.join('\u0000') == cmd!.join('\u0000'));
 
   @override
   int get hashCode => Object.hash(
@@ -262,12 +265,12 @@ final class SliderTile extends Tile {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is SliderTile &&
-      o.id == id &&
-      o.icon == icon &&
-      o.label == label &&
-      o.source == source;
+  bool operator ==(Object other) =>
+      other is SliderTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label &&
+      other.source == source;
 
   @override
   int get hashCode => Object.hash(type, id, icon, label, source);
@@ -312,8 +315,11 @@ class StatSource {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is StatSource && o.kind == kind && o.field == field && o.unit == unit;
+  bool operator ==(Object other) =>
+      other is StatSource &&
+      other.kind == kind &&
+      other.field == field &&
+      other.unit == unit;
 
   @override
   int get hashCode => Object.hash(kind, field, unit);
@@ -355,12 +361,12 @@ final class StatTile extends Tile {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is StatTile &&
-      o.id == id &&
-      o.icon == icon &&
-      o.label == label &&
-      o.source == source;
+  bool operator ==(Object other) =>
+      other is StatTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label &&
+      other.source == source;
 
   @override
   int get hashCode => Object.hash(type, id, icon, label, source);
@@ -402,12 +408,12 @@ final class SoundTile extends Tile {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is SoundTile &&
-      o.id == id &&
-      o.icon == icon &&
-      o.label == label &&
-      o.soundId == soundId;
+  bool operator ==(Object other) =>
+      other is SoundTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label &&
+      other.soundId == soundId;
 
   @override
   int get hashCode => Object.hash(type, id, icon, label, soundId);

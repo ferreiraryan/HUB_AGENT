@@ -36,11 +36,11 @@ class MediaState {
       {'status': status.wire, 'title': title, 'artist': artist};
 
   @override
-  bool operator ==(Object o) =>
-      o is MediaState &&
-      o.status == status &&
-      o.title == title &&
-      o.artist == artist;
+  bool operator ==(Object other) =>
+      other is MediaState &&
+      other.status == status &&
+      other.title == title &&
+      other.artist == artist;
 
   @override
   int get hashCode => Object.hash(status, title, artist);

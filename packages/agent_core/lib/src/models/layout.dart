@@ -438,23 +438,23 @@ class Layout {
   }
 
   @override
-  bool operator ==(Object o) {
-    if (o is! Layout) return false;
-    if (o.deviceName != deviceName || o.theme != theme) return false;
-    if (o.pages.length != pages.length) return false;
+  bool operator ==(Object other) {
+    if (other is! Layout) return false;
+    if (other.deviceName != deviceName || other.theme != theme) return false;
+    if (other.pages.length != pages.length) return false;
     for (final e in pages.entries) {
-      final other = o.pages[e.key];
-      if (other == null || other.length != e.value.length) return false;
-      for (var i = 0; i < other.length; i++) {
-        if (other[i] != e.value[i]) return false;
+      final otherPages = other.pages[e.key];
+      if (otherPages == null || otherPages.length != e.value.length) return false;
+      for (var i = 0; i < otherPages.length; i++) {
+        if (otherPages[i] != e.value[i]) return false;
       }
     }
-    if (o.bindings.length != bindings.length) return false;
+    if (other.bindings.length != bindings.length) return false;
     for (final e in bindings.entries) {
-      final other = o.bindings[e.key];
-      if (other == null || other.length != e.value.length) return false;
-      for (var i = 0; i < other.length; i++) {
-        if (other[i].join('\u0000') != e.value[i].join('\u0000')) return false;
+      final otherBindings = other.bindings[e.key];
+      if (otherBindings == null || otherBindings.length != e.value.length) return false;
+      for (var i = 0; i < otherBindings.length; i++) {
+        if (otherBindings[i].join('\u0000') != e.value[i].join('\u0000')) return false;
       }
     }
     return true;

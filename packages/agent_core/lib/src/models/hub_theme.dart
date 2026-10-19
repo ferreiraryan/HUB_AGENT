@@ -47,11 +47,11 @@ class HubTheme {
       );
 
   @override
-  bool operator ==(Object o) =>
-      o is HubTheme &&
-      o.bgColor == bgColor &&
-      o.cardColor == cardColor &&
-      o.accentColor == accentColor;
+  bool operator ==(Object other) =>
+      other is HubTheme &&
+      other.bgColor == bgColor &&
+      other.cardColor == cardColor &&
+      other.accentColor == accentColor;
 
   @override
   int get hashCode => Object.hash(bgColor, cardColor, accentColor);

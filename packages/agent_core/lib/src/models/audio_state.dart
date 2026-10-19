@@ -14,8 +14,8 @@ class MasterVolume {
   Map<String, dynamic> toJson() => {'value': value};
 
   @override
-  bool operator ==(Object o) =>
-      o is MasterVolume && o.value == value && o.muted == muted;
+  bool operator ==(Object other) =>
+      other is MasterVolume && other.value == value && other.muted == muted;
 
   @override
   int get hashCode => Object.hash(value, muted);
@@ -40,8 +40,11 @@ class AppVolume {
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'volume': volume};
 
   @override
-  bool operator ==(Object o) =>
-      o is AppVolume && o.id == id && o.name == name && o.volume == volume;
+  bool operator ==(Object other) =>
+      other is AppVolume &&
+      other.id == id &&
+      other.name == name &&
+      other.volume == volume;
 
   @override
   int get hashCode => Object.hash(id, name, volume);

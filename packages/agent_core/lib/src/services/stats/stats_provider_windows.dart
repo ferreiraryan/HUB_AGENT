@@ -101,6 +101,7 @@ class WindowsStatsProvider implements StatsProvider {
     try {
       final psCommand =
           r'$d = Get-CimInstance Win32_LogicalDisk -Filter '
+          // ignore: prefer_adjacent_string_concatenation, prefer_interpolation_to_compose_strings
           r'"DeviceID=' + "'" + drive + "'" + r'"; '
           r'Write-Output "$($d.Size),$($d.FreeSpace)"';
 
