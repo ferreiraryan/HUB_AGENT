@@ -441,19 +441,83 @@ button {
 /* VARIANTES: Botão de Som (Sound Pad) */
 .shortcut-btn--sound {
   position: relative;
-  transition: transform var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast), filter var(--transition-fast), border-color var(--transition-fast);
+  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .shortcut-btn--playing {
-  opacity: 0.5;
-  filter: grayscale(0.85);
-  border-color: var(--ctp-surface2);
-  cursor: not-allowed;
-  pointer-events: none;
+  border-color: var(--accent-color);
+  background: var(--ctp-surface0);
+  box-shadow: 0 0 16px var(--accent-glow), inset 0 0 12px var(--accent-glow);
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .shortcut-btn--playing:active {
-  transform: none;
+  transform: scale(0.94);
+  background: var(--ctp-surface1);
+}
+
+.shortcut-btn--playing .shortcut-btn__icon {
+  animation: sound-pulse 1s infinite alternate ease-in-out;
+}
+
+@keyframes sound-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+/* Equalizador animado em miniatura no tile quando tocando */
+.sound-wave-badge {
+  display: none;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  pointer-events: none;
+}
+
+.shortcut-btn--playing .sound-wave-badge {
+  display: flex;
+}
+
+.sound-wave-badge span {
+  display: block;
+  width: 3px;
+  background-color: var(--accent-color);
+  border-radius: 1px;
+  animation: sound-wave 0.8s infinite ease-in-out alternate;
+}
+
+.sound-wave-badge span:nth-child(1) {
+  height: 5px;
+  animation-delay: 0.1s;
+}
+
+.sound-wave-badge span:nth-child(2) {
+  height: 12px;
+  animation-delay: 0.3s;
+}
+
+.sound-wave-badge span:nth-child(3) {
+  height: 8px;
+  animation-delay: 0.2s;
+}
+
+@keyframes sound-wave {
+  0% {
+    height: 3px;
+  }
+  100% {
+    height: 12px;
+  }
 }
 
 /* VARIANTES: Card de Slider */

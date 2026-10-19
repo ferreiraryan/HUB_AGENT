@@ -359,18 +359,25 @@ const UI = {
     });
   },
 
-  updateSoundStateInPlace(deviceId) {
-    const soundState = state.soundStateCache[deviceId] || {};
-    const isPlaying = !!soundState.is_playing;
-    const currentSoundId = soundState.current_sound_id;
+  parseSoundState(data) {
+    if (!data) return { isPlaying: false, soundId: null };
+    var isPlaying = !!(data.is_playing || data.status === 'playing');
+    var soundId = data.current_sound_id || data.sound_id || data.playing || null;
+    return {
+      isPlaying: isPlaying && !!soundId,
+      soundId: isPlaying ? soundId : null
+    };
+  },
 
+  updateSoundStateInPlace(deviceId) {
+    const soundPlayback = this.parseSoundState(state.soundStateCache[deviceId]);
     const soundButtons = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--sound');
     soundButtons.forEach((btn) => {
       const soundId = btn.dataset.soundId;
-      const isThisPlaying = isPlaying && (soundId === currentSoundId);
+      const isThisPlaying = soundPlayback.isPlaying && (soundId === soundPlayback.soundId);
 
       btn.classList.toggle('shortcut-btn--playing', isThisPlaying);
-      btn.disabled = isThisPlaying;
+      btn.disabled = false;
     });
   },
 
@@ -466,29 +473,30 @@ const UI = {
         dom.shortcutsGrid.appendChild(card);
       }
       else if (item.type === 'sound') {
-        const soundState = state.soundStateCache[deviceId] || {};
-        const isPlaying = !!soundState.is_playing;
-        const currentSoundId = soundState.current_sound_id;
-        const isThisPlaying = isPlaying && (currentSoundId === item.sound_id);
+        const soundPlayback = UI.parseSoundState(state.soundStateCache[deviceId]);
+        const isThisPlaying = soundPlayback.isPlaying && (soundPlayback.soundId === item.sound_id);
 
         const btn = document.createElement('button');
         btn.className = 'shortcut-btn shortcut-btn--sound' + (isThisPlaying ? ' shortcut-btn--playing' : '');
         btn.type = 'button';
         btn.style.setProperty('--i', index);
         btn.dataset.soundId = item.sound_id;
-        btn.disabled = isThisPlaying;
+        btn.disabled = false;
 
         btn.innerHTML = 
           '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
-          '<span>' + UI.escapeHtml(item.label || 'Som') + '</span>';
+          '<span>' + UI.escapeHtml(item.label || 'Som') + '</span>' +
+          '<span class="sound-wave-badge" aria-hidden="true"><span></span><span></span><span></span></span>';
 
         btn.addEventListener('click', () => {
-          const currentState = state.soundStateCache[deviceId] || {};
-          if (currentState.is_playing && currentState.current_sound_id === item.sound_id) {
-            return;
-          }
+          const currentState = UI.parseSoundState(state.soundStateCache[deviceId]);
+          const isCurrentlyPlayingThis = currentState.isPlaying && (currentState.soundId === item.sound_id);
           const device = state.devices[deviceId];
-          if (device) {
+          if (!device) return;
+
+          if (isCurrentlyPlayingThis) {
+            MqttLayer.publishCommand(device, 'stop_sound');
+          } else {
             MqttLayer.publishCommand(device, 'play_sound', { sound_id: item.sound_id });
           }
         });

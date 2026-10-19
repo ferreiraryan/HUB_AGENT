@@ -116,8 +116,9 @@ class SystemSoundController implements SoundController {
 
   @override
   Future<void> play(String soundId, {String? targetDevice}) async {
-    // Se o mesmo som já estiver tocando, ignora duplo disparo
+    // Se o mesmo som já estiver tocando, para a reprodução (comportamento de toggle do Sound Pad)
     if (_activeSoundId == soundId && _current.isPlaying) {
+      await stop();
       return;
     }
 

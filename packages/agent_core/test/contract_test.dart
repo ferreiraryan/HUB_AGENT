@@ -378,12 +378,28 @@ void main() {
 
     test('SoundPlaybackState serializa playing e idle corretamente', () {
       const idle = SoundPlaybackState.idle;
-      expect(idle.toJson(), equals({'playing': null, 'status': 'idle'}));
+      expect(
+        idle.toJson(),
+        equals({
+          'current_sound_id': null,
+          'is_playing': false,
+          'playing': null,
+          'status': 'idle',
+        }),
+      );
       expect(idle.isPlaying, isFalse);
       expect(idle.soundId, isNull);
 
       final playing = SoundPlaybackState.playing('horn_fx');
-      expect(playing.toJson(), equals({'playing': 'horn_fx', 'status': 'playing'}));
+      expect(
+        playing.toJson(),
+        equals({
+          'current_sound_id': 'horn_fx',
+          'is_playing': true,
+          'playing': 'horn_fx',
+          'status': 'playing',
+        }),
+      );
       expect(playing.isPlaying, isTrue);
       expect(playing.soundId, equals('horn_fx'));
 
@@ -392,6 +408,19 @@ void main() {
 
       final parsedPlaying = SoundPlaybackState.fromJson({'playing': 'horn_fx', 'status': 'playing'});
       expect(parsedPlaying, equals(playing));
+
+      // Valida compatibilidade com formato canônico (current_sound_id e is_playing)
+      final parsedCanonical = SoundPlaybackState.fromJson({
+        'current_sound_id': 'horn_fx',
+        'is_playing': true,
+      });
+      expect(parsedCanonical, equals(playing));
+
+      final parsedCanonicalIdle = SoundPlaybackState.fromJson({
+        'current_sound_id': null,
+        'is_playing': false,
+      });
+      expect(parsedCanonicalIdle, equals(idle));
     });
 
     test('AgentTopics e AgentCommand suportam Sound Pad', () {

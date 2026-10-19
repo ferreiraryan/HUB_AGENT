@@ -210,5 +210,59 @@ void main() {
         externalDir.deleteSync(recursive: true);
       }
     });
+
+    test('Toggle: Tocar no mesmo som enquanto em reproducao interrompe o audio', () async {
+      const soundTile = SoundTile(
+        id: 'tile_vinheta',
+        icon: 'graphic_eq',
+        label: 'Vinheta',
+        soundId: 'vinheta_de_abertura',
+      );
+      final layout = Layout(
+        deviceName: 'Studio PC',
+        theme: HubTheme.fallback,
+        pages: const {
+          'home': [soundTile],
+        },
+      );
+
+      final dispatcher = CommandDispatcher(
+        audio: MockAudioController(),
+        brightness: UnsupportedBrightnessController(),
+        media: MediaService(),
+        keySender: FakeKeySender(),
+        sound: soundController,
+        layoutProvider: () => layout,
+      );
+
+      // Dispara reprodução inicial
+      await dispatcher.dispatch(const AgentCommand('play_sound', {
+        'sound_id': 'vinheta_de_abertura',
+      }));
+      expect(soundController.current.isPlaying, isTrue);
+
+      // Toca novamente no mesmo som -> deve interromper (stop)
+      await dispatcher.dispatch(const AgentCommand('play_sound', {
+        'sound_id': 'vinheta_de_abertura',
+      }));
+      expect(soundController.current.isPlaying, isFalse);
+      expect(soundController.stopCalls, equals(1));
+
+      // Agora via acao direta do tile
+      await dispatcher.dispatch(const AgentCommand('tile_vinheta', {}));
+      expect(soundController.current.isPlaying, isTrue);
+
+      await dispatcher.dispatch(const AgentCommand('tile_vinheta', {}));
+      expect(soundController.current.isPlaying, isFalse);
+      expect(soundController.stopCalls, equals(2));
+
+      // E comando explicito stop_sound
+      await dispatcher.dispatch(const AgentCommand('tile_vinheta', {}));
+      expect(soundController.current.isPlaying, isTrue);
+
+      await dispatcher.dispatch(const AgentCommand('stop_sound', {}));
+      expect(soundController.current.isPlaying, isFalse);
+      expect(soundController.stopCalls, equals(3));
+    });
   });
 }

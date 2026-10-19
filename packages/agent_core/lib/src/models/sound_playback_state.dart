@@ -27,7 +27,7 @@ class SoundPlaybackState {
   factory SoundPlaybackState.fromJson(Map<String, dynamic> json) {
     final status = json['status'] as String?;
     final isPlaying = (status == 'playing') || (json['is_playing'] == true);
-    final soundId = (json['playing'] ?? json['sound_id']) as String?;
+    final soundId = (json['playing'] ?? json['sound_id'] ?? json['current_sound_id']) as String?;
     return SoundPlaybackState(
       soundId: soundId,
       isPlaying: isPlaying && soundId != null,
@@ -35,6 +35,8 @@ class SoundPlaybackState {
   }
 
   Map<String, dynamic> toJson() => {
+        'current_sound_id': isPlaying ? soundId : null,
+        'is_playing': isPlaying,
         'playing': isPlaying ? soundId : null,
         'status': isPlaying ? 'playing' : 'idle',
       };
