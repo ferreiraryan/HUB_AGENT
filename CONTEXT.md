@@ -74,7 +74,7 @@ nodes/{deviceId}/
 | `status` | `{"online": bool, "os": "linux"\|"windows"}` | Retained / QoS 1 | Presença do agente. |
 | `layout` | `{"deviceName": "...", "theme": {...}, "pages": [...]}` | Retained / QoS 1 | Estrutura de telas e botões para o tablet. |
 | `audio/volume` | `{"value": 0..100}` | Sem retain / QoS 0 | Volume master do sistema. |
-| `audio/apps` | `[{"id": "...", "name": "...", "volume": 0..100}]` | Sem retain / QoS 0 | Mixer de apps (suportado em Linux). |
+| `audio/apps` | `[{"id": "...", "name": "...", "volume": 0..100}]` | Sem retain / QoS 0 | Mixer de apps (suportado em Linux e Windows). |
 | `media` | `{"status": "playing"\|"paused"\|"stopped", "title": "...", "artist": "..."}` | Sem retain / QoS 0 | Faixa em reprodução. |
 | `state/{sliderId}` | `{"value": int}` | Sem retain / QoS 0 | Estado atual de um slider genérico. |
 | `stats/cpu` | `{"load": int, "temp": int?, "freq_mhz": int?}` | Sem retain / QoS 0 | Estatísticas de CPU do PC. |
@@ -105,8 +105,7 @@ Tópico de subscrição do agente: `nodes/{deviceId}/cmd`
 ## 4. Estado Funcional por Plataforma
 
 ### Windows:
-- **Áudio Master**: Controlado via `nircmd.exe` empacotado (`windows_audio_controller.dart`). Polling de estado a cada 800 ms.
-- **Áudio por App**: Ajuste de volume de aplicativos individuais via `nircmd setappvolume <process.exe> <0.0-1.0>` (suporta executáveis como `Spotify.exe`, `chrome.exe`, `Discord.exe` ou PIDs `/<pid>`). A lista passiva de apps retorna vazia sem causar erros.
+- **Áudio Master e Apps**: Controlado nativamente via `hub_audio_helper.exe` (WASAPI / Core Audio em C++, com fallback para `nircmd.exe`). Enumera sessões de áudio ativas (`IAudioSessionEnumerator`), lê o volume master e individual com precisão e ajusta o volume de aplicativos multiprocesso (`Spotify.exe`, `chrome.exe`, `Discord.exe` ou PIDs). Polling de estado e sincronização via MQTT a cada 1000 ms.
 - **Controle de Mídia**: `WindowsMediaService` via `nircmd.exe sendkeypress` com VK codes em hex (`0xB3` play/pause, `0xB0` next, `0xB1` prev). **Nunca usar `sendkey`** (abre diálogo de help no NirCmd).
 - **Atalhos / Teclado**: `WindowsKeySender` via `nircmd.exe sendkeypress`.
 - **Estatísticas**: `WindowsStatsProvider` executa PowerShell (`Get-CimInstance Win32_Processor`, `Win32_OperatingSystem`, `Win32_LogicalDisk`). O comando legado `wmic` foi expressamente removido por não existir mais no Windows 11.
@@ -169,6 +168,6 @@ bash ~/start-tablet.sh
 ## 7. Pendências Conhecidas
 
 - **`ydotool` no Linux**: Suporte a Wayland para envio de teclas.
-- **Mixer e Brilho no Windows**: Investigar alternativas estáveis para volume por app e controle DDC/CI no Windows sem instabilidade de FFI.
+- **Brilho no Windows**: Investigar alternativas estáveis para controle DDC/CI no Windows sem instabilidade de FFI (o mixer de áudio foi solucionado com `hub_audio_helper.exe`).
 - **CI / Automação**: Configurar pipeline de GitHub Actions para execução automática de `dart test`.
 - **Limpeza de dependências**: Conferir periodicamente se `packages/agent_core/pubspec.yaml` possui versões de dependências sem caracteres acidentais.

@@ -1,17 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
-
 
 import '../../models/audio_state.dart';
 import 'audio_controller.dart';
 
-/// AudioController para Windows via nircmd.exe.
+/// AudioController para Windows via hub_audio_helper.exe (WASAPI nativo)
+/// com fallback gracioso para nircmd.exe.
 ///
-/// Por que nircmd e não COM direto: fazer COM em Dart com package:win32
-/// exige vtable manual + Finalizer que causa use-after-free. nircmd é
-/// um binário de 100 KB que faz o trabalho sem crash. Está incluído no
-/// bundle do app (windows/runner/resources/nircmd.exe) e copiado ao lado
-/// do executável no build.
+/// Utiliza hub_audio_helper.exe para leitura e ajuste em tempo real do volume
+/// master e sessões de áudio por aplicativo (inclusive multi-processos como
+/// Spotify, Discord, navegadores e jogos).
 class WindowsAudioController implements AudioController {
   final _masterCtl = StreamController<MasterVolume>.broadcast();
   final _appsCtl = StreamController<List<AppVolume>>.broadcast();
@@ -19,8 +18,12 @@ class WindowsAudioController implements AudioController {
   Timer? _pollTimer;
   bool _available = false;
   MasterVolume _master = const MasterVolume(value: 0);
+  List<AppVolume> _apps = const [];
 
-  /// Caminho absoluto para o nircmd.exe. Resolvido uma vez no start().
+  /// Caminho do helper nativo WASAPI (hub_audio_helper.exe).
+  String? _helperPath;
+
+  /// Caminho de fallback (nircmd.exe).
   String? _nircmdPath;
 
   @override
@@ -30,163 +33,213 @@ class WindowsAudioController implements AudioController {
   @override
   MasterVolume get master => _master;
   @override
-  List<AppVolume> get apps => const [];
+  List<AppVolume> get apps => List.unmodifiable(_apps);
   @override
   bool get isAvailable => _available;
 
   @override
   Future<void> start() async {
-    _nircmdPath = await _resolveNircmdPath();
-    if (_nircmdPath == null) {
-      _available = false;
-      return;
+    _helperPath = await _resolveBinaryPath('hub_audio_helper.exe');
+    if (_helperPath == null) {
+      _nircmdPath = await _resolveBinaryPath('nircmd.exe');
     }
 
-    // Teste: lê o volume. Se falhar, considera indisponível.
-    final test = await _readMaster();
-    if (test == null) {
+    if (_helperPath == null && _nircmdPath == null) {
       _available = false;
+      stderr.writeln('audio: nenhum helper (hub_audio_helper.exe ou nircmd.exe) encontrado.');
       return;
     }
 
     _available = true;
-    _master = test;
-    if (!_masterCtl.isClosed) _masterCtl.add(test);
+
+    // Leitura inicial
+    await refresh();
 
     _pollTimer = Timer.periodic(
-      const Duration(milliseconds: 800),
+      const Duration(milliseconds: 1000),
       (_) => refresh(),
     );
   }
 
-  /// Procura o nircmd.exe em locais previsíveis.
-  Future<String?> _resolveNircmdPath() async {
-    // 1. Ao lado do executável do app (bundle do Flutter).
+  /// Procura um executável nos locais previsíveis do bundle e repositório.
+  Future<String?> _resolveBinaryPath(String binaryName) async {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final candidates = <String>[
-      '$exeDir${Platform.pathSeparator}nircmd.exe',
-      '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}nircmd.exe',
-      '$exeDir${Platform.pathSeparator}resources${Platform.pathSeparator}nircmd.exe',
+      '$exeDir${Platform.pathSeparator}$binaryName',
+      '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}$binaryName',
+      '$exeDir${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
       // Fallbacks para ambiente de desenvolvimento/testes
-      '${Directory.current.path}${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}nircmd.exe',
-      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}nircmd.exe',
-      '${Directory.current.path}${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}nircmd.exe',
-      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}nircmd.exe',
+      '${Directory.current.path}${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
+      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
+      '${Directory.current.path}${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
+      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
     ];
     for (final c in candidates) {
       if (await File(c).exists()) return c;
     }
 
-    // 2. PATH do sistema (se o usuário instalou globalmente).
+    // PATH do sistema
     try {
-      final r = await Process.run('where', ['nircmd.exe']);
+      final r = await Process.run('where', [binaryName]);
       if (r.exitCode == 0) {
         final first = (r.stdout as String).trim().split('\n').first.trim();
         if (first.isNotEmpty) return first;
       }
     } catch (_) {}
 
-    stderr.writeln('audio: nircmd.exe não encontrado no bundle nem no PATH');
     return null;
   }
 
   @override
   Future<void> refresh() async {
     if (!_available) return;
-    try {
-      final v = await _readMaster();
-      if (v != null && v != _master) {
-        _master = v;
-        if (!_masterCtl.isClosed) _masterCtl.add(v);
+
+    if (_helperPath != null) {
+      try {
+        final r = await Process.run(
+          _helperPath!,
+          ['status'],
+          runInShell: false,
+        ).timeout(const Duration(seconds: 2));
+
+        if (r.exitCode == 0) {
+          final raw = (r.stdout as String).trim();
+          if (raw.isNotEmpty) {
+            final data = jsonDecode(raw) as Map<String, dynamic>;
+            final masterJson = data['master'] as Map<String, dynamic>?;
+            if (masterJson != null) {
+              final newMaster = MasterVolume(
+                value: (masterJson['volume'] as num?)?.toInt() ?? 0,
+                muted: masterJson['muted'] == true,
+              );
+              if (newMaster != _master) {
+                _master = newMaster;
+                if (!_masterCtl.isClosed) _masterCtl.add(newMaster);
+              }
+            }
+
+            final appsJson = data['apps'] as List?;
+            final newApps = <AppVolume>[];
+            if (appsJson != null) {
+              for (final item in appsJson) {
+                if (item is Map) {
+                  final id = (item['id'] ?? '').toString();
+                  final name = (item['name'] ?? id).toString();
+                  final vol = (item['volume'] as num?)?.toInt() ?? 0;
+                  if (id.isNotEmpty) {
+                    newApps.add(AppVolume(id: id, name: name, volume: vol));
+                  }
+                }
+              }
+            }
+
+            if (!_listEq(_apps, newApps)) {
+              _apps = newApps;
+              if (!_appsCtl.isClosed) _appsCtl.add(List.unmodifiable(_apps));
+            }
+          }
+        }
+      } catch (_) {
+        // Falha transitória
       }
-    } catch (_) {
-      // Falha transitória: ignora.
+    } else if (_nircmdPath != null) {
+      // Fallback nircmd: apenas mantém o último valor conhecido
+      if (_master.value == 0 && _pollTimer == null) {
+        _master = const MasterVolume(value: 50, muted: false);
+        if (!_masterCtl.isClosed) _masterCtl.add(_master);
+      }
     }
   }
-
-  /// Lê o volume master atual do Windows.
-  ///
-  /// nircmd não tem comando nativo de leitura direto, mas o truque é usar
-  /// PowerShell com o módulo padrão:
-  ///   (New-Object -ComObject WScript.Shell).SendKeys([char]175)
-  /// ...que é horrível. Alternativa: usar o próprio nircmd para "nudge" e
-  /// derivar. Não é confiável.
-  ///
-  /// Melhor: usa PowerShell com AudioDeviceCmdlets (módulo externo), ou
-  /// simplesmente mantém o último valor conhecido em memória e atualiza
-  /// só quando setMasterVolume() é chamado.
-  ///
-  /// Abordagem pragmática: mantém o estado em memória, e no boot tenta
-  /// inferir via nircmd (que não lê). Retorna o _master atual.
-  Future<MasterVolume?> _readMaster() async {
-    // nircmd não tem "get volume". Retorna o último valor conhecido.
-    // Na primeira execução, assume 50% (só até o usuário mexer).
-    if (_master.value == 0 && !_pollTimerAtivo) {
-      return const MasterVolume(value: 50, muted: false);
-    }
-    return _master;
-  }
-
-  bool get _pollTimerAtivo => _pollTimer != null;
 
   @override
   Future<void> setMasterVolume(int value) async {
-    if (!_available || _nircmdPath == null) return;
+    if (!_available) return;
     final v = value.clamp(0, 100);
-    // nircmd usa escala 0–65535.
-    final nircmdValue = (v * 65535 ~/ 100).clamp(0, 65535);
-    await _run(['setsysvolume', '$nircmdValue']);
-    _master = MasterVolume(value: v, muted: _master.muted);
-    if (!_masterCtl.isClosed) _masterCtl.add(_master);
+
+    if (_helperPath != null) {
+      try {
+        await Process.run(_helperPath!, ['set-master', '$v'], runInShell: false);
+        await refresh();
+      } catch (_) {}
+    } else if (_nircmdPath != null) {
+      final nircmdValue = (v * 65535 ~/ 100).clamp(0, 65535);
+      await _runNircmd(['setsysvolume', '$nircmdValue']);
+      _master = MasterVolume(value: v, muted: _master.muted);
+      if (!_masterCtl.isClosed) _masterCtl.add(_master);
+    }
   }
 
   @override
   Future<void> setMute(bool muted) async {
-    if (!_available || _nircmdPath == null) return;
-    await _run(['mutesysvolume', muted ? '1' : '0']);
-    _master = MasterVolume(value: _master.value, muted: muted);
-    if (!_masterCtl.isClosed) _masterCtl.add(_master);
+    if (!_available) return;
+
+    if (_helperPath != null) {
+      try {
+        await Process.run(_helperPath!, ['set-master-mute', muted ? '1' : '0'], runInShell: false);
+        await refresh();
+      } catch (_) {}
+    } else if (_nircmdPath != null) {
+      await _runNircmd(['mutesysvolume', muted ? '1' : '0']);
+      _master = MasterVolume(value: _master.value, muted: muted);
+      if (!_masterCtl.isClosed) _masterCtl.add(_master);
+    }
   }
 
   @override
   Future<void> setAppVolume(String id, int value) async {
     final clean = id.trim();
-    if (clean.isEmpty) return;
-    if (int.tryParse(clean) != null || clean.startsWith('/')) {
-      if (!_available || _nircmdPath == null) return;
-      final v = value.clamp(0, 100);
-      final floatVal = (v / 100.0).toStringAsFixed(2);
-      final pidArg = clean.startsWith('/') ? clean : '/$clean';
-      await _run(['setappvolume', pidArg, floatVal]);
-    } else {
-      await setAppVolumeByName(clean, value);
+    if (clean.isEmpty || !_available) return;
+    final v = value.clamp(0, 100);
+
+    if (_helperPath != null) {
+      try {
+        await Process.run(_helperPath!, ['set-app', clean, '$v'], runInShell: false);
+        await refresh();
+      } catch (_) {}
+    } else if (_nircmdPath != null) {
+      if (int.tryParse(clean) != null || clean.startsWith('/')) {
+        final floatVal = (v / 100.0).toStringAsFixed(2);
+        final pidArg = clean.startsWith('/') ? clean : '/$clean';
+        await _runNircmd(['setappvolume', pidArg, floatVal]);
+      } else {
+        await setAppVolumeByName(clean, value);
+      }
     }
   }
 
   @override
   Future<void> setAppVolumeByName(String name, int value) async {
-    if (!_available || _nircmdPath == null) return;
     final clean = name.trim();
-    if (clean.isEmpty) return;
+    if (clean.isEmpty || !_available) return;
     final v = value.clamp(0, 100);
-    // nircmd setappvolume <process.exe> <volume 0.0-1.0>
-    final floatVal = (v / 100.0).toStringAsFixed(2);
-    final proc = clean.toLowerCase().endsWith('.exe') ? clean : '$clean.exe';
-    await _run(['setappvolume', proc, floatVal]);
+
+    if (_helperPath != null) {
+      try {
+        await Process.run(_helperPath!, ['set-app', clean, '$v'], runInShell: false);
+        await refresh();
+      } catch (_) {}
+    } else if (_nircmdPath != null) {
+      final floatVal = (v / 100.0).toStringAsFixed(2);
+      final proc = clean.toLowerCase().endsWith('.exe') ? clean : '$clean.exe';
+      await _runNircmd(['setappvolume', proc, floatVal]);
+    }
   }
 
-  Future<void> _run(List<String> args) async {
-  final path = _nircmdPath ?? '(null)';
-  print('[AUDIO] run: "$path" ${args.map((a) => '"$a"').join(' ')}');
-  try {
-    final r = await Process.run(path, args, runInShell: false);
-    print('[AUDIO] exit=${r.exitCode}');
-    print('[AUDIO] stdout=${r.stdout}');
-    print('[AUDIO] stderr=${r.stderr}');
-  } catch (e) {
-    print('[AUDIO] ERRO: $e');
+  Future<void> _runNircmd(List<String> args) async {
+    final path = _nircmdPath;
+    if (path == null) return;
+    try {
+      await Process.run(path, args, runInShell: false);
+    } catch (_) {}
   }
-}
+
+  static bool _listEq(List<AppVolume> a, List<AppVolume> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   @override
   Future<void> dispose() async {

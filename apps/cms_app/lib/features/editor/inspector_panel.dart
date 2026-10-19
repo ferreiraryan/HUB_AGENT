@@ -1787,6 +1787,9 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
   Future<void> _loadProcesses() async {
     setState(() => _loadingProcesses = true);
     try {
+      if (widget.audio != null) {
+        await widget.audio!.refresh();
+      }
       final list = await ProcessDiscovery.getRunningProcesses();
       if (mounted) {
         setState(() {
@@ -1839,9 +1842,43 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final activeAudioApps = widget.audio?.apps ?? const [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (activeAudioApps.isNotEmpty) ...[
+          const Row(
+            children: [
+              Text(
+                'Apps com Áudio Ativo',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.greenAccent),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: activeAudioApps.map((app) {
+              final isSelected = _controller.text.toLowerCase() == app.id.toLowerCase() ||
+                  _controller.text.toLowerCase() == app.name.toLowerCase();
+              return ActionChip(
+                avatar: const Text('🔊', style: TextStyle(fontSize: 12)),
+                label: Text('${app.name} (${app.volume}%)', style: const TextStyle(fontSize: 11)),
+                backgroundColor: isSelected ? Colors.green.shade800 : const Color(0xFF1E3A2B),
+                side: BorderSide(
+                  color: isSelected ? Colors.greenAccent : Colors.white12,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                onPressed: () {
+                  _controller.text = app.id;
+                  widget.onChanged(app.id);
+                },
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+        ],
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1893,7 +1930,9 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
           focusNode: _focusNode,
           optionsBuilder: (TextEditingValue textVal) {
             final query = textVal.text.trim().toLowerCase();
+            final activeIds = activeAudioApps.map((a) => a.id).toList();
             final allOptions = <String>{
+              ...activeIds,
               ...ProcessDiscovery.commonPresets.map((p) => p.match),
               ..._runningProcesses,
             };
