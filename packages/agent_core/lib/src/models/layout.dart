@@ -269,10 +269,20 @@ class Layout {
     }
 
     final nextBindings = Map<String, List<List<String>>>.of(bindings);
-    if (oldId != newTile.id && nextBindings.containsKey(oldId)) {
-      final b = nextBindings.remove(oldId);
-      if (b != null && b.isNotEmpty) {
-        nextBindings[newTile.id] = b;
+    if (oldId != newTile.id) {
+      if (nextBindings.containsKey(oldId)) {
+        final b = nextBindings.remove(oldId);
+        if (b != null && b.isNotEmpty) {
+          nextBindings[newTile.id] = b;
+        }
+      }
+      for (final suffix in [':a', ':b']) {
+        if (nextBindings.containsKey('$oldId$suffix')) {
+          final b = nextBindings.remove('$oldId$suffix');
+          if (b != null && b.isNotEmpty) {
+            nextBindings['${newTile.id}$suffix'] = b;
+          }
+        }
       }
     }
 
@@ -417,10 +427,23 @@ class Layout {
                   IssueLevel.error, 'SoundTile sem sound_id definido',
                   pageId: entry.key, tileId: tile.id));
             }
+          case ToggleTile(:final stateA, :final stateB):
+            final hasBindingA = bindings['${tile.id}:a']?.isNotEmpty ?? false;
+            final hasBindingB = bindings['${tile.id}:b']?.isNotEmpty ?? false;
+            if (!hasBindingA && !hasBindingB) {
+              issues.add(LayoutIssue(IssueLevel.warning,
+                  'toggle sem comandos associados (:a ou :b)',
+                  pageId: entry.key, tileId: tile.id));
+            }
+            if (stateA.label.trim().isEmpty && stateB.label.trim().isEmpty) {
+              issues.add(LayoutIssue(IssueLevel.warning,
+                  'toggle com labels vazios nos estados',
+                  pageId: entry.key, tileId: tile.id));
+            }
           case BackTile():
             break;
         }
-        if (tile.label.trim().isEmpty) {
+        if (tile is! ToggleTile && tile.label.trim().isEmpty) {
           issues.add(LayoutIssue(IssueLevel.warning, 'label vazio',
               pageId: entry.key, tileId: tile.id));
         }
@@ -438,7 +461,8 @@ class Layout {
     // Binding que não corresponde a nenhum tile: lixo acumulado no disco.
     final allIds = pages.values.expand((l) => l).map((t) => t.id).toSet();
     for (final id in bindings.keys) {
-      if (!allIds.contains(id)) {
+      final baseId = id.contains(':') ? id.split(':').first : id;
+      if (!allIds.contains(id) && !allIds.contains(baseId)) {
         issues.add(LayoutIssue(
             IssueLevel.warning, 'binding orfao para id "$id"',
             tileId: id));

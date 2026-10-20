@@ -476,6 +476,48 @@ class _TileCardState extends State<TileCard>
       );
     }
 
+    if (tile is ToggleTile) {
+      final iconSize = is2x2 ? 40.0 : (is1x2 ? 30.0 : 26.0);
+      final fontSize = is2x2 ? 14.0 : 11.0;
+
+      return Padding(
+        padding: const EdgeInsets.all(6.0),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTileIcon(tile.stateA.icon, size: iconSize),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.sync_alt, size: 14, color: Colors.white38),
+                    const SizedBox(width: 4),
+                    _buildTileIcon(tile.stateB.icon, size: iconSize),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${tile.stateA.label} / ${tile.stateB.label}',
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: is2x2 ? FontWeight.w600 : FontWeight.normal,
+                    color: Colors.white70,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     // Atalhos, sons, pastas e voltar
     final iconSize = is2x2 ? 48.0 : (is1x2 ? 38.0 : 32.0);
     final fontSize = is2x2 ? 15.0 : 12.0;
@@ -537,6 +579,27 @@ class _TileCardState extends State<TileCard>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Icon(Icons.music_note, size: 12, color: Colors.deepPurpleAccent),
+              ),
+            ),
+          if (widget.tile is ToggleTile)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.5), width: 0.8),
+                ),
+                child: const Text(
+                  'A/B',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.tealAccent,
+                  ),
+                ),
               ),
             ),
         ],

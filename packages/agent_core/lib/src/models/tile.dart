@@ -78,6 +78,13 @@ sealed class Tile {
             y: y,
             clearCoords: clearCoords,
           ),
+        final ToggleTile t => t.copyWith(
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            clearCoords: clearCoords,
+          ),
       };
 
   factory Tile.fromJson(Map<String, dynamic> json) {
@@ -154,6 +161,22 @@ sealed class Tile {
           icon: icon,
           label: label,
           soundId: (json['sound_id'] as String?) ?? id,
+          width: width,
+          height: height,
+          x: x,
+          y: y,
+        ),
+      'toggle' => ToggleTile(
+          id: id,
+          stateA: ToggleStateConfig.fromJson(
+            (json['state_a'] as Map?)?.cast<String, dynamic>() ??
+                {'icon': icon, 'label': label},
+          ),
+          stateB: ToggleStateConfig.fromJson(
+            (json['state_b'] as Map?)?.cast<String, dynamic>() ??
+                {'icon': icon, 'label': label},
+          ),
+          initialState: (json['initial_state'] as String?) ?? 'a',
           width: width,
           height: height,
           x: x,
@@ -684,5 +707,126 @@ final class SoundTile extends Tile {
   @override
   int get hashCode =>
       Object.hash(type, id, icon, label, soundId, width, height, x, y);
+}
+
+@immutable
+class ToggleStateConfig {
+  final String icon;
+  final String label;
+
+  const ToggleStateConfig({
+    required this.icon,
+    required this.label,
+  });
+
+  factory ToggleStateConfig.fromJson(Map<String, dynamic> json) =>
+      ToggleStateConfig(
+        icon: (json['icon'] as String?) ?? '',
+        label: (json['label'] as String?) ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'icon': icon,
+        'label': label,
+      };
+
+  ToggleStateConfig copyWith({
+    String? icon,
+    String? label,
+  }) =>
+      ToggleStateConfig(
+        icon: icon ?? this.icon,
+        label: label ?? this.label,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ToggleStateConfig &&
+          runtimeType == other.runtimeType &&
+          icon == other.icon &&
+          label == other.label;
+
+  @override
+  int get hashCode => icon.hashCode ^ label.hashCode;
+}
+
+final class ToggleTile extends Tile {
+  final ToggleStateConfig stateA;
+  final ToggleStateConfig stateB;
+  final String initialState; // 'a' ou 'b'
+
+  const ToggleTile({
+    required super.id,
+    super.icon = '',
+    super.label = '',
+    required this.stateA,
+    required this.stateB,
+    this.initialState = 'a',
+    super.width = 1,
+    super.height = 1,
+    super.x,
+    super.y,
+  });
+
+  @override
+  String get icon => stateA.icon;
+
+  @override
+  String get label => stateA.label;
+
+  @override
+  String get type => 'toggle';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'toggle',
+        'id': id,
+        'state_a': stateA.toJson(),
+        'state_b': stateB.toJson(),
+        'initial_state': initialState,
+        if (width != 1) 'width': width,
+        if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
+      };
+
+  ToggleTile copyWith({
+    String? id,
+    ToggleStateConfig? stateA,
+    ToggleStateConfig? stateB,
+    String? initialState,
+    int? width,
+    int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
+  }) =>
+      ToggleTile(
+        id: id ?? this.id,
+        stateA: stateA ?? this.stateA,
+        stateB: stateB ?? this.stateB,
+        initialState: initialState ?? this.initialState,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ToggleTile &&
+      other.id == id &&
+      other.stateA == stateA &&
+      other.stateB == stateB &&
+      other.initialState == initialState &&
+      other.width == width &&
+      other.height == height &&
+      other.x == x &&
+      other.y == y;
+
+  @override
+  int get hashCode => Object.hash(
+      type, id, stateA, stateB, initialState, width, height, x, y);
 }
 

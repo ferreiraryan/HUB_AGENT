@@ -234,6 +234,12 @@ void main() {
               source: StatSource(kind: StatSource.kindCpu, field: 'load', unit: '%'),
             ),
             const SoundTile(id: 's_sound', icon: '🔔', label: 'Sound', soundId: 'sound_1'),
+            const ToggleTile(
+              id: 't_mic',
+              stateA: ToggleStateConfig(icon: '🎤', label: 'Mutado'),
+              stateB: ToggleStateConfig(icon: '🎙️', label: 'Ativo'),
+              initialState: 'a',
+            ),
           ],
         },
       );
@@ -527,6 +533,121 @@ void main() {
       expect((pubTileJson['source'] as Map).containsKey('cmd'), isFalse);
     });
   });
+
+  group('ToggleTile e Alternador Biestavel', () {
+    test('ToggleTile serializa e desserializa preservando stateA, stateB e initialState', () {
+      const tile = ToggleTile(
+        id: 'obs_mic',
+        stateA: ToggleStateConfig(icon: '🎤❌', label: 'Mic Off'),
+        stateB: ToggleStateConfig(icon: '🎙️', label: 'Mic On'),
+        initialState: 'b',
+        width: 2,
+        height: 1,
+        x: 0,
+        y: 1,
+      );
+
+      final json = tile.toJson();
+      expect(json['type'], equals('toggle'));
+      expect(json['id'], equals('obs_mic'));
+      expect(json['state_a'], equals({'icon': '🎤❌', 'label': 'Mic Off'}));
+      expect(json['state_b'], equals({'icon': '🎙️', 'label': 'Mic On'}));
+      expect(json['initial_state'], equals('b'));
+      expect(json['width'], equals(2));
+      expect(json['x'], equals(0));
+      expect(json['y'], equals(1));
+
+      final recovered = Tile.fromJson(json) as ToggleTile;
+      expect(recovered.id, equals(tile.id));
+      expect(recovered.stateA.icon, equals('🎤❌'));
+      expect(recovered.stateA.label, equals('Mic Off'));
+      expect(recovered.stateB.icon, equals('🎙️'));
+      expect(recovered.stateB.label, equals('Mic On'));
+      expect(recovered.initialState, equals('b'));
+      expect(recovered.width, equals(2));
+    });
+
+    test('validate() reconhece bindings com sufixos :a e :b como validos (nao orfaos)', () {
+      final layout = Layout(
+        deviceName: 'PC',
+        theme: HubTheme.fallback,
+        pages: {
+          'home': [
+            const ToggleTile(
+              id: 'obs_mute',
+              stateA: ToggleStateConfig(icon: '🔇', label: 'Mudo'),
+              stateB: ToggleStateConfig(icon: '🔊', label: 'Som'),
+            ),
+          ],
+        },
+        bindings: {
+          'obs_mute:a': [
+            ['echo', 'muting']
+          ],
+          'obs_mute:b': [
+            ['echo', 'unmuting']
+          ],
+        },
+      );
+
+      final issues = layout.validate();
+      expect(issues.where((i) => i.message.contains('orfao')), isEmpty);
+      expect(issues.where((i) => i.message.contains('sem comandos associados')), isEmpty);
+    });
+
+    test('CommandDispatcher alterna entre estados e executa comandos respectivos', () async {
+      String? currentToggleState = 'a';
+      final toggledStates = <String, String>{};
+      final executedCombos = <String>[];
+
+      final layout = Layout(
+        deviceName: 'PC',
+        theme: HubTheme.fallback,
+        pages: {
+          'home': [
+            const ToggleTile(
+              id: 'light_toggle',
+              stateA: ToggleStateConfig(icon: '💡❌', label: 'Apagada'),
+              stateB: ToggleStateConfig(icon: '💡', label: 'Acesa'),
+              initialState: 'a',
+            ),
+          ],
+        },
+        bindings: {
+          'light_toggle:a': [
+            ['__sendkeys__', 'ctrl+shift+a']
+          ],
+          'light_toggle:b': [
+            ['__sendkeys__', 'ctrl+shift+b']
+          ],
+        },
+      );
+
+      final keySender = _FakeKey();
+      final dispatcher = CommandDispatcher(
+        audio: _MockAudio(),
+        brightness: UnsupportedBrightnessController(),
+        media: MediaService(),
+        keySender: keySender,
+        layoutProvider: () => layout,
+        getToggleState: (id) => currentToggleState ?? 'a',
+        onToggle: (id, newState) {
+          currentToggleState = newState;
+          toggledStates[id] = newState;
+        },
+      );
+
+      // Estado inicial é 'a'. Toque no tile deve executar ação do estado 'b' e transitar para 'b'.
+      await dispatcher.dispatch(const AgentCommand('light_toggle', {}));
+      expect(toggledStates['light_toggle'], equals('b'));
+      expect(keySender.receivedCombos.last, equals('ctrl+shift+b'));
+
+      // Agora estado é 'b'. Toque no tile deve executar ação do estado 'a' e transitar para 'a'.
+      await dispatcher.dispatch(const AgentCommand('toggle', {'id': 'light_toggle'}));
+      expect(toggledStates['light_toggle'], equals('a'));
+      expect(keySender.receivedCombos.last, equals('ctrl+shift+a'));
+    });
+  });
 }
 
 class _MockAudio implements AudioController {
@@ -557,8 +678,12 @@ class _MockAudio implements AudioController {
 }
 
 class _FakeKey implements KeySender {
+  final receivedCombos = <String>[];
   @override
-  Future<bool> send(String combo) async => true;
+  Future<bool> send(String combo) async {
+    receivedCombos.add(combo);
+    return true;
+  }
   @override
   Future<void> dispose() async {}
 }

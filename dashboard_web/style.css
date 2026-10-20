@@ -695,6 +695,47 @@ button {
 .sound-wave-badge span:nth-child(2) { height: 12px; }
 .sound-wave-badge span:nth-child(3) { height: 8px; }
 
+/* VARIANTES: Card de Toggle (A/B) */
+.shortcut-btn--toggle {
+  position: relative;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.shortcut-btn--toggle-b {
+  border-color: var(--accent-color);
+  background: var(--ctp-surface0);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2), inset 0 0 0 1px var(--accent-color);
+}
+
+.shortcut-btn--toggle-a {
+  border-color: var(--glass-border);
+  opacity: 0.92;
+}
+
+.toggle-state-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ctp-subtext0);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+.shortcut-btn--toggle-b .toggle-state-badge {
+  background: var(--accent-color);
+  color: #111;
+}
+
+.shortcut-btn--pulse {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
 /* VARIANTES: Card de Slider */
 .shortcut-btn--slider {
   align-items: stretch;

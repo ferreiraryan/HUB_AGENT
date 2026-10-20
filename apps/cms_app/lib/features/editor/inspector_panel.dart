@@ -109,6 +109,7 @@ class InspectorPanel extends ConsumerWidget {
       SliderTile() => _ShortcutInspector(tile: tile, state: state),
       StatTile() => _ShortcutInspector(tile: tile, state: state),
       SoundTile() => _SoundInspector(tile: tile, state: state),
+      ToggleTile() => _ToggleInspector(tile: tile, state: state),
       FolderTile() => _FolderInspector(tile: tile, state: state),
       BackTile() => _BackInspector(tile: tile, state: state),
     };
@@ -256,6 +257,8 @@ class _InspectorFooter extends ConsumerWidget {
         b.copyWith(id: newId, clearCoords: true),
       final SoundTile s =>
         s.copyWith(id: newId, clearCoords: true),
+      final ToggleTile t =>
+        t.copyWith(id: newId, clearCoords: true),
     };
 
     notifier.upsertTile(state.currentPage, newTile);
@@ -2534,6 +2537,251 @@ class _SoundInspectorState extends ConsumerState<_SoundInspector> {
             }
           },
         ),
+      ],
+    );
+  }
+}
+
+class _ToggleInspector extends ConsumerStatefulWidget {
+  final ToggleTile tile;
+  final EditorState state;
+
+  const _ToggleInspector({required this.tile, required this.state});
+
+  @override
+  ConsumerState<_ToggleInspector> createState() => _ToggleInspectorState();
+}
+
+class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
+  String _selectedState = 'a'; // 'a' ou 'b'
+
+  _ShortcutBehavior _detectBehavior(String suffix) {
+    final key = '${widget.tile.id}:$suffix';
+    final cmds = widget.state.layout.bindings[key];
+    if (cmds != null &&
+        cmds.length == 1 &&
+        cmds.first.isNotEmpty &&
+        cmds.first.first == '__sendkeys__') {
+      return _ShortcutBehavior.hotkey;
+    }
+    return _ShortcutBehavior.custom;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final notifier = ref.read(editorControllerProvider.notifier);
+    final dispatcher = ref.read(agentRuntimeProvider).dispatcher;
+    final existingIds = widget.state.layout.pages.values
+        .expand((list) => list)
+        .map((t) => t.id)
+        .toSet();
+
+    final isStateA = _selectedState == 'a';
+    final currentStateConfig = isStateA ? widget.tile.stateA : widget.tile.stateB;
+    final bindingKey = '${widget.tile.id}:$_selectedState';
+    final behavior = _detectBehavior(_selectedState);
+    final currentCmds = widget.state.layout.bindings[bindingKey] ?? const [];
+
+    final hasAnyBinding = widget.state.layout.bindings.containsKey('${widget.tile.id}:a') ||
+        widget.state.layout.bindings.containsKey('${widget.tile.id}:b');
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _IdField(
+          initialValue: widget.tile.id,
+          hasBinding: hasAnyBinding,
+          existingIds: existingIds,
+          onSubmitted: (newId) {
+            notifier.replaceTile(widget.state.currentPage, widget.tile.id,
+                widget.tile.copyWith(id: newId));
+            notifier.selectTile(newId);
+          },
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Estado Inicial',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white70,
+          ),
+        ),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          segments: [
+            ButtonSegment(
+              value: 'a',
+              label: Text(
+                'Estado A (${widget.tile.stateA.label.isEmpty ? "A" : widget.tile.stateA.label})',
+                style: const TextStyle(fontSize: 11),
+              ),
+            ),
+            ButtonSegment(
+              value: 'b',
+              label: Text(
+                'Estado B (${widget.tile.stateB.label.isEmpty ? "B" : widget.tile.stateB.label})',
+                style: const TextStyle(fontSize: 11),
+              ),
+            ),
+          ],
+          selected: {widget.tile.initialState.toLowerCase()},
+          onSelectionChanged: (set) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(initialState: set.first),
+            );
+          },
+        ),
+        const SizedBox(height: 20),
+        const Divider(height: 1, color: Colors.white12),
+        const SizedBox(height: 16),
+        const Text(
+          'Configurar Estados',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.tealAccent,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          segments: [
+            ButtonSegment(
+              value: 'a',
+              icon: Text(widget.tile.stateA.icon.isEmpty ? '💡❌' : widget.tile.stateA.icon),
+              label: Text(widget.tile.stateA.label.isEmpty ? 'Estado A' : widget.tile.stateA.label),
+            ),
+            ButtonSegment(
+              value: 'b',
+              icon: Text(widget.tile.stateB.icon.isEmpty ? '💡' : widget.tile.stateB.icon),
+              label: Text(widget.tile.stateB.label.isEmpty ? 'Estado B' : widget.tile.stateB.label),
+            ),
+          ],
+          selected: {_selectedState},
+          onSelectionChanged: (set) => setState(() => _selectedState = set.first),
+        ),
+        const SizedBox(height: 16),
+        _IconField(
+          icon: currentStateConfig.icon,
+          onPicked: (newIcon) {
+            if (isStateA) {
+              notifier.upsertTile(
+                widget.state.currentPage,
+                widget.tile.copyWith(
+                  stateA: widget.tile.stateA.copyWith(icon: newIcon),
+                ),
+              );
+            } else {
+              notifier.upsertTile(
+                widget.state.currentPage,
+                widget.tile.copyWith(
+                  stateB: widget.tile.stateB.copyWith(icon: newIcon),
+                ),
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        _LabelField(
+          initialValue: currentStateConfig.label,
+          onSubmitted: (newLabel) {
+            if (isStateA) {
+              notifier.upsertTile(
+                widget.state.currentPage,
+                widget.tile.copyWith(
+                  stateA: widget.tile.stateA.copyWith(label: newLabel),
+                ),
+              );
+            } else {
+              notifier.upsertTile(
+                widget.state.currentPage,
+                widget.tile.copyWith(
+                  stateB: widget.tile.stateB.copyWith(label: newLabel),
+                ),
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline, size: 16, color: Colors.white54),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isStateA
+                      ? 'Ação executada ao ativar o Estado A (quando o usuário clica estando em B).'
+                      : 'Ação executada ao ativar o Estado B (quando o usuário clica estando em A).',
+                  style: const TextStyle(fontSize: 11, color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SegmentedButton<_ShortcutBehavior>(
+          segments: const [
+            ButtonSegment(
+              value: _ShortcutBehavior.hotkey,
+              label: Text('Atalho Teclado', style: TextStyle(fontSize: 11)),
+              icon: Icon(Icons.keyboard_outlined, size: 15),
+            ),
+            ButtonSegment(
+              value: _ShortcutBehavior.custom,
+              label: Text('Comandos Shell', style: TextStyle(fontSize: 11)),
+              icon: Icon(Icons.terminal_outlined, size: 15),
+            ),
+          ],
+          selected: {behavior},
+          onSelectionChanged: (set) {
+            final next = set.first;
+            if (next == _ShortcutBehavior.hotkey) {
+              notifier.setBinding(bindingKey, [
+                ['__sendkeys__', '']
+              ]);
+            } else {
+              notifier.setBinding(bindingKey, [
+                ['']
+              ]);
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        if (behavior == _ShortcutBehavior.hotkey)
+          _HotkeyEditor(
+            initialCombo: (currentCmds.isNotEmpty &&
+                    currentCmds.first.isNotEmpty &&
+                    currentCmds.first.first == '__sendkeys__' &&
+                    currentCmds.first.length > 1)
+                ? currentCmds.first[1]
+                : '',
+            onChanged: (combo) {
+              if (combo.trim().isEmpty) {
+                notifier.setBinding(bindingKey, null);
+              } else {
+                notifier.setBinding(bindingKey, [
+                  ['__sendkeys__', combo.trim()]
+                ]);
+              }
+            },
+            onTest: (combo) => dispatcher.keySender.send(combo),
+          )
+        else
+          _CommandsEditor(
+            initialCommands: currentCmds,
+            onChanged: (cmds) {
+              notifier.setBinding(bindingKey, cmds);
+            },
+            dispatcher: dispatcher,
+          ),
       ],
     );
   }

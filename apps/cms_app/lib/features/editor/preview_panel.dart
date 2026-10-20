@@ -528,6 +528,16 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                       targetCell: targetCell);
                 },
               ),
+              ListTile(
+                leading:
+                    const Icon(Icons.toggle_on_outlined, color: Colors.tealAccent),
+                title: const Text('Alternador (Toggle A/B)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _handleCreateTile(ref, state, 'toggle', context,
+                      targetCell: targetCell);
+                },
+              ),
             ],
           ),
         );

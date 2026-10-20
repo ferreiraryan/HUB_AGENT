@@ -40,6 +40,7 @@ class AgentRuntime {
   Stream<void> get remoteSearchPrompts => _remoteSearchPromptCtl.stream;
 
   final _subs = <StreamSubscription<dynamic>>[];
+  final _toggleStates = <String, String>{};
   Timer? _brightnessPublishTimer;
   DateTime _suppressUntil = DateTime.fromMillisecondsSinceEpoch(0);
   bool _started = false;
@@ -75,6 +76,11 @@ class AgentRuntime {
       allowedBinaries: allowedBinaries,
       onLocalVolumeChange: _armEchoGuard,
       onEvent: mqtt.publishEvent,
+      onToggle: (id, newState) {
+        _toggleStates[id] = newState;
+        mqtt.publishToggleState(id, newState);
+      },
+      getToggleState: (id) => _toggleStates[id] ?? 'a',
       onRemoteSearchPrompt: () {
         if (!_remoteSearchPromptCtl.isClosed) {
           _remoteSearchPromptCtl.add(null);
@@ -104,6 +110,7 @@ class AgentRuntime {
       ..add(repository.changes.listen((l) {
         mqtt.publishLayout(l);
         _publishBrightness();
+        _publishToggleStates();
       }))
       ..add(mqtt.commands.listen(_onCommand))
       ..add(audio.masterChanges.listen(_onLocalVolume))
@@ -164,6 +171,7 @@ class AgentRuntime {
     }
     _publishBrightness();
     _publishSoundVolume();
+    _publishToggleStates();
     mqtt.publishMedia(media.current);
     if (sound != null) {
       mqtt.publishSoundState(sound!.current);
@@ -180,6 +188,21 @@ class AgentRuntime {
         if (tile is SliderTile &&
             tile.source.kind == SliderSource.kindSoundVolume) {
           mqtt.publishSliderState(tile.id, sound!.volume);
+        }
+      }
+    }
+  }
+
+  void _publishToggleStates() {
+    if (!mqtt.isConnected) return;
+    final layout = repository.isLoaded ? repository.current : null;
+    if (layout == null) return;
+
+    for (final page in layout.pages.values) {
+      for (final tile in page) {
+        if (tile is ToggleTile) {
+          final state = _toggleStates.putIfAbsent(tile.id, () => tile.initialState);
+          mqtt.publishToggleState(tile.id, state);
         }
       }
     }

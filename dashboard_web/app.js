@@ -67,6 +67,7 @@ const state = {
   appsCache: {},
   volumeCache: {},
   slidersCache: {},
+  toggleStatesCache: {},
   mediaCache: {},
   shortcutsCache: {},
   currentPageCache: {},
@@ -278,11 +279,18 @@ const MqttLayer = {
       }
     }
     else if (topicType.startsWith('state/')) {
-      const sliderId = topicParts[3];
-      if (!state.slidersCache[device.id]) state.slidersCache[device.id] = {};
-      state.slidersCache[device.id][sliderId] = data.value;
+      const tileId = topicParts[3];
+      const val = data.value;
 
-      if (state.currentDeviceId === device.id) UI.updateSliderUI(sliderId, data.value);
+      if (typeof val === 'number') {
+        if (!state.slidersCache[device.id]) state.slidersCache[device.id] = {};
+        state.slidersCache[device.id][tileId] = val;
+        if (state.currentDeviceId === device.id) UI.updateSliderUI(tileId, val);
+      }
+
+      if (!state.toggleStatesCache[device.id]) state.toggleStatesCache[device.id] = {};
+      state.toggleStatesCache[device.id][tileId] = val;
+      if (state.currentDeviceId === device.id) UI.updateToggleUI(tileId, val);
     }
     else if (topicType.startsWith('stats/')) {
       const kind = topicParts[3];
@@ -491,6 +499,52 @@ const UI = {
       const txt = value + '%';
       if (label.textContent !== txt) label.textContent = txt;
     }
+  },
+
+  updateToggleUI(id, value) {
+    const btn = dom.shortcutsGrid.querySelector('[data-toggle-id="' + id + '"]');
+    if (!btn) return;
+
+    const deviceId = state.currentDeviceId;
+    const pages = state.shortcutsCache[deviceId];
+    if (!pages) return;
+
+    let item = null;
+    const pageKeys = Object.keys(pages);
+    for (let p = 0; p < pageKeys.length; p++) {
+      const list = pages[pageKeys[p]] || [];
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].id === id) {
+          item = list[i];
+          break;
+        }
+      }
+      if (item) break;
+    }
+    if (!item) return;
+
+    const isB = (String(value).toLowerCase() === 'b' || value === true || value === 1);
+    const stateConfig = isB ? item.state_b : item.state_a;
+    const icon = stateConfig ? (stateConfig.icon || item.icon || '') : (item.icon || '');
+    const label = stateConfig ? (stateConfig.label || item.label || '') : (item.label || '');
+
+    btn.dataset.toggleState = isB ? 'b' : 'a';
+    if (isB) {
+      btn.classList.remove('shortcut-btn--toggle-a');
+      btn.classList.add('shortcut-btn--toggle-b');
+    } else {
+      btn.classList.remove('shortcut-btn--toggle-b');
+      btn.classList.add('shortcut-btn--toggle-a');
+    }
+
+    const iconEl = btn.querySelector('.shortcut-btn__icon');
+    if (iconEl) iconEl.textContent = UI.iconFor({ icon: icon });
+    const labelEl = btn.querySelector('.shortcut-btn__label');
+    if (labelEl) labelEl.textContent = label || item.id;
+    const badgeEl = btn.querySelector('.toggle-state-badge');
+    if (badgeEl) badgeEl.textContent = isB ? 'B' : 'A';
+
+    this.parseEmojis(btn);
   },
 
   updateStatsInPlace(deviceId, targetKind) {
@@ -715,6 +769,7 @@ const UI = {
         if (state.searchFilter === 'sound') return item.type === 'sound';
         if (state.searchFilter === 'slider') return item.type === 'slider';
         if (state.searchFilter === 'stat') return item.type === 'stat';
+        if (state.searchFilter === 'toggle') return item.type === 'toggle';
         if (state.searchFilter === 'folder') return item.type === 'folder';
         if (state.searchFilter === 'shortcut') return item.type === 'shortcut' || !item.type;
         return true;
@@ -729,10 +784,14 @@ const UI = {
         const id = (item.id || '').toLowerCase();
         const soundId = (item.sound_id || '').toLowerCase();
         const target = (item.target || '').toLowerCase();
+        const stateALabel = (item.state_a && item.state_a.label ? item.state_a.label : '').toLowerCase();
+        const stateBLabel = (item.state_b && item.state_b.label ? item.state_b.label : '').toLowerCase();
         return label.indexOf(q) !== -1 ||
                id.indexOf(q) !== -1 ||
                soundId.indexOf(q) !== -1 ||
-               target.indexOf(q) !== -1;
+               target.indexOf(q) !== -1 ||
+               stateALabel.indexOf(q) !== -1 ||
+               stateBLabel.indexOf(q) !== -1;
       });
     }
 
@@ -1003,6 +1062,48 @@ const UI = {
             MqttLayer.publishCommand(device, 'play_sound', { sound_id: item.sound_id });
           }
         });
+        if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
+        dom.shortcutsGrid.appendChild(btn);
+      }
+      else if (item.type === 'toggle') {
+        let toggleVal = 'a';
+        if (state.toggleStatesCache[deviceId] && state.toggleStatesCache[deviceId][item.id] !== undefined) {
+          toggleVal = state.toggleStatesCache[deviceId][item.id];
+        } else if (item.initial_state) {
+          toggleVal = item.initial_state;
+        }
+
+        const isB = (String(toggleVal).toLowerCase() === 'b' || toggleVal === true || toggleVal === 1);
+        const stateConfig = isB ? item.state_b : item.state_a;
+        const icon = stateConfig ? (stateConfig.icon || item.icon || '') : (item.icon || '');
+        const label = stateConfig ? (stateConfig.label || item.label || '') : (item.label || '');
+
+        const btn = document.createElement('button');
+        btn.className = 'shortcut-btn shortcut-btn--toggle' + (isB ? ' shortcut-btn--toggle-b' : ' shortcut-btn--toggle-a') + dimClasses;
+        btn.type = 'button';
+        btn.style.setProperty('--i', index);
+        btn.style.gridColumn = gridColumnStyle;
+        btn.style.gridRow = gridRowStyle;
+        btn.dataset.toggleId = item.id;
+        btn.dataset.toggleState = isB ? 'b' : 'a';
+
+        btn.innerHTML = 
+          '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor({ icon: icon })) + '</span>' +
+          '<span class="shortcut-btn__label">' + UI.escapeHtml(label || item.id) + '</span>' +
+          '<span class="toggle-state-badge" aria-hidden="true">' + (isB ? 'B' : 'A') + '</span>';
+
+        btn.addEventListener('click', function() {
+          const device = state.devices[deviceId];
+          if (!device) return;
+
+          btn.classList.add('shortcut-btn--pulse');
+          setTimeout(function() {
+            btn.classList.remove('shortcut-btn--pulse');
+          }, 300);
+
+          MqttLayer.publishCommand(device, item.id);
+        });
+
         if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
         dom.shortcutsGrid.appendChild(btn);
       }

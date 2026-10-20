@@ -40,6 +40,8 @@ class CommandDispatcher {
   final void Function()? onLocalVolumeChange;
   final void Function(AgentEvent event)? onEvent;
   final void Function()? onRemoteSearchPrompt;
+  final void Function(String toggleId, String newState)? onToggle;
+  final String Function(String toggleId)? getToggleState;
 
   CommandDispatcher({
     required this.audio,
@@ -52,6 +54,8 @@ class CommandDispatcher {
     this.onLocalVolumeChange,
     this.onEvent,
     this.onRemoteSearchPrompt,
+    this.onToggle,
+    this.getToggleState,
   });
 
   Future<void> dispatch(AgentCommand cmd) async {
@@ -132,7 +136,23 @@ class CommandDispatcher {
       case 'remote_search_prompt':
         onRemoteSearchPrompt?.call();
 
+      case 'toggle':
+        final id = cmd.raw['id']?.toString();
+        if (id != null) {
+          final toggleTile = _findToggleTile(id);
+          if (toggleTile != null) {
+            await _handleToggle(toggleTile);
+            return;
+          }
+        }
+
       default:
+        final toggleTile = _findToggleTile(cmd.action);
+        if (toggleTile != null) {
+          await _handleToggle(toggleTile);
+          return;
+        }
+
         final soundTile = _findSoundTile(cmd.action);
         if (soundTile != null) {
           if (sound?.current.isPlaying == true && sound?.current.soundId == soundTile.soundId) {
@@ -145,6 +165,32 @@ class CommandDispatcher {
         await runShortcut(cmd.action);
     }
   }
+
+  Future<void> _handleToggle(ToggleTile tile) async {
+    final currentState = getToggleState?.call(tile.id) ?? tile.initialState;
+    final nextState = (currentState.toLowerCase() == 'a') ? 'b' : 'a';
+
+    final layout = layoutProvider();
+    final specificKey = '${tile.id}:$nextState';
+    final bindingKey = layout.bindings.containsKey(specificKey) ? specificKey : tile.id;
+
+    if (layout.bindings.containsKey(bindingKey)) {
+      await runShortcut(bindingKey);
+    }
+    onToggle?.call(tile.id, nextState);
+  }
+
+  ToggleTile? _findToggleTile(String id) {
+    final layout = layoutProvider();
+    for (final tiles in layout.pages.values) {
+      for (final t in tiles) {
+        if (t is ToggleTile && t.id == id) return t;
+      }
+    }
+    return null;
+  }
+
+  ToggleTile? findToggleTile(String id) => _findToggleTile(id);
 
   SoundTile? _findSoundTile(String id) {
     final layout = layoutProvider();

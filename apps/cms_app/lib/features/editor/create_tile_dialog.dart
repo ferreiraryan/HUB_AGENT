@@ -106,6 +106,8 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
         return widget.state.layout.nextTileId('stat');
       case 'sound':
         return widget.state.layout.nextTileId('sound');
+      case 'toggle':
+        return widget.state.layout.nextTileId('toggle');
       case 'folder':
         return widget.state.layout.nextTileId('folder');
       case 'back':
@@ -128,6 +130,8 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
         return 'CPU';
       case 'sound':
         return 'Novo Som';
+      case 'toggle':
+        return 'Novo Alternador';
       case 'folder':
         return 'Nova pasta';
       case 'back':
@@ -147,6 +151,8 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
         return 'Criar Stat (Hardware)';
       case 'sound':
         return 'Criar Tile de Som (Sound Pad)';
+      case 'toggle':
+        return 'Criar Alternador (Toggle A/B)';
       case 'folder':
         return 'Criar Pasta';
       case 'back':
@@ -212,6 +218,20 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
           icon: '🔊',
           label: label.isEmpty ? 'Novo Som' : label,
           soundId: _selectedSoundId ?? id,
+        );
+        break;
+      case 'toggle':
+        tile = ToggleTile(
+          id: id,
+          stateA: ToggleStateConfig(
+            icon: '💡❌',
+            label: label.isEmpty ? 'Desligado' : '$label Off',
+          ),
+          stateB: ToggleStateConfig(
+            icon: '💡',
+            label: label.isEmpty ? 'Ligado' : '$label On',
+          ),
+          initialState: 'a',
         );
         break;
       case 'folder':

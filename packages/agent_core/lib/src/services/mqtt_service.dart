@@ -234,6 +234,15 @@ class MqttService {
     );
   }
 
+  void publishToggleState(String toggleId, String stateValue) {
+    _publish(
+      '${topics.base}/state/$toggleId',
+      jsonEncode({'value': stateValue}),
+      retain: true,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
   void publishStatsCpu(StatsSnapshot s) {
     _publish('${topics.base}/stats/cpu', jsonEncode(s.cpuJson()),
         retain: true, qos: MqttQos.atMostOnce);
