@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
+import '../models/agent_event.dart';
 import '../models/audio_state.dart';
 import '../models/layout.dart';
 import '../models/media_state.dart';
@@ -27,6 +28,7 @@ class AgentTopics {
   String get apps => '$base/audio/apps';
   String get media => '$base/media';
   String get soundState => '$base/sound/state';
+  String get event => '$base/event';
   String get cmd => '$base/cmd';
 }
 
@@ -49,6 +51,14 @@ class AgentCommand {
   String? get shortcutId => raw['id']?.toString();
   String? get sliderId => raw['id']?.toString();
   String? get soundId => raw['sound_id']?.toString() ?? raw['id']?.toString();
+  String? get kind => raw['kind']?.toString();
+  String? get message => raw['message']?.toString();
+  int? get duration {
+    final d = raw['duration'];
+    if (d is num) return d.round();
+    if (d is String) return int.tryParse(d);
+    return null;
+  }
 
   static AgentCommand? tryParse(String payload) {
     try {
@@ -198,6 +208,15 @@ class MqttService {
   void publishMedia(MediaState media) {
     _publish(topics.media, jsonEncode(media.toJson()),
         retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishEvent(AgentEvent event) {
+    _publish(
+      topics.event,
+      jsonEncode(event.toJson()),
+      retain: false,
+      qos: MqttQos.atMostOnce,
+    );
   }
 
   void publishSoundState(SoundPlaybackState soundState) {

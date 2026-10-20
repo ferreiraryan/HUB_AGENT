@@ -5,6 +5,7 @@
 library agent_core;
 
 export 'src/agent_runtime.dart';
+export 'src/models/agent_event.dart';
 export 'src/models/audio_output_device.dart';
 export 'src/models/audio_state.dart';
 export 'src/models/hub_theme.dart';
@@ -27,4 +28,6 @@ export 'src/services/media_factory.dart' show createDefaultMediaService;
 export 'src/services/media_service.dart';
 export 'src/services/media_windows.dart' show WindowsMediaService;
 export 'src/services/mqtt_service.dart';
+export 'src/util/hex_color.dart';
+
 export 'src/util/hex_color.dart';

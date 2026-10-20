@@ -136,6 +136,7 @@ const MqttLayer = {
     state.mqttClient.subscribe('nodes/+/audio/apps');
     state.mqttClient.subscribe('nodes/+/media');
     state.mqttClient.subscribe('nodes/+/sound/state');
+    state.mqttClient.subscribe('nodes/+/event');
     state.mqttClient.subscribe('nodes/+/state/+');
     state.mqttClient.subscribe('nodes/+/stats/cpu');
     state.mqttClient.subscribe('nodes/+/stats/ram');
@@ -182,6 +183,9 @@ const MqttLayer = {
     else if (topicType === 'sound/state') {
       state.soundStateCache[device.id] = data;
       if (state.currentDeviceId === device.id) UI.updateSoundStateInPlace(device.id);
+    }
+    else if (topicType === 'event') {
+      if (state.currentDeviceId === device.id) UI.showToast(data);
     }
     else if (topicType.startsWith('state/')) {
       const sliderId = topicParts[3];
@@ -240,6 +244,52 @@ const MqttLayer = {
    5. UI LAYER
    ========================================================= */
 const UI = {
+  showToast(data) {
+    if (!data || !data.message) return;
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    while (container.children.length >= 3) {
+      const oldest = container.firstChild;
+      if (oldest._dismissTimer) clearTimeout(oldest._dismissTimer);
+      container.removeChild(oldest);
+    }
+
+    const kind = (data.kind || 'info').toLowerCase();
+    const duration = (typeof data.duration === 'number' && data.duration > 0)
+      ? data.duration
+      : 3000;
+
+    const iconMap = {
+      'info': 'ℹ️',
+      'success': '✅',
+      'warning': '⚠️',
+      'error': '❌'
+    };
+    const icon = iconMap[kind] || 'ℹ️';
+
+    const toast = document.createElement('div');
+    toast.className = 'toast toast--' + kind;
+    toast.innerHTML = 
+      '<span class="toast__icon">' + icon + '</span>' +
+      '<span class="toast__message">' + UI.escapeHtml(data.message) + '</span>';
+
+    container.appendChild(toast);
+    UI.parseEmojis(toast);
+
+    void toast.offsetWidth;
+    toast.classList.add('toast--visible');
+
+    toast._dismissTimer = setTimeout(function() {
+      toast.classList.remove('toast--visible');
+      setTimeout(function() {
+        if (toast.parentNode === container) {
+          container.removeChild(toast);
+        }
+      }, 200);
+    }, duration);
+  },
+
   updateBrokerStatus(connected) {
     dom.brokerStatus.textContent = connected ? 'Conectado' : 'Desconectado';
     dom.brokerStatus.classList.toggle('broker-status--online', connected);

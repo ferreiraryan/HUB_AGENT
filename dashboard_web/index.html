@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Smart Kiosk Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 
 <body>
@@ -86,7 +86,10 @@
       </div>
     </div>
   </div>
-<div id="debug-log" style="position:fixed;bottom:0;left:0;right:0;height:150px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:12px;padding:10px;z-index:9999;overflow-y:auto;pointer-events:none;backdrop-filter:blur(4px);"></div>
+  <!-- ===================== TOAST CONTAINER (CANTO SUPERIOR DIREITO) ===================== -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <div id="debug-log" style="position:fixed;bottom:0;left:0;right:0;height:150px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:12px;padding:10px;z-index:9999;overflow-y:auto;pointer-events:none;backdrop-filter:blur(4px);"></div>
   <script>
     var dbg = document.getElementById('debug-log');
     window.logMsg = function(msg, color) {
@@ -101,6 +104,6 @@
 
   <script src="mqtt.min.js"></script>
   <script src="twemoji.min.js"></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

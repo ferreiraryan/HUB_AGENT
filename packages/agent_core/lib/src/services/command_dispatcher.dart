@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../models/agent_event.dart';
 import '../models/tile.dart';
 import '../models/layout.dart';
 import 'audio/audio_controller.dart';
@@ -37,6 +38,7 @@ class CommandDispatcher {
   final Set<String> allowedBinaries;
   final Layout Function() layoutProvider;
   final void Function()? onLocalVolumeChange;
+  final void Function(AgentEvent event)? onEvent;
 
   CommandDispatcher({
     required this.audio,
@@ -47,6 +49,7 @@ class CommandDispatcher {
     this.sound,
     this.allowedBinaries = const {},
     this.onLocalVolumeChange,
+    this.onEvent,
   });
 
   Future<void> dispatch(AgentCommand cmd) async {
@@ -114,6 +117,15 @@ class CommandDispatcher {
 
       case 'stop_sound':
         await sound?.stop();
+
+      case 'notify':
+        final msg = cmd.message;
+        if (msg == null || msg.trim().isEmpty) {
+          stderr.writeln('notify exige "message"');
+          return;
+        }
+        final event = AgentEvent.fromJson(cmd.raw);
+        onEvent?.call(event);
 
       default:
         final soundTile = _findSoundTile(cmd.action);

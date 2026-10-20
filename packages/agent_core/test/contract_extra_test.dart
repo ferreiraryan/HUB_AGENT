@@ -276,4 +276,113 @@ void main() {
       expect(issues.any((i) => i.level == IssueLevel.warning && i.message.contains('orfao')), isTrue);
     });
   });
+  group('Contrato de Eventos Efêmeros e Notificações (AgentEvent e Action Notify)', () {
+    test('AgentTopics define o tópico canônico de eventos', () {
+      const topics = AgentTopics('pc-main');
+      expect(topics.event, equals('nodes/pc-main/event'));
+    });
+
+    test('AgentEvent serializa e desserializa corretamente preservando kinds e limites', () {
+      final e1 = AgentEvent.info('Som terminado');
+      expect(e1.kind, equals(AgentEventKind.info));
+      expect(e1.message, equals('Som terminado'));
+      expect(e1.durationMs, equals(3000));
+      expect(e1.toJson(), equals({'kind': 'info', 'message': 'Som terminado', 'duration': 3000}));
+
+      final e2 = AgentEvent.fromJson({
+        'kind': 'warning',
+        'message': 'Bateria em 10%',
+        'duration': 5000,
+      });
+      expect(e2.kind, equals(AgentEventKind.warning));
+      expect(e2.message, equals('Bateria em 10%'));
+      expect(e2.durationMs, equals(5000));
+
+      final eClamp = AgentEvent.fromJson({
+        'kind': 'desconhecido',
+        'message': 'Teste',
+        'duration': 999999,
+      });
+      expect(eClamp.kind, equals(AgentEventKind.info));
+      expect(eClamp.durationMs, equals(15000));
+
+      final eClampMin = AgentEvent.fromJson({
+        'message': 'Min',
+        'duration': 100,
+      });
+      expect(eClampMin.durationMs, equals(500));
+    });
+
+    test('AgentCommand processa campos de notify', () {
+      final cmd = AgentCommand.tryParse(
+          '{"action": "notify", "kind": "success", "message": "OBS Gravando", "duration": 4000}')!;
+      expect(cmd.action, equals('notify'));
+      expect(cmd.kind, equals('success'));
+      expect(cmd.message, equals('OBS Gravando'));
+      expect(cmd.duration, equals(4000));
+    });
+
+    test('CommandDispatcher despacha notify para o callback onEvent', () async {
+      final events = <AgentEvent>[];
+      final dispatcher = CommandDispatcher(
+        audio: _MockAudio(),
+        brightness: UnsupportedBrightnessController(),
+        media: MediaService(),
+        keySender: _FakeKey(),
+        layoutProvider: () => const Layout(
+          deviceName: 'Test',
+          theme: HubTheme.fallback,
+          pages: {'home': []},
+        ),
+        onEvent: events.add,
+      );
+
+      final cmd = AgentCommand.tryParse(
+          '{"action": "notify", "kind": "error", "message": "Falha na sincronização", "duration": 2500}')!;
+      await dispatcher.dispatch(cmd);
+
+      expect(events, hasLength(1));
+      expect(events.first.kind, equals(AgentEventKind.error));
+      expect(events.first.message, equals('Falha na sincronização'));
+      expect(events.first.durationMs, equals(2500));
+
+      final cmdInvalid = AgentCommand.tryParse('{"action": "notify", "kind": "info"}')!;
+      await dispatcher.dispatch(cmdInvalid);
+      expect(events, hasLength(1));
+    });
+  });
+}
+
+class _MockAudio implements AudioController {
+  @override
+  List<AppVolume> get apps => const [];
+  @override
+  Stream<List<AppVolume>> get appsChanges => const Stream.empty();
+  @override
+  Future<void> dispose() async {}
+  @override
+  bool get isAvailable => false;
+  @override
+  MasterVolume get master => const MasterVolume(value: 50);
+  @override
+  Stream<MasterVolume> get masterChanges => const Stream.empty();
+  @override
+  Future<void> refresh() async {}
+  @override
+  Future<void> setAppVolume(String id, int volume) async {}
+  @override
+  Future<void> setAppVolumeByName(String name, int volume) async {}
+  @override
+  Future<void> setMasterVolume(int volume) async {}
+  @override
+  Future<void> setMute(bool muted) async {}
+  @override
+  Future<void> start() async {}
+}
+
+class _FakeKey implements KeySender {
+  @override
+  Future<bool> send(String combo) async => true;
+  @override
+  Future<void> dispose() async {}
 }
