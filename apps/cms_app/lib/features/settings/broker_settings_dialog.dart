@@ -28,6 +28,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   late final TextEditingController _deviceIdController;
 
   bool? _autostartEnabled;
+  bool _mirrorNotifications = true;
   List<AudioOutputDevice> _devices = [];
   String? _selectedSoundDevice;
 
@@ -39,6 +40,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
     _portController = TextEditingController(text: config.port.toString());
     _deviceIdController = TextEditingController(text: config.deviceId);
     _selectedSoundDevice = config.soundOutputDevice;
+    _mirrorNotifications = config.mirrorNotifications;
 
     _loadAutostart();
     _loadDevices();
@@ -102,6 +104,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
       port: int.tryParse(_portController.text.trim()) ?? 1883,
       deviceId: _deviceIdController.text.trim(),
       soundOutputDevice: _selectedSoundDevice,
+      mirrorNotifications: _mirrorNotifications,
     );
 
     await updated.save();
@@ -156,6 +159,14 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
               subtitle: const Text('O agente abre escondido no boot'),
               value: _autostartEnabled ?? false,
               onChanged: _autostartEnabled == null ? null : _toggleAutostart,
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: const Text('Espelhar notificações do PC'),
+              subtitle: const Text('Envia notificações do sistema (D-Bus) para o tablet via MQTT'),
+              value: _mirrorNotifications,
+              onChanged: (val) => setState(() => _mirrorNotifications = val),
               contentPadding: EdgeInsets.zero,
             ),
             const Divider(height: 32),

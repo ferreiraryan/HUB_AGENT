@@ -3,12 +3,14 @@ import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
 import 'editor_controller.dart';
 import 'emoji_picker.dart';
 import 'brightness_picker.dart';
+import 'key_combo_helper.dart';
 import 'process_discovery.dart';
 import 'sound_library_dialog.dart';
 
@@ -1224,59 +1226,111 @@ class _HotkeyEditor extends StatefulWidget {
 
 class _HotkeyEditorState extends State<_HotkeyEditor> {
   late final TextEditingController _ctrl;
+  final FocusNode _recordFocusNode = FocusNode();
+  bool _recording = false;
   bool _testing = false;
   bool? _testSuccess;
   Timer? _debounce;
+  String? _recordedFeedback;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController(text: widget.initialCombo);
+    _ctrl = TextEditingController(text: KeyComboHelper.normalize(widget.initialCombo));
   }
 
   @override
   void didUpdateWidget(covariant _HotkeyEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final normalizedInitial = KeyComboHelper.normalize(widget.initialCombo);
     if (oldWidget.initialCombo != widget.initialCombo &&
-        _ctrl.text.trim().toLowerCase() !=
-            widget.initialCombo.trim().toLowerCase()) {
-      _ctrl.text = widget.initialCombo;
+        KeyComboHelper.normalize(_ctrl.text) != normalizedInitial) {
+      _ctrl.text = normalizedInitial;
     }
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _recordFocusNode.dispose();
     _ctrl.dispose();
     super.dispose();
   }
 
-  void _insertModifier(String mod) {
-    final cur = _ctrl.text.trim();
-    if (cur.isEmpty) {
-      _ctrl.text = '$mod+';
-    } else if (cur.endsWith('+')) {
-      _ctrl.text = '$cur$mod+';
-    } else {
-      _ctrl.text = '$cur+$mod+';
-    }
-    _onTextChange(_ctrl.text);
-  }
-
-  void _setPreset(String preset) {
-    _ctrl.text = preset;
-    _onTextChange(preset);
-  }
-
-  void _onTextChange(String text) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      widget.onChanged(_ctrl.text.trim().toLowerCase());
+  void _startRecording() {
+    setState(() {
+      _recording = true;
+      _recordedFeedback = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _recordFocusNode.requestFocus();
     });
   }
 
+  void _stopRecording() {
+    setState(() {
+      _recording = false;
+    });
+  }
+
+  void _onKeyEvent(KeyEvent event) {
+    if (!_recording) return;
+    if (event is! KeyDownEvent) return;
+
+    // Se pressionar Escape isolado, cancela a gravação
+    if (event.logicalKey == LogicalKeyboardKey.escape &&
+        !HardwareKeyboard.instance.isControlPressed &&
+        !HardwareKeyboard.instance.isAltPressed &&
+        !HardwareKeyboard.instance.isShiftPressed &&
+        !HardwareKeyboard.instance.isMetaPressed) {
+      _stopRecording();
+      return;
+    }
+
+    final combo = KeyComboHelper.fromKeyEvent(event);
+    if (combo != null && combo.isNotEmpty) {
+      final isOnlyMod = KeyComboHelper.canonicalModifiers.contains(combo) ||
+          combo.split('+').every((k) => KeyComboHelper.canonicalModifiers.contains(k));
+
+      _ctrl.text = combo;
+      _onTextChange(combo);
+
+      // Se pressionou uma tecla principal (não apenas modificador), conclui
+      if (!isOnlyMod) {
+        setState(() {
+          _recording = false;
+          _recordedFeedback = 'Gravado: ${KeyComboHelper.formatDisplay(combo)}';
+        });
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _recordedFeedback = null);
+        });
+      }
+    }
+  }
+
+  void _toggleModifier(String mod) {
+    final updated = KeyComboHelper.toggleModifier(_ctrl.text, mod);
+    _ctrl.text = updated;
+    _onTextChange(updated);
+  }
+
+  void _setPreset(String preset) {
+    final norm = KeyComboHelper.normalize(preset);
+    _ctrl.text = norm;
+    _onTextChange(norm);
+  }
+
+  void _onTextChange(String text) {
+    final normalized = KeyComboHelper.normalize(text);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      widget.onChanged(normalized);
+    });
+    setState(() {});
+  }
+
   Future<void> _testKey() async {
-    final combo = _ctrl.text.trim();
+    final combo = KeyComboHelper.normalize(_ctrl.text);
     if (combo.isEmpty) return;
     setState(() {
       _testing = true;
@@ -1296,14 +1350,105 @@ class _HotkeyEditorState extends State<_HotkeyEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final normalizedCombo = KeyComboHelper.normalize(_ctrl.text);
+    final displayCombo = KeyComboHelper.formatDisplay(_ctrl.text);
+    final isSoloWin = normalizedCombo == 'win';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Botão de Gravação de Teclas
+        KeyboardListener(
+          focusNode: _recordFocusNode,
+          onKeyEvent: _onKeyEvent,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: _recording
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.redAccent, width: 1.5),
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Pressione as teclas no teclado...\n(ESC para cancelar)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _stopRecording,
+                          child: const Text('Cancelar',
+                              style: TextStyle(color: Colors.redAccent)),
+                        ),
+                      ],
+                    ),
+                  )
+                : OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: Color(0xFF89B4FA)),
+                    ),
+                    onPressed: _startRecording,
+                    icon: const Icon(Icons.fiber_manual_record,
+                        size: 16, color: Color(0xFF89B4FA)),
+                    label: const Text(
+                      'Gravar Teclas Pressionadas',
+                      style: TextStyle(
+                          color: Color(0xFF89B4FA),
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+          ),
+        ),
+
+        if (_recordedFeedback != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              _recordedFeedback!,
+              style: const TextStyle(fontSize: 11, color: Colors.greenAccent),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+        // Visualização das Teclas Atuais (Kbd Badges)
+        if (displayCombo.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: _buildKbdBadges(displayCombo),
+            ),
+          ),
+        ],
+
+        // Campo de Texto de Digitação Livre (com auto-normalização)
         TextField(
           controller: _ctrl,
           decoration: InputDecoration(
             labelText: 'Combinação de teclas',
             hintText: 'ex: ctrl+shift+esc, alt+f4, win+d',
+            helperText: 'Case-insensitive (Win, win, super são aceitos)',
+            helperStyle: const TextStyle(fontSize: 10, color: Colors.white54),
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
               icon: const Icon(Icons.clear, size: 18),
@@ -1315,29 +1460,45 @@ class _HotkeyEditorState extends State<_HotkeyEditor> {
           ),
           onChanged: _onTextChange,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
+
+        // Chips Inteligentes de Modificadores (Sem + no início, alternam estado)
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
-            ActionChip(
-              label: const Text('+ Ctrl', style: TextStyle(fontSize: 12)),
-              onPressed: () => _insertModifier('ctrl'),
-            ),
-            ActionChip(
-              label: const Text('+ Alt', style: TextStyle(fontSize: 12)),
-              onPressed: () => _insertModifier('alt'),
-            ),
-            ActionChip(
-              label: const Text('+ Shift', style: TextStyle(fontSize: 12)),
-              onPressed: () => _insertModifier('shift'),
-            ),
-            ActionChip(
-              label: const Text('+ Win', style: TextStyle(fontSize: 12)),
-              onPressed: () => _insertModifier('win'),
-            ),
+            _buildModifierChip('ctrl', 'Ctrl'),
+            _buildModifierChip('alt', 'Alt'),
+            _buildModifierChip('shift', 'Shift'),
+            _buildModifierChip('win', 'Win / Super'),
           ],
         ),
+
+        // Dica contextual para a tecla Win/Super
+        if (isSoloWin) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.lightBlueAccent),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'No Linux (Hyprland) e Windows, a tecla Win costuma ser combinada com outra tecla (ex: Win+D, Win+Space, Win+Enter).',
+                    style: TextStyle(fontSize: 11, color: Colors.white70),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
         const SizedBox(height: 12),
         const Text(
           'Atalhos populares:',
@@ -1380,6 +1541,61 @@ class _HotkeyEditorState extends State<_HotkeyEditor> {
         ),
       ],
     );
+  }
+
+  Widget _buildModifierChip(String mod, String label) {
+    final isActive = KeyComboHelper.hasModifier(_ctrl.text, mod);
+    return FilterChip(
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      selected: isActive,
+      showCheckmark: false,
+      selectedColor: const Color(0xFF89B4FA).withValues(alpha: 0.3),
+      side: BorderSide(
+        color: isActive ? const Color(0xFF89B4FA) : Colors.white24,
+      ),
+      onSelected: (_) => _toggleModifier(mod),
+    );
+  }
+
+  List<Widget> _buildKbdBadges(String displayCombo) {
+    final parts = displayCombo.split(' + ');
+    final widgets = <Widget>[];
+
+    for (int i = 0; i < parts.length; i++) {
+      widgets.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E2E),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFF89B4FA), width: 1.2),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            parts[i],
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFCDD6F4),
+            ),
+          ),
+        ),
+      );
+      if (i < parts.length - 1) {
+        widgets.add(const Text('+',
+            style: TextStyle(
+                color: Colors.white54,
+                fontSize: 14,
+                fontWeight: FontWeight.bold)));
+      }
+    }
+    return widgets;
   }
 }
 

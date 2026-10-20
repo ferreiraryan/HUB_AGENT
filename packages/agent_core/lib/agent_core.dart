@@ -28,4 +28,9 @@ export 'src/services/media_factory.dart' show createDefaultMediaService;
 export 'src/services/media_service.dart';
 export 'src/services/media_windows.dart' show WindowsMediaService;
 export 'src/services/mqtt_service.dart';
+export 'src/services/notifications/notification_monitor.dart';
+export 'src/services/notifications/unsupported_notification_monitor.dart';
+export 'src/services/notifications/linux_notification_monitor.dart';
+export 'src/services/notifications/notification_factory_stub.dart'
+    if (dart.library.io) 'src/services/notifications/notification_factory_io.dart';
 export 'src/util/hex_color.dart';

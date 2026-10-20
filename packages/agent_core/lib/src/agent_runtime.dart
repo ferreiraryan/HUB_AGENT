@@ -19,6 +19,7 @@ import 'services/brightness_controller.dart';
 import 'services/command_dispatcher.dart';
 import 'services/key_sender_stub.dart'
     if (dart.library.io) 'services/key_sender_factory_io.dart';
+import 'services/notifications/notification_monitor.dart';
 import 'services/sound/sound_controller.dart';
 
 class AgentRuntime {
@@ -30,6 +31,7 @@ class AgentRuntime {
   final KeySender keySender;
   final StatsService stats;
   final SoundController? sound;
+  final NotificationMonitor? notifications;
   late final CommandDispatcher dispatcher;
 
   final Duration echoGuard;
@@ -51,6 +53,7 @@ class AgentRuntime {
     KeySender? keySender,
     StatsService? stats,
     SoundController? sound,
+    this.notifications,
     Set<String> allowedBinaries = const {},
     this.echoGuard = const Duration(milliseconds: 200),
   })  : audio = audio ?? createDefaultAudioController(),
@@ -120,6 +123,12 @@ class AgentRuntime {
       }));
     }
 
+    if (notifications != null) {
+      _subs.add(notifications!.notifications.listen((event) {
+        mqtt.publishEvent(event);
+      }));
+    }
+
     _subs.add(mqtt.connectionState.listen((s) {
       if (s == AgentConnectionState.connected) _publishSnapshot();
     }));
@@ -129,6 +138,7 @@ class AgentRuntime {
     await brightness.start();
     await media.start();
     await stats.start();
+    await notifications?.start();
 
     _subs.add(stats.changes.listen((s) {
       mqtt.publishStatsCpu(s);
@@ -242,6 +252,7 @@ class AgentRuntime {
     _subs.clear();
     _brightnessPublishTimer?.cancel();
     await _remoteSearchPromptCtl.close();
+    await notifications?.dispose();
     await sound?.dispose();
     await keySender.dispose();
     await stats.dispose();

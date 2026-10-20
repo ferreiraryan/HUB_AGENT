@@ -73,6 +73,9 @@ const state = {
   statsCache: {},
   soundStateCache: {},
   layoutHashCache: {},
+  eventsCache: {},
+  unreadEvents: {},
+  eventsDrawerOpen: false,
   searchOpen: false,
   searchQuery: '',
   searchScope: 'page', // 'page' | 'global'
@@ -98,6 +101,15 @@ const dom = {
   btnScopeGlobal: document.getElementById('btn-scope-global'),
   btnRemotePcSearch: document.getElementById('btn-remote-pc-search'),
   filterChips: document.querySelectorAll('.filter-chip'),
+
+  btnToggleEvents: document.getElementById('btn-toggle-events'),
+  eventsUnreadBadge: document.getElementById('events-unread-badge'),
+  eventsDrawer: document.getElementById('events-drawer'),
+  eventsBackdrop: document.getElementById('events-backdrop'),
+  btnCloseEvents: document.getElementById('btn-close-events'),
+  btnClearEvents: document.getElementById('btn-clear-events'),
+  eventsList: document.getElementById('events-list'),
+  eventsCountLabel: document.getElementById('events-count-label'),
 
   btnToggleMixer: document.getElementById('btn-toggle-mixer'),
   mixerDrawer: document.getElementById('mixer-drawer'),
@@ -204,7 +216,45 @@ const MqttLayer = {
       if (state.currentDeviceId === device.id) UI.updateSoundStateInPlace(device.id);
     }
     else if (topicType === 'event') {
-      if (state.currentDeviceId === device.id) UI.showToast(data);
+      if (!state.eventsCache[device.id]) state.eventsCache[device.id] = [];
+
+      var now = new Date();
+      var hours = String(now.getHours());
+      if (hours.length < 2) hours = '0' + hours;
+      var mins = String(now.getMinutes());
+      if (mins.length < 2) mins = '0' + mins;
+      var secs = String(now.getSeconds());
+      if (secs.length < 2) secs = '0' + secs;
+      var timeStr = hours + ':' + mins + ':' + secs;
+
+      var kind = (data && data.kind) ? String(data.kind).toLowerCase() : 'info';
+      var message = (data && data.message) ? String(data.message) : '';
+
+      var eventItem = {
+        id: 'evt_' + now.getTime() + '_' + Math.random().toString(16).slice(2, 6),
+        kind: kind,
+        message: message,
+        timestamp: now.getTime(),
+        timeStr: timeStr
+      };
+
+      state.eventsCache[device.id].unshift(eventItem);
+      if (state.eventsCache[device.id].length > 50) {
+        state.eventsCache[device.id].pop();
+      }
+
+      if (state.currentDeviceId === device.id) {
+        UI.showToast(data);
+
+        if (state.eventsDrawerOpen) {
+          UI.renderEventsList(device.id);
+        } else {
+          state.unreadEvents[device.id] = (state.unreadEvents[device.id] || 0) + 1;
+          UI.updateEventsBadge();
+        }
+      } else {
+        state.unreadEvents[device.id] = (state.unreadEvents[device.id] || 0) + 1;
+      }
     }
     else if (topicType === 'search') {
       if (state.currentDeviceId === device.id) {
@@ -1076,6 +1126,74 @@ const UI = {
       dom.mixerAppsList.appendChild(row);
     });
   },
+
+  updateEventsBadge() {
+    if (!dom.eventsUnreadBadge) return;
+    var count = (state.currentDeviceId && state.unreadEvents[state.currentDeviceId])
+      ? state.unreadEvents[state.currentDeviceId]
+      : 0;
+    if (count > 0) {
+      dom.eventsUnreadBadge.textContent = count > 99 ? '99+' : String(count);
+      dom.eventsUnreadBadge.style.display = 'inline-flex';
+    } else {
+      dom.eventsUnreadBadge.style.display = 'none';
+    }
+  },
+
+  renderEventsList(deviceId) {
+    if (!dom.eventsList) return;
+    var events = (deviceId && state.eventsCache[deviceId]) ? state.eventsCache[deviceId] : [];
+
+    if (dom.eventsCountLabel) {
+      dom.eventsCountLabel.textContent = '(' + events.length + ')';
+    }
+
+    if (events.length === 0) {
+      dom.eventsList.innerHTML = '<p class="events-empty-msg">Nenhum evento registrado para este dispositivo.</p>';
+      return;
+    }
+
+    var iconMap = {
+      'info': 'ℹ️',
+      'success': '✅',
+      'warning': '⚠️',
+      'error': '❌'
+    };
+
+    var labelMap = {
+      'info': 'Info',
+      'success': 'Sucesso',
+      'warning': 'Aviso',
+      'error': 'Erro'
+    };
+
+    var html = '';
+    for (var i = 0; i < events.length; i++) {
+      var evt = events[i];
+      var kind = evt.kind || 'info';
+      var icon = iconMap[kind] || 'ℹ️';
+      var label = labelMap[kind] || kind.toUpperCase();
+
+      html += '<div class="event-item event-item--' + kind + '">' +
+        '<div class="event-item__header">' +
+          '<span class="event-item__type"><span class="event-item__icon">' + icon + '</span>' + label + '</span>' +
+          '<span class="event-item__time">' + UI.escapeHtml(evt.timeStr) + '</span>' +
+        '</div>' +
+        '<div class="event-item__message">' + UI.escapeHtml(evt.message) + '</div>' +
+      '</div>';
+    }
+
+    dom.eventsList.innerHTML = html;
+    UI.parseEmojis(dom.eventsList);
+  },
+
+  clearEvents(deviceId) {
+    if (!deviceId) return;
+    state.eventsCache[deviceId] = [];
+    state.unreadEvents[deviceId] = 0;
+    UI.updateEventsBadge();
+    UI.renderEventsList(deviceId);
+  },
 };
 
 /* =========================================================
@@ -1094,18 +1212,47 @@ const Navigation = {
     if (dom.mixerDrawer.classList.contains('mixer-drawer--open')) {
       UI.renderAppMixer(state.appsCache[deviceId] || []);
     }
+    if (state.eventsDrawerOpen) {
+      UI.renderEventsList(deviceId);
+    }
+    UI.updateEventsBadge();
     UI.renderShortcuts(deviceId);
     UI.renderNowPlaying(state.mediaCache[deviceId] || null);
     UI.renderDeviceTabs();
     Navigation.closeMixerDrawer();
   },
   openMixerDrawer() {
+    Navigation.closeEventsDrawer();
     dom.mixerDrawer.classList.add('mixer-drawer--open');
     if (state.currentDeviceId) {
       UI.renderAppMixer(state.appsCache[state.currentDeviceId] || []);
     }
   },
   closeMixerDrawer() { dom.mixerDrawer.classList.remove('mixer-drawer--open'); },
+
+  openEventsDrawer() {
+    state.eventsDrawerOpen = true;
+    Navigation.closeMixerDrawer();
+    if (dom.eventsDrawer) dom.eventsDrawer.classList.add('events-drawer--open');
+    if (dom.btnToggleEvents) {
+      dom.btnToggleEvents.classList.add('btn-pill--active');
+      dom.btnToggleEvents.setAttribute('aria-expanded', 'true');
+    }
+    if (state.currentDeviceId) {
+      state.unreadEvents[state.currentDeviceId] = 0;
+      UI.updateEventsBadge();
+      UI.renderEventsList(state.currentDeviceId);
+    }
+  },
+
+  closeEventsDrawer() {
+    state.eventsDrawerOpen = false;
+    if (dom.eventsDrawer) dom.eventsDrawer.classList.remove('events-drawer--open');
+    if (dom.btnToggleEvents) {
+      dom.btnToggleEvents.classList.remove('btn-pill--active');
+      dom.btnToggleEvents.setAttribute('aria-expanded', 'false');
+    }
+  },
 
   toggleSearch() {
     state.searchOpen = !state.searchOpen;
@@ -1137,6 +1284,29 @@ function bindEvents() {
   dom.btnToggleMixer.addEventListener('click', Navigation.openMixerDrawer);
   dom.btnCloseMixer.addEventListener('click', Navigation.closeMixerDrawer);
   dom.mixerBackdrop.addEventListener('click', Navigation.closeMixerDrawer);
+
+  if (dom.btnToggleEvents) {
+    dom.btnToggleEvents.addEventListener('click', function() {
+      if (state.eventsDrawerOpen) {
+        Navigation.closeEventsDrawer();
+      } else {
+        Navigation.openEventsDrawer();
+      }
+    });
+  }
+  if (dom.btnCloseEvents) {
+    dom.btnCloseEvents.addEventListener('click', Navigation.closeEventsDrawer);
+  }
+  if (dom.eventsBackdrop) {
+    dom.eventsBackdrop.addEventListener('click', Navigation.closeEventsDrawer);
+  }
+  if (dom.btnClearEvents) {
+    dom.btnClearEvents.addEventListener('click', function() {
+      if (state.currentDeviceId) {
+        UI.clearEvents(state.currentDeviceId);
+      }
+    });
+  }
 
   if (dom.btnToggleSearch) {
     dom.btnToggleSearch.addEventListener('click', Navigation.toggleSearch);

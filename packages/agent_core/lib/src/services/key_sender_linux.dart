@@ -420,6 +420,30 @@ class LinuxKeySender implements KeySender {
 
   @override
   Future<bool> send(String combo) async {
+    final trimmed = combo.trim();
+    if (trimmed.isEmpty) return false;
+
+    // Detecta se a combinação utiliza a tecla Win / Super / Meta
+    final hasWin = trimmed.toLowerCase().split('+').any((token) {
+      final t = token.trim();
+      return t == 'win' ||
+          t == 'super' ||
+          t == 'meta' ||
+          t == 'windows' ||
+          t == 'lwin' ||
+          t == 'rwin';
+    });
+
+    // No Wayland / Hyprland:
+    // O protocolo zwp_virtual_keyboard_v1 (usado pelo wtype) é descartado por compositores
+    // Wayland para atalhos de compositor (Super / Meta).
+    // O ydotool emite via /dev/uinput no nível do kernel Linux (evdev),
+    // permitindo que o Hyprland intercepte a tecla Super e atalhos de window manager.
+    if (hasWin && await _hasCommand('ydotool')) {
+      final ydotoolOk = await _sendYdotool(combo);
+      if (ydotoolOk) return true;
+    }
+
     final backend = await _detectBackend();
     switch (backend) {
       case LinuxKeyBackend.wtype:

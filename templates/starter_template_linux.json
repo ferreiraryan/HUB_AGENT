@@ -1,0 +1,587 @@
+{
+  "deviceName": "archlinux",
+  "theme": {
+    "bgColor": "#11111b",
+    "cardColor": "#1e1e2e",
+    "accentColor": "#cba6f7"
+  },
+  "pages": {
+    "home": [
+      {
+        "type": "slider",
+        "id": "master_volume",
+        "icon": "🔊",
+        "label": "Volume Principal",
+        "width": 1,
+        "height": 2,
+        "x": 0,
+        "y": 0,
+        "source": { "kind": "master_volume" }
+      },
+      {
+        "type": "slider",
+        "id": "controle_brilho",
+        "icon": "☀️",
+        "label": "Brilho",
+        "width": 1,
+        "height": 2,
+        "x": 1,
+        "y": 0,
+        "source": { "kind": "brightness" }
+      },
+      {
+        "type": "stat",
+        "id": "stat_cpu",
+        "icon": "⚡",
+        "label": "CPU",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 0,
+        "source": { "kind": "cpu", "field": "load", "unit": "%" }
+      },
+      {
+        "type": "stat",
+        "id": "stat_ram",
+        "icon": "🧠",
+        "label": "RAM",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 0,
+        "source": { "kind": "ram", "field": "percent", "unit": "%" }
+      },
+      {
+        "type": "folder",
+        "id": "folder_audio",
+        "icon": "🎵",
+        "label": "Áudio & Mídia",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 0,
+        "target": "audio"
+      },
+      {
+        "type": "folder",
+        "id": "folder_hypr",
+        "icon": "🖥️",
+        "label": "Hyprland",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 0,
+        "target": "hyprland"
+      },
+      {
+        "type": "stat",
+        "id": "stat_temp",
+        "icon": "🌡️",
+        "label": "Temp CPU",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 1,
+        "source": { "kind": "cpu", "field": "temp", "unit": "°C" }
+      },
+      {
+        "type": "stat",
+        "id": "stat_disk",
+        "icon": "💾",
+        "label": "Disco /",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 1,
+        "source": { "kind": "disk", "field": "percent", "unit": "%" }
+      },
+      {
+        "type": "folder",
+        "id": "folder_apps",
+        "icon": "🚀",
+        "label": "Aplicativos",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 1,
+        "target": "apps"
+      },
+      {
+        "type": "folder",
+        "id": "folder_soundpad",
+        "icon": "🔊",
+        "label": "Sound Pad",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 1,
+        "target": "soundpad"
+      },
+      {
+        "type": "shortcut",
+        "id": "mute_toggle",
+        "icon": "🔇",
+        "label": "Mudo",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "screenshot",
+        "icon": "📸",
+        "label": "Print",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "prev",
+        "icon": "⏮️",
+        "label": "Anterior",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "play_pause",
+        "icon": "⏯️",
+        "label": "Play/Pause",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "next",
+        "icon": "⏭️",
+        "label": "Próximo",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "lock_screen",
+        "icon": "🔒",
+        "label": "Bloquear",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 2
+      }
+    ],
+    "audio": [
+      {
+        "type": "back",
+        "id": "back_audio",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "shortcut",
+        "id": "prev",
+        "icon": "⏮️",
+        "label": "Anterior",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "play_pause",
+        "icon": "⏯️",
+        "label": "Play/Pause",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "next",
+        "icon": "⏭️",
+        "label": "Próximo",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 0
+      },
+      {
+        "type": "slider",
+        "id": "vol_spotify",
+        "icon": "🎵",
+        "label": "Vol. Spotify",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 0,
+        "source": { "kind": "app_volume", "match": "Spotify" }
+      },
+      {
+        "type": "slider",
+        "id": "vol_firefox",
+        "icon": "🦊",
+        "label": "Vol. Firefox",
+        "width": 2,
+        "height": 1,
+        "x": 0,
+        "y": 1,
+        "source": { "kind": "app_volume", "match": "Firefox" }
+      },
+      {
+        "type": "slider",
+        "id": "vol_discord",
+        "icon": "💬",
+        "label": "Vol. Discord",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 1,
+        "source": { "kind": "app_volume", "match": "Discord" }
+      },
+      {
+        "type": "slider",
+        "id": "vol_soundpad",
+        "icon": "🎚️",
+        "label": "Vol. Sound Pad",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 1,
+        "source": { "kind": "sound_volume" }
+      },
+      {
+        "type": "shortcut",
+        "id": "open_spotify",
+        "icon": "🟢",
+        "label": "Abrir Spotify",
+        "width": 2,
+        "height": 1,
+        "x": 0,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "mic_mute",
+        "icon": "🎙️",
+        "label": "Mic Mute",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "notify_test",
+        "icon": "🔔",
+        "label": "Notificação",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 2
+      }
+    ],
+    "hyprland": [
+      {
+        "type": "back",
+        "id": "back_hypr",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "shortcut",
+        "id": "ws_1",
+        "icon": "1️⃣",
+        "label": "Workspace 1",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "ws_2",
+        "icon": "2️⃣",
+        "label": "Workspace 2",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "ws_3",
+        "icon": "3️⃣",
+        "label": "Workspace 3",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "ws_4",
+        "icon": "4️⃣",
+        "label": "Workspace 4",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "ws_5",
+        "icon": "5️⃣",
+        "label": "Workspace 5",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "hypr_close",
+        "icon": "❌",
+        "label": "Fechar Janela",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "hypr_float",
+        "icon": "🪟",
+        "label": "Toggle Float",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "hypr_full",
+        "icon": "📺",
+        "label": "Fullscreen",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "hypr_pin",
+        "icon": "📌",
+        "label": "Fixar (Pin)",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "hypr_split",
+        "icon": "↕️",
+        "label": "Dividir Split",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "hypr_term",
+        "icon": "⌨️",
+        "label": "Terminal Kitty",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 1
+      }
+    ],
+    "apps": [
+      {
+        "type": "back",
+        "id": "back_apps",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "shortcut",
+        "id": "app_firefox",
+        "icon": "🦊",
+        "label": "Firefox",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_nvim",
+        "icon": "📝",
+        "label": "Neovim",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_code",
+        "icon": "💻",
+        "label": "VS Code",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_discord",
+        "icon": "💬",
+        "label": "Discord",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_steam",
+        "icon": "🎮",
+        "label": "Steam",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_files",
+        "icon": "📁",
+        "label": "Arquivos",
+        "width": 2,
+        "height": 1,
+        "x": 0,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "app_btop",
+        "icon": "📊",
+        "label": "Btop Monitor",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "app_calc",
+        "icon": "🧮",
+        "label": "Calculadora",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 1
+      }
+    ],
+    "soundpad": [
+      {
+        "type": "back",
+        "id": "back_soundpad",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "slider",
+        "id": "soundpad_vol",
+        "icon": "🎚️",
+        "label": "Volume Som",
+        "width": 1,
+        "height": 2,
+        "x": 1,
+        "y": 0,
+        "source": { "kind": "sound_volume" }
+      },
+      {
+        "type": "shortcut",
+        "id": "stop_sound",
+        "icon": "⏹️",
+        "label": "Parar Tudo",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 0
+      },
+      {
+        "type": "sound",
+        "id": "sound_lula",
+        "icon": "🔊",
+        "label": "Presidente",
+        "sound_id": "ah-lula-meu-presidente",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 0
+      }
+    ]
+  },
+  "bindings": {
+    "mute_toggle": ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"],
+    "screenshot": ["__sendkeys__", "print"],
+    "lock_screen": ["loginctl", "lock-session"],
+    "open_spotify": ["spotify"],
+    "mic_mute": ["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"],
+    "notify_test": ["notify-send", "Hub Agent", "Teste de acionamento do tablet!"],
+    "ws_1": ["hyprctl", "dispatch", "workspace", "1"],
+    "ws_2": ["hyprctl", "dispatch", "workspace", "2"],
+    "ws_3": ["hyprctl", "dispatch", "workspace", "3"],
+    "ws_4": ["hyprctl", "dispatch", "workspace", "4"],
+    "ws_5": ["hyprctl", "dispatch", "workspace", "5"],
+    "hypr_close": ["hyprctl", "dispatch", "killactive"],
+    "hypr_float": ["hyprctl", "dispatch", "togglefloating"],
+    "hypr_full": ["hyprctl", "dispatch", "fullscreen"],
+    "hypr_pin": ["hyprctl", "dispatch", "pin"],
+    "hypr_split": ["hyprctl", "dispatch", "togglesplit"],
+    "hypr_term": ["kitty"],
+    "app_firefox": ["firefox"],
+    "app_nvim": ["kitty", "-e", "nvim"],
+    "app_code": ["code"],
+    "app_discord": ["discord"],
+    "app_steam": ["steam"],
+    "app_files": ["xdg-open", "/home/ryck"],
+    "app_btop": ["kitty", "-e", "btop"],
+    "app_calc": ["galculator"]
+  }
+}

@@ -225,6 +225,28 @@ void main() {
       expect(success, isFalse);
     });
 
+    test('em Wayland, combinações com tecla win priorizam ydotool para o Hyprland', () async {
+      final executed = <String>[];
+
+      final sender = LinuxKeySender(
+        environment: {'WAYLAND_DISPLAY': 'wayland-1'},
+        runner: (exe, args, {bool? runInShell}) async {
+          executed.add('$exe ${args.join(' ')}');
+          if (exe == 'which') {
+            return ProcessResult(1, 0, '/usr/bin/$exe\n', '');
+          }
+          if (exe == 'ydotool') {
+            return ProcessResult(2, 0, '', '');
+          }
+          return ProcessResult(3, 0, '', '');
+        },
+      );
+
+      final success = await sender.send('win+d');
+      expect(success, isTrue);
+      expect(executed, anyElement(contains('ydotool key 125:1 32:1 32:0 125:0')));
+    });
+
     test('em ambiente de sistema real se wtype estiver disponível: executa tecla com sucesso', () async {
       final sender = LinuxKeySender();
       final backend = await sender.detectedBackend;

@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Smart Kiosk Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 
 <body>
@@ -41,6 +41,10 @@
         <div class="main__header-actions">
           <button id="btn-toggle-search" class="btn-pill btn-pill--header" type="button" aria-expanded="false" title="Buscar widgets">
             &#128269; Buscar
+          </button>
+          <button id="btn-toggle-events" class="btn-pill btn-pill--header" type="button" aria-expanded="false" title="Histórico de eventos">
+            &#128276; Eventos
+            <span id="events-unread-badge" class="badge-count" style="display: none;">0</span>
           </button>
           <button id="btn-toggle-mixer" class="btn-pill btn-pill--header" type="button">
             &#127925; Mixer de Apps
@@ -123,6 +127,27 @@
       </div>
     </div>
   </div>
+
+  <!-- ===================== DRAWER DE EVENTOS ===================== -->
+  <div id="events-drawer" class="events-drawer">
+    <div id="events-backdrop" class="events-drawer__backdrop"></div>
+    <div class="events-drawer__panel">
+      <header class="events-drawer__header">
+        <div class="events-drawer__title-group">
+          <h2>Histórico de Eventos</h2>
+          <span id="events-count-label" class="events-drawer__counter">(0)</span>
+        </div>
+        <div class="events-drawer__actions">
+          <button id="btn-clear-events" class="btn-pill btn-pill--sm" type="button" title="Limpar histórico">Limpar</button>
+          <button id="btn-close-events" class="btn-icon" type="button" aria-label="Fechar">&times;</button>
+        </div>
+      </header>
+      <div id="events-list" class="events-list">
+        <p class="events-empty-msg">Nenhum evento registrado para este dispositivo.</p>
+      </div>
+    </div>
+  </div>
+
   <!-- ===================== TOAST CONTAINER (CANTO SUPERIOR DIREITO) ===================== -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
@@ -151,6 +176,6 @@
   </script>
 
   <script src="mqtt.min.js"></script>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

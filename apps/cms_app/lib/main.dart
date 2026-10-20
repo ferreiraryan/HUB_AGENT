@@ -50,10 +50,15 @@ void main(List<String> args) async {
     defaultTargetDeviceProvider: () => config.soundOutputDevice,
   );
 
+  final notifications = config.mirrorNotifications
+      ? createDefaultNotificationMonitor()
+      : UnsupportedNotificationMonitor();
+
   final runtime = AgentRuntime(
     repository: repository,
     mqtt: mqtt,
     sound: soundController,
+    notifications: notifications,
   );
 
   await runtime.start(fallbackDeviceName: Platform.localHostname);

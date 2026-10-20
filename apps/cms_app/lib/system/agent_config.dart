@@ -8,12 +8,14 @@ class AgentConfig {
   final int port;
   final String deviceId;
   final String? soundOutputDevice;
+  final bool mirrorNotifications;
 
   const AgentConfig({
     required this.host,
     required this.port,
     required this.deviceId,
     this.soundOutputDevice,
+    this.mirrorNotifications = true,
   });
 
   factory AgentConfig.fromJson(Map<String, dynamic> json) => AgentConfig(
@@ -21,12 +23,14 @@ class AgentConfig {
         port: json['port'] as int? ?? 1883,
         deviceId: json['deviceId'] as String? ?? Platform.localHostname,
         soundOutputDevice: json['soundOutputDevice'] as String?,
+        mirrorNotifications: json['mirrorNotifications'] as bool? ?? true,
       );
 
   Map<String, dynamic> toJson() => {
         'host': host,
         'port': port,
         'deviceId': deviceId,
+        'mirrorNotifications': mirrorNotifications,
         if (soundOutputDevice != null) 'soundOutputDevice': soundOutputDevice,
       };
 
@@ -35,12 +39,14 @@ class AgentConfig {
     int? port,
     String? deviceId,
     String? soundOutputDevice,
+    bool? mirrorNotifications,
     bool clearSoundOutputDevice = false,
   }) =>
       AgentConfig(
         host: host ?? this.host,
         port: port ?? this.port,
         deviceId: deviceId ?? this.deviceId,
+        mirrorNotifications: mirrorNotifications ?? this.mirrorNotifications,
         soundOutputDevice: clearSoundOutputDevice
             ? null
             : (soundOutputDevice ?? this.soundOutputDevice),
@@ -68,6 +74,7 @@ class AgentConfig {
       host: 'localhost',
       port: 1883,
       deviceId: Platform.localHostname,
+      mirrorNotifications: true,
     );
   }
 
