@@ -72,6 +72,11 @@ const state = {
   currentPageCache: {},
   statsCache: {},
   soundStateCache: {},
+  layoutHashCache: {},
+  searchOpen: false,
+  searchQuery: '',
+  searchScope: 'page', // 'page' | 'global'
+  searchFilter: 'all', // 'all' | 'sound' | 'slider' | 'shortcut' | 'stat' | 'folder'
 };
 
 /* =========================================================
@@ -84,6 +89,15 @@ const dom = {
   deviceStatusBadge: document.getElementById('device-status-badge'),
   mainContent: document.getElementById('main-content'),
   offlineOverlay: document.getElementById('offline-overlay'),
+
+  btnToggleSearch: document.getElementById('btn-toggle-search'),
+  searchSection: document.getElementById('search-section'),
+  widgetSearchInput: document.getElementById('widget-search-input'),
+  btnClearSearch: document.getElementById('btn-clear-search'),
+  btnScopePage: document.getElementById('btn-scope-page'),
+  btnScopeGlobal: document.getElementById('btn-scope-global'),
+  btnRemotePcSearch: document.getElementById('btn-remote-pc-search'),
+  filterChips: document.querySelectorAll('.filter-chip'),
 
   btnToggleMixer: document.getElementById('btn-toggle-mixer'),
   mixerDrawer: document.getElementById('mixer-drawer'),
@@ -138,6 +152,7 @@ const MqttLayer = {
     state.mqttClient.subscribe('nodes/+/sound/state');
     state.mqttClient.subscribe('nodes/+/event');
     state.mqttClient.subscribe('nodes/+/state/+');
+    state.mqttClient.subscribe('nodes/+/search');
     state.mqttClient.subscribe('nodes/+/stats/cpu');
     state.mqttClient.subscribe('nodes/+/stats/ram');
     state.mqttClient.subscribe('nodes/+/stats/disk');
@@ -163,8 +178,10 @@ const MqttLayer = {
     const device = state.devices[deviceId];
 
     if (topicType === 'status') {
-      device.online = !!data.online;
-      UI.renderDeviceTabs();
+      const nextOnline = !!data.online;
+      const statusChanged = (device.online !== nextOnline);
+      device.online = nextOnline;
+      if (statusChanged) UI.renderDeviceTabs();
       if (state.currentDeviceId === device.id) {
         UI.updateDeviceStatusBadge(device.online);
         UI.setOfflineOverlay(!device.online);
@@ -172,7 +189,9 @@ const MqttLayer = {
     }
     else if (topicType === 'audio/apps') {
       state.appsCache[device.id] = Array.isArray(data) ? data : (data.apps || []);
-      if (state.currentDeviceId === device.id) UI.renderAppMixer(state.appsCache[device.id]);
+      if (state.currentDeviceId === device.id && dom.mixerDrawer.classList.contains('mixer-drawer--open')) {
+        UI.renderAppMixer(state.appsCache[device.id]);
+      }
     }
     else if (topicType === 'audio/volume') {
       if (typeof data.value === 'number') {
@@ -187,6 +206,27 @@ const MqttLayer = {
     else if (topicType === 'event') {
       if (state.currentDeviceId === device.id) UI.showToast(data);
     }
+    else if (topicType === 'search') {
+      if (state.currentDeviceId === device.id) {
+        var queryText = (data && typeof data.query === 'string') ? data.query : '';
+        state.searchQuery = queryText;
+        if (dom.widgetSearchInput) {
+          dom.widgetSearchInput.value = queryText;
+        }
+        if (dom.btnClearSearch) {
+          dom.btnClearSearch.style.display = queryText.length > 0 ? 'inline-block' : 'none';
+        }
+        if (!state.searchOpen) {
+          state.searchOpen = true;
+          if (dom.searchSection) dom.searchSection.style.display = 'flex';
+          if (dom.btnToggleSearch) {
+            dom.btnToggleSearch.classList.add('btn-pill--active');
+            dom.btnToggleSearch.setAttribute('aria-expanded', 'true');
+          }
+        }
+        UI.renderShortcuts(device.id);
+      }
+    }
     else if (topicType.startsWith('state/')) {
       const sliderId = topicParts[3];
       if (!state.slidersCache[device.id]) state.slidersCache[device.id] = {};
@@ -198,26 +238,37 @@ const MqttLayer = {
       const kind = topicParts[3];
       if (!state.statsCache[device.id]) state.statsCache[device.id] = {};
       state.statsCache[device.id][kind] = data;
-      if (state.currentDeviceId === device.id) UI.updateStatsInPlace(device.id);
+      if (state.currentDeviceId === device.id) UI.updateStatsInPlace(device.id, kind);
     }
     else if (topicType === 'media') {
+      const oldMedia = state.mediaCache[device.id];
+      const statusChanged = !oldMedia || oldMedia.status !== data.status;
       state.mediaCache[device.id] = data;
-      UI.renderDeviceTabs();
+      if (statusChanged) UI.renderDeviceTabs();
       if (state.currentDeviceId === device.id) UI.renderNowPlaying(data);
     }
     else if (topicType === 'layout') {
       if (data.deviceName) {
+        const nameChanged = (device.name !== data.deviceName);
         device.name = data.deviceName;
-        UI.renderDeviceTabs();
-        if (state.currentDeviceId === device.id) dom.deviceTitle.textContent = device.name;
+        if (nameChanged) {
+          UI.renderDeviceTabs();
+          if (state.currentDeviceId === device.id) dom.deviceTitle.textContent = device.name;
+        }
       }
       if (data.theme) UI.applyTheme(data.theme);
 
-      if (data.pages) state.shortcutsCache[device.id] = data.pages;
-      else state.shortcutsCache[device.id] = { home: data.shortcuts || [] };
+      const pagesData = data.pages ? data.pages : { home: data.shortcuts || [] };
+      const pagesHash = JSON.stringify(pagesData);
+      const layoutChanged = (state.layoutHashCache[device.id] !== pagesHash);
 
-      state.currentPageCache[device.id] = 'home';
-      if (state.currentDeviceId === device.id) UI.renderShortcuts(device.id);
+      state.shortcutsCache[device.id] = pagesData;
+      state.layoutHashCache[device.id] = pagesHash;
+
+      if (layoutChanged) {
+        state.currentPageCache[device.id] = 'home';
+        if (state.currentDeviceId === device.id) UI.renderShortcuts(device.id);
+      }
     }
   },
 
@@ -375,10 +426,20 @@ const UI = {
 
   updateSliderUI(id, value) {
     const input = dom.shortcutsGrid.querySelector('input[data-slider-id="' + id + '"]');
-    if (input && document.activeElement !== input) {
-      input.value = value;
-      const label = dom.shortcutsGrid.querySelector('output[data-slider-value="' + id + '"]');
-      if (label) label.textContent = value + '%';
+    if (!input) return;
+    if (input._isDragging) return;
+    const now = Date.now();
+    if (input._lastUserInput && (now - input._lastUserInput < 400)) return;
+    if (document.activeElement === input) return;
+
+    const strVal = String(value);
+    if (input.value !== strVal) {
+      input.value = strVal;
+    }
+    const label = dom.shortcutsGrid.querySelector('output[data-slider-value="' + id + '"]');
+    if (label) {
+      const txt = value + '%';
+      if (label.textContent !== txt) label.textContent = txt;
     }
   },
 
@@ -467,9 +528,10 @@ const UI = {
     soundButtons.forEach((btn) => {
       const soundId = btn.dataset.soundId;
       const isThisPlaying = soundPlayback.isPlaying && (soundId === soundPlayback.soundId);
-
-      btn.classList.toggle('shortcut-btn--playing', isThisPlaying);
-      btn.disabled = false;
+      const currentlyPlaying = btn.classList.contains('shortcut-btn--playing');
+      if (currentlyPlaying !== isThisPlaying) {
+        btn.classList.toggle('shortcut-btn--playing', isThisPlaying);
+      }
     });
   },
 
@@ -553,18 +615,136 @@ const UI = {
     return placements;
   },
 
+  isSearchActive() {
+    return state.searchOpen && (
+      (state.searchQuery && state.searchQuery.trim().length > 0) ||
+      state.searchFilter !== 'all' ||
+      state.searchScope === 'global'
+    );
+  },
+
+  getFilteredItems(deviceId) {
+    const pages = state.shortcutsCache[deviceId];
+    if (!pages) return [];
+
+    let pool = [];
+    const currentPageId = state.currentPageCache[deviceId] || 'home';
+
+    if (state.searchScope === 'global') {
+      const pageKeys = Object.keys(pages);
+      for (let k = 0; k < pageKeys.length; k++) {
+        const pageKey = pageKeys[k];
+        const pageTiles = pages[pageKey] || [];
+        for (let t = 0; t < pageTiles.length; t++) {
+          const tile = pageTiles[t];
+          const copy = Object.assign({}, tile);
+          copy._pageId = pageKey;
+          copy.x = undefined;
+          copy.y = undefined;
+          pool.push(copy);
+        }
+      }
+    } else {
+      const pageTiles = pages[currentPageId] || [];
+      for (let t = 0; t < pageTiles.length; t++) {
+        const tile = pageTiles[t];
+        const copy = Object.assign({}, tile);
+        copy._pageId = currentPageId;
+        copy.x = undefined;
+        copy.y = undefined;
+        pool.push(copy);
+      }
+    }
+
+    // Remover 'back' pois navegação para voltar não deve aparecer nos resultados
+    pool = pool.filter(function(item) { return item.type !== 'back'; });
+
+    // Filtro por tipo
+    if (state.searchFilter !== 'all') {
+      pool = pool.filter(function(item) {
+        if (state.searchFilter === 'sound') return item.type === 'sound';
+        if (state.searchFilter === 'slider') return item.type === 'slider';
+        if (state.searchFilter === 'stat') return item.type === 'stat';
+        if (state.searchFilter === 'folder') return item.type === 'folder';
+        if (state.searchFilter === 'shortcut') return item.type === 'shortcut' || !item.type;
+        return true;
+      });
+    }
+
+    // Filtro por query de texto
+    const q = (state.searchQuery || '').trim().toLowerCase();
+    if (q.length > 0) {
+      pool = pool.filter(function(item) {
+        const label = (item.label || '').toLowerCase();
+        const id = (item.id || '').toLowerCase();
+        const soundId = (item.sound_id || '').toLowerCase();
+        const target = (item.target || '').toLowerCase();
+        return label.indexOf(q) !== -1 ||
+               id.indexOf(q) !== -1 ||
+               soundId.indexOf(q) !== -1 ||
+               target.indexOf(q) !== -1;
+      });
+    }
+
+    return pool;
+  },
+
+  resetSearchFilters(deviceId, rerender) {
+    state.searchQuery = '';
+    state.searchFilter = 'all';
+    state.searchScope = 'page';
+
+    if (dom.widgetSearchInput) dom.widgetSearchInput.value = '';
+    if (dom.btnClearSearch) dom.btnClearSearch.style.display = 'none';
+
+    if (dom.btnScopePage) dom.btnScopePage.classList.add('scope-btn--active');
+    if (dom.btnScopeGlobal) dom.btnScopeGlobal.classList.remove('scope-btn--active');
+
+    if (dom.filterChips) {
+      dom.filterChips.forEach(function(chip) {
+        const isAll = chip.getAttribute('data-filter') === 'all';
+        chip.classList.toggle('filter-chip--active', isAll);
+      });
+    }
+
+    if (rerender !== false) {
+      UI.renderShortcuts(deviceId || state.currentDeviceId);
+    }
+  },
+
   renderShortcuts(deviceId) {
     dom.shortcutsGrid.innerHTML = '';
     const pages = state.shortcutsCache[deviceId];
     if (!pages) return;
 
-    const currentPageId = state.currentPageCache[deviceId] || 'home';
-    const items = pages[currentPageId] || [];
-    const hasExplicitBack = items.some((item) => item.type === 'back');
+    let renderList;
+    const isSearching = this.isSearchActive();
 
-    const renderList = (currentPageId !== 'home' && !hasExplicitBack)
-      ? [{ type: 'back', icon: '⬅️', label: 'Voltar', x: 0, y: 0 }].concat(items)
-      : items;
+    if (isSearching) {
+      renderList = this.getFilteredItems(deviceId);
+      if (renderList.length === 0) {
+        dom.shortcutsGrid.innerHTML = 
+          '<div class="shortcuts-empty">' +
+            '<p>Nenhum widget encontrado com os filtros selecionados.</p>' +
+            '<button type="button" class="btn-reset-filters" id="btn-reset-filters">Limpar filtros</button>' +
+          '</div>';
+        const btnReset = document.getElementById('btn-reset-filters');
+        if (btnReset) {
+          btnReset.addEventListener('click', function() {
+            UI.resetSearchFilters(deviceId, true);
+          });
+        }
+        return;
+      }
+    } else {
+      const currentPageId = state.currentPageCache[deviceId] || 'home';
+      const items = pages[currentPageId] || [];
+      const hasExplicitBack = items.some((item) => item.type === 'back');
+
+      renderList = (currentPageId !== 'home' && !hasExplicitBack)
+        ? [{ type: 'back', icon: '⬅️', label: 'Voltar', x: 0, y: 0 }].concat(items)
+        : items;
+    }
 
     const placements = this.resolveGridPlacements(renderList, 6);
 
@@ -576,6 +756,10 @@ const UI = {
       const gridRowStyle = (pos.row + 1) + ' / span ' + h;
 
       const dimClasses = ' tile--w-' + w + ' tile--h-' + h;
+      const showPageBadge = isSearching && state.searchScope === 'global' && !!item._pageId;
+      const pageBadgeHtml = showPageBadge
+        ? '<span class="tile-page-badge" title="Página: ' + UI.escapeHtml(item._pageId) + '">&#128196; ' + UI.escapeHtml(item._pageId) + '</span>'
+        : '';
 
       if (item.type === 'slider') {
         const isVertical = h > w;
@@ -621,7 +805,17 @@ const UI = {
         const output = card.querySelector('output');
         let lastPublish = 0;
 
+        const markDragging = () => { input._isDragging = true; input._lastUserInput = Date.now(); };
+        const unmarkDragging = () => { input._isDragging = false; input._lastUserInput = Date.now(); };
+
+        input.addEventListener('touchstart', markDragging, { passive: true });
+        input.addEventListener('touchend', unmarkDragging, { passive: true });
+        input.addEventListener('touchcancel', unmarkDragging, { passive: true });
+        input.addEventListener('mousedown', markDragging);
+        input.addEventListener('mouseup', unmarkDragging);
+
         input.addEventListener('input', (e) => {
+          input._lastUserInput = Date.now();
           const v = e.target.value;
           output.textContent = v + '%';
 
@@ -638,6 +832,7 @@ const UI = {
             }
           }
         });
+        if (showPageBadge) card.insertAdjacentHTML('afterbegin', pageBadgeHtml);
         dom.shortcutsGrid.appendChild(card);
       }
       else if (item.type === 'stat') {
@@ -725,6 +920,7 @@ const UI = {
             '</div>';
         }
 
+        if (showPageBadge) card.insertAdjacentHTML('afterbegin', pageBadgeHtml);
         dom.shortcutsGrid.appendChild(card);
       }
       else if (item.type === 'sound') {
@@ -757,6 +953,7 @@ const UI = {
             MqttLayer.publishCommand(device, 'play_sound', { sound_id: item.sound_id });
           }
         });
+        if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
         dom.shortcutsGrid.appendChild(btn);
       }
       else {
@@ -770,9 +967,14 @@ const UI = {
           '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
           '<span>' + UI.escapeHtml(item.label || item.id || 'Sem Nome') + '</span>';
 
+        if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
+
         btn.addEventListener('click', () => {
           if (item.type === 'folder' && item.target) {
             state.currentPageCache[deviceId] = item.target;
+            if (UI.isSearchActive()) {
+              UI.resetSearchFilters(deviceId, false);
+            }
             UI.renderShortcuts(deviceId);
           } else if (item.type === 'back') {
             state.currentPageCache[deviceId] = 'home';
@@ -808,11 +1010,35 @@ const UI = {
   },
 
   renderAppMixer(apps) {
-    dom.mixerAppsList.innerHTML = '';
     if (!apps || apps.length === 0) {
       dom.mixerAppsList.innerHTML = '<p class="mixer-empty-msg">Nenhuma aplicação de áudio ativa no momento.</p>';
       return;
     }
+
+    const existingRows = dom.mixerAppsList.querySelectorAll('.app-mixer-row');
+    const existingInputs = dom.mixerAppsList.querySelectorAll('input[data-app-id]');
+    const existingIds = [];
+    existingInputs.forEach((inp) => existingIds.push(inp.dataset.appId));
+    const newIds = apps.map((a) => String(a.id));
+
+    const sameApps = (existingIds.length === newIds.length) && existingIds.every((id, idx) => id === newIds[idx]);
+
+    if (sameApps && existingRows.length === apps.length) {
+      apps.forEach((app, idx) => {
+        const row = existingRows[idx];
+        const input = row.querySelector('input');
+        const valueLabel = row.querySelector('.app-mixer-row__value');
+        const vol = app.volume !== undefined ? app.volume : 0;
+        if (input && !input._isDragging && document.activeElement !== input) {
+          const strVol = String(vol);
+          if (input.value !== strVol) input.value = strVol;
+          if (valueLabel && valueLabel.textContent !== vol + '%') valueLabel.textContent = vol + '%';
+        }
+      });
+      return;
+    }
+
+    dom.mixerAppsList.innerHTML = '';
     apps.forEach((app) => {
       const row = document.createElement('div');
       row.className = 'app-mixer-row';
@@ -820,7 +1046,7 @@ const UI = {
       
       row.innerHTML = 
         '<div class="app-mixer-row__label">' +
-          '<span class="app-mixer-row__name">' + (app.name || app.id) + '</span>' +
+          '<span class="app-mixer-row__name">' + UI.escapeHtml(app.name || app.id) + '</span>' +
           '<span class="app-mixer-row__value">' + vol + '%</span>' +
         '</div>' +
         '<input type="range" min="0" max="100" step="1" value="' + vol + '" data-app-id="' + app.id + '">';
@@ -828,6 +1054,15 @@ const UI = {
       const input = row.querySelector('input');
       const valueLabel = row.querySelector('.app-mixer-row__value');
       let lastPublish = 0;
+
+      const markDragging = () => { input._isDragging = true; };
+      const unmarkDragging = () => { input._isDragging = false; };
+      input.addEventListener('touchstart', markDragging, { passive: true });
+      input.addEventListener('touchend', unmarkDragging, { passive: true });
+      input.addEventListener('touchcancel', unmarkDragging, { passive: true });
+      input.addEventListener('mousedown', markDragging);
+      input.addEventListener('mouseup', unmarkDragging);
+
       input.addEventListener('input', (e) => {
         const val = e.target.value;
         valueLabel.textContent = val + '%';
@@ -856,14 +1091,43 @@ const Navigation = {
     UI.updateDeviceStatusBadge(device.online);
     UI.setOfflineOverlay(!device.online);
 
-    UI.renderAppMixer(state.appsCache[deviceId] || []);
+    if (dom.mixerDrawer.classList.contains('mixer-drawer--open')) {
+      UI.renderAppMixer(state.appsCache[deviceId] || []);
+    }
     UI.renderShortcuts(deviceId);
     UI.renderNowPlaying(state.mediaCache[deviceId] || null);
     UI.renderDeviceTabs();
     Navigation.closeMixerDrawer();
   },
-  openMixerDrawer() { dom.mixerDrawer.classList.add('mixer-drawer--open'); },
+  openMixerDrawer() {
+    dom.mixerDrawer.classList.add('mixer-drawer--open');
+    if (state.currentDeviceId) {
+      UI.renderAppMixer(state.appsCache[state.currentDeviceId] || []);
+    }
+  },
   closeMixerDrawer() { dom.mixerDrawer.classList.remove('mixer-drawer--open'); },
+
+  toggleSearch() {
+    state.searchOpen = !state.searchOpen;
+    if (dom.searchSection) {
+      dom.searchSection.style.display = state.searchOpen ? 'flex' : 'none';
+    }
+    if (dom.btnToggleSearch) {
+      dom.btnToggleSearch.classList.toggle('btn-pill--active', state.searchOpen);
+      dom.btnToggleSearch.setAttribute('aria-expanded', state.searchOpen ? 'true' : 'false');
+    }
+    if (state.searchOpen) {
+      if (dom.widgetSearchInput) {
+        setTimeout(function() {
+          dom.widgetSearchInput.focus();
+        }, 50);
+      }
+    } else {
+      if (state.searchQuery || state.searchFilter !== 'all' || state.searchScope !== 'page') {
+        UI.resetSearchFilters(state.currentDeviceId, true);
+      }
+    }
+  },
 };
 
 /* =========================================================
@@ -873,6 +1137,84 @@ function bindEvents() {
   dom.btnToggleMixer.addEventListener('click', Navigation.openMixerDrawer);
   dom.btnCloseMixer.addEventListener('click', Navigation.closeMixerDrawer);
   dom.mixerBackdrop.addEventListener('click', Navigation.closeMixerDrawer);
+
+  if (dom.btnToggleSearch) {
+    dom.btnToggleSearch.addEventListener('click', Navigation.toggleSearch);
+  }
+
+  if (dom.widgetSearchInput) {
+    var searchDebounceTimer = null;
+    dom.widgetSearchInput.addEventListener('input', function(e) {
+      var val = e.target.value;
+      if (dom.btnClearSearch) {
+        dom.btnClearSearch.style.display = val.length > 0 ? 'inline-block' : 'none';
+      }
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(function() {
+        state.searchQuery = val;
+        UI.renderShortcuts(state.currentDeviceId);
+      }, 150);
+    });
+  }
+
+  if (dom.btnClearSearch) {
+    dom.btnClearSearch.addEventListener('click', function() {
+      state.searchQuery = '';
+      if (dom.widgetSearchInput) dom.widgetSearchInput.value = '';
+      dom.btnClearSearch.style.display = 'none';
+      UI.renderShortcuts(state.currentDeviceId);
+      if (dom.widgetSearchInput) dom.widgetSearchInput.focus();
+    });
+  }
+
+  if (dom.btnScopePage) {
+    dom.btnScopePage.addEventListener('click', function() {
+      if (state.searchScope === 'page') return;
+      state.searchScope = 'page';
+      dom.btnScopePage.classList.add('scope-btn--active');
+      if (dom.btnScopeGlobal) dom.btnScopeGlobal.classList.remove('scope-btn--active');
+      UI.renderShortcuts(state.currentDeviceId);
+    });
+  }
+
+  if (dom.btnScopeGlobal) {
+    dom.btnScopeGlobal.addEventListener('click', function() {
+      if (state.searchScope === 'global') return;
+      state.searchScope = 'global';
+      dom.btnScopeGlobal.classList.add('scope-btn--active');
+      if (dom.btnScopePage) dom.btnScopePage.classList.remove('scope-btn--active');
+      UI.renderShortcuts(state.currentDeviceId);
+    });
+  }
+
+  if (dom.btnRemotePcSearch) {
+    dom.btnRemotePcSearch.addEventListener('click', function() {
+      var device = state.devices[state.currentDeviceId];
+      if (!device || !device.online) {
+        UI.showToast({ message: 'Dispositivo host offline.', level: 'warn' });
+        return;
+      }
+      if (!state.searchOpen) {
+        Navigation.toggleSearch();
+      }
+      MqttLayer.publishCommand(device, 'remote_search_prompt');
+      UI.showToast({ message: 'Digite a busca no teclado do PC...', level: 'info' });
+    });
+  }
+
+  if (dom.filterChips) {
+    dom.filterChips.forEach(function(chip) {
+      chip.addEventListener('click', function() {
+        var filterType = chip.getAttribute('data-filter') || 'all';
+        if (state.searchFilter === filterType) return;
+        state.searchFilter = filterType;
+        dom.filterChips.forEach(function(c) {
+          c.classList.toggle('filter-chip--active', c === chip);
+        });
+        UI.renderShortcuts(state.currentDeviceId);
+      });
+    });
+  }
 }
 
 /* =========================================================

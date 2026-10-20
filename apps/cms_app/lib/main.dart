@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'features/editor/editor_page.dart';
+import 'features/editor/remote_search_controller.dart';
+import 'features/editor/remote_search_spotlight.dart';
 import 'providers.dart';
 import 'system/agent_config.dart';
 import 'system/tray_controller.dart';
@@ -121,7 +123,27 @@ class CmsApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const EditorPage(),
+      home: const _AppRoot(),
+    );
+  }
+}
+
+class _AppRoot extends ConsumerWidget {
+  const _AppRoot();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final searchState = ref.watch(remoteSearchControllerProvider);
+
+    if (searchState.isOpen && searchState.wasHidden) {
+      return const RemoteSearchCompactView();
+    }
+
+    return Stack(
+      children: [
+        const EditorPage(),
+        if (searchState.isOpen) const RemoteSearchOverlayView(),
+      ],
     );
   }
 }

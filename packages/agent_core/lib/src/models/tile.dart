@@ -371,12 +371,14 @@ class SliderSource {
   static const String kindAppVolume = 'app_volume';
   static const String kindBrightness = 'brightness';
   static const String kindCustom = 'custom';
+  static const String kindSoundVolume = 'sound_volume';
 
   static const Set<String> validKinds = {
     kindMasterVolume,
     kindAppVolume,
     kindBrightness,
     kindCustom,
+    kindSoundVolume,
   };
 
   factory SliderSource.fromJson(Map<String, dynamic> json) {

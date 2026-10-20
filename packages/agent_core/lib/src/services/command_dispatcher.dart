@@ -39,6 +39,7 @@ class CommandDispatcher {
   final Layout Function() layoutProvider;
   final void Function()? onLocalVolumeChange;
   final void Function(AgentEvent event)? onEvent;
+  final void Function()? onRemoteSearchPrompt;
 
   CommandDispatcher({
     required this.audio,
@@ -50,6 +51,7 @@ class CommandDispatcher {
     this.allowedBinaries = const {},
     this.onLocalVolumeChange,
     this.onEvent,
+    this.onRemoteSearchPrompt,
   });
 
   Future<void> dispatch(AgentCommand cmd) async {
@@ -127,6 +129,9 @@ class CommandDispatcher {
         final event = AgentEvent.fromJson(cmd.raw);
         onEvent?.call(event);
 
+      case 'remote_search_prompt':
+        onRemoteSearchPrompt?.call();
+
       default:
         final soundTile = _findSoundTile(cmd.action);
         if (soundTile != null) {
@@ -161,6 +166,8 @@ class CommandDispatcher {
     return null;
   }
 
+  SliderTile? findSliderTile(String id) => _findSliderTile(id);
+
   Future<void> _applySlider(String sliderId, SliderSource source, int value) async {
     switch (source.kind) {
       case SliderSource.kindMasterVolume:
@@ -182,6 +189,10 @@ class CommandDispatcher {
         } else {
           await brightness.setForDisplay(match, value);
         }
+        return;
+
+      case SliderSource.kindSoundVolume:
+        await sound?.setVolume(value);
         return;
 
       case SliderSource.kindCustom:

@@ -35,7 +35,7 @@ O **Hub Agent** é um ecossistema de controle e automação local distribuído b
 |   - packages/agent_core (Dart puro: AgentRuntime, MqttService)         |
 |   - Executores locais:                                                 |
 |       * Windows: hub_audio_helper.exe (WASAPI), nircmd.exe, powershell |
-|       * Linux: wpctl, pactl, playerctl, xdotool, ddcutil, paplay       |
+|       * Linux: wpctl, pactl, playerctl, wtype (Wayland), xdotool, ydotool, ddcutil, paplay |
 +------------------------------------------------------------------------+
 ```
 
@@ -120,10 +120,10 @@ O tablet dispara comandos em formato JSON. Formatos reconhecidos:
 | **Mixer por App** | `pactl -f json list sink-inputs` | `hub_audio_helper.exe` enumera sessões ativas WASAPI por PID e nome de processo. |
 | **Controle de Mídia** | `playerctl` (MPRIS via D-Bus). | `nircmd.exe sendkeypress` (`0xB3`, `0xB0`, `0xB1`). |
 | **Metadados de Mídia** | Lê título, artista e status real via `playerctl metadata`. | **Não publica metadados** (status permanece `Stopped`). |
-| **Atalhos de Teclado** | `LinuxKeySender` via `xdotool` (apenas X11). | `WindowsKeySender` via `nircmd.exe sendkeypress`. |
+| **Atalhos de Teclado** | `LinuxKeySender` via `wtype` (Wayland / Hyprland) com fallback para `ydotool` e `xdotool` (X11). | `WindowsKeySender` via `nircmd.exe sendkeypress`. |
 | **Controle de Brilho**| `LinuxBrightnessController` via `ddcutil`. | Não suportado (`UnsupportedBrightnessController`). |
 | **Estatísticas** | Leitura de `/proc/stat`, `/proc/meminfo`, `/proc/cpuinfo`, thermal zones e `df -B1 /`. | PowerShell CIM (`Win32_Processor`, `Win32_OperatingSystem`, `Win32_LogicalDisk`). Sem temp/freq. |
-| **Sound Pad** | `paplay` (suporta `-d <sink>`). Enumera sinks via `pactl list sinks short`. | `hub_audio_helper.exe play-sound` (WASAPI + Media Foundation) e `list-devices`. |
+| **Sound Pad** | `paplay` (suporta `--volume` e `-d <sink>`). Enumera sinks via `pactl list sinks short`. | `hub_audio_helper.exe play-sound` (WASAPI + Media Foundation com controle de volume) e `list-devices`. |
 | **Execução de Comandos** | Subprocessos com `runInShell: false`. | Subprocessos com `runInShell: true` nos bindings. |
 | **Instância Única** | Socket TCP loopback em `127.0.0.1:45871`. | Lock de arquivo exclusivo `cms_app.lock` em `<appSupport>`. |
 
@@ -184,7 +184,6 @@ scp -P 8022 dashboard_web/* u0_a85@192.168.100.244:~/dashboard/
 
 ## 7. Pendências Conhecidas
 
-- **`ydotool` no Linux**: Suporte a Wayland para envio de teclas.
 - **Brilho no Windows**: Alternativa estável para DDC/CI sem instabilidade de FFI.
 - **Metadados de Mídia no Windows**: Captura de Now Playing no Windows via helper nativo ou IPC.
 - **CI / Automação**: Pipeline de GitHub Actions para execução de `dart test`.

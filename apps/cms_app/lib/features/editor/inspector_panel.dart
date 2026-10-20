@@ -472,6 +472,10 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                 value: SliderSource.kindBrightness,
                 child: Text('Brilho'),
               ),
+              DropdownMenuItem(
+                value: SliderSource.kindSoundVolume,
+                child: Text('Volume do Sound Pad'),
+              ),
             ],
             onChanged: (kind) {
               if (kind == null) return;
@@ -490,6 +494,13 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
             const SizedBox(height: 8),
             const Text(
               'Aplica o volume geral do sistema.',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ] else if ((widget.tile as SliderTile).source.kind ==
+              SliderSource.kindSoundVolume) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Ajusta o volume de reprodução dos sons do Sound Pad.',
               style: TextStyle(fontSize: 12, color: Colors.white54),
             ),
           ] else if ((widget.tile as SliderTile).source.kind ==

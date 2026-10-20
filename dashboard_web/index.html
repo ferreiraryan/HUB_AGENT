@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Smart Kiosk Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 
 <body>
@@ -38,10 +38,14 @@
           <span id="device-status-badge" class="badge badge--offline">&mdash;</span>
         </div>
 
-        <!-- Botão do Mixer agora no topo, sempre acessível -->
-        <button id="btn-toggle-mixer" class="btn-pill btn-pill--header" type="button">
-          &#127925; Mixer de Apps
-        </button>
+        <div class="main__header-actions">
+          <button id="btn-toggle-search" class="btn-pill btn-pill--header" type="button" aria-expanded="false" title="Buscar widgets">
+            &#128269; Buscar
+          </button>
+          <button id="btn-toggle-mixer" class="btn-pill btn-pill--header" type="button">
+            &#127925; Mixer de Apps
+          </button>
+        </div>
       </header>
 
       <div class="main__body">
@@ -53,6 +57,39 @@
             <div class="np-info">
               <div id="np-title" class="np-title">Nenhuma mídia tocando</div>
               <div id="np-artist" class="np-artist">-</div>
+            </div>
+          </div>
+
+          <!-- BARRA DE BUSCA E FILTROS -->
+          <div id="search-section" class="search-section" style="display: none;">
+            <div class="search-bar-row">
+              <div class="search-input-wrapper">
+                <span class="search-input__icon">&#128269;</span>
+                <input type="text" id="widget-search-input" class="search-input" placeholder="Buscar por nome ou ID..." autocomplete="off">
+                <button type="button" id="btn-clear-search" class="search-input__clear" style="display: none;" aria-label="Limpar busca">&times;</button>
+              </div>
+
+              <div class="scope-toggle" role="group" aria-label="Escopo da busca">
+                <button type="button" class="scope-btn scope-btn--active" data-scope="page" id="btn-scope-page">
+                  &#128196; Página
+                </button>
+                <button type="button" class="scope-btn" data-scope="global" id="btn-scope-global">
+                  &#127760; Global
+                </button>
+              </div>
+
+              <button type="button" id="btn-remote-pc-search" class="btn-pill btn-pill--pc" title="Digitar busca no teclado do PC">
+                &#9000; PC
+              </button>
+            </div>
+
+            <div class="filter-chips-row" role="group" aria-label="Filtro por tipo de widget">
+              <button type="button" class="filter-chip filter-chip--active" data-filter="all">Todos</button>
+              <button type="button" class="filter-chip" data-filter="sound">&#128266; Sons</button>
+              <button type="button" class="filter-chip" data-filter="slider">&#127915; Sliders</button>
+              <button type="button" class="filter-chip" data-filter="shortcut">&#9889; Atalhos</button>
+              <button type="button" class="filter-chip" data-filter="stat">&#128202; Stats</button>
+              <button type="button" class="filter-chip" data-filter="folder">&#128193; Pastas</button>
             </div>
           </div>
 
@@ -114,6 +151,6 @@
   </script>
 
   <script src="mqtt.min.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

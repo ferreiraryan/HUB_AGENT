@@ -47,6 +47,15 @@ class FakeSoundController implements SoundController {
   int stopCalls = 0;
   final _controller = StreamController<SoundPlaybackState>.broadcast();
   SoundPlaybackState _current = SoundPlaybackState.idle;
+  int _volume = 100;
+
+  @override
+  int get volume => _volume;
+
+  @override
+  Future<void> setVolume(int value) async {
+    _volume = value.clamp(0, 100);
+  }
 
   @override
   SoundPlaybackState get current => _current;
@@ -232,6 +241,55 @@ void main() {
       } finally {
         tempDir.deleteSync(recursive: true);
       }
+    });
+
+    test('SystemSoundController volume padrão é 100 e setVolume faz clamp entre 0 e 100', () async {
+      final tempDir = Directory.systemTemp.createTempSync('sound_pad_vol_test_');
+      try {
+        final controller = SystemSoundController(soundsDir: tempDir);
+        expect(controller.volume, equals(100));
+
+        await controller.setVolume(75);
+        expect(controller.volume, equals(75));
+
+        await controller.setVolume(120);
+        expect(controller.volume, equals(100));
+
+        await controller.setVolume(-15);
+        expect(controller.volume, equals(0));
+
+        await controller.dispose();
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('CommandDispatcher despacha set_slider com sound_volume para soundController.setVolume', () async {
+      final fakeSound = FakeSoundController();
+      final layout = Layout.initial('PC').upsertTile(
+        'home',
+        const SliderTile(
+          id: 'sound_vol_slider',
+          icon: '🎚️',
+          label: 'Volume SoundPad',
+          source: SliderSource(kind: SliderSource.kindSoundVolume),
+        ),
+      );
+
+      final dispatcher = CommandDispatcher(
+        audio: UnsupportedAudioController(),
+        brightness: UnsupportedBrightnessController(),
+        media: MediaService(),
+        keySender: FakeKeySender(),
+        sound: fakeSound,
+        layoutProvider: () => layout,
+      );
+
+      expect(fakeSound.volume, equals(100));
+      await dispatcher.dispatch(
+        const AgentCommand('set_slider', {'id': 'sound_vol_slider', 'value': 45}),
+      );
+      expect(fakeSound.volume, equals(45));
     });
   });
 }

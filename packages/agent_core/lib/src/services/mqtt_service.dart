@@ -29,6 +29,7 @@ class AgentTopics {
   String get media => '$base/media';
   String get soundState => '$base/sound/state';
   String get event => '$base/event';
+  String get search => '$base/search';
   String get cmd => '$base/cmd';
 }
 
@@ -246,6 +247,15 @@ class MqttService {
   void publishStatsDisk(StatsSnapshot s) {
     _publish('${topics.base}/stats/disk', jsonEncode(s.diskJson()),
         retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishSearchQuery(String query, {bool active = true}) {
+    _publish(
+      topics.search,
+      jsonEncode({'query': query, 'active': active}),
+      retain: false,
+      qos: MqttQos.atMostOnce,
+    );
   }
 
   void clearRetained() {

@@ -43,6 +43,15 @@ class E2ETrackingSoundController implements SoundController {
   int stopCalls = 0;
   final _stateController = StreamController<SoundPlaybackState>.broadcast();
   SoundPlaybackState _current = SoundPlaybackState.idle;
+  int _volume = 100;
+
+  @override
+  int get volume => _volume;
+
+  @override
+  Future<void> setVolume(int value) async {
+    _volume = value.clamp(0, 100);
+  }
 
   @override
   SoundPlaybackState get current => _current;

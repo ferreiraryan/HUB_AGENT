@@ -5,7 +5,8 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  outline: none;
   user-select: none;
 }
 
@@ -103,7 +104,6 @@ button {
   height: 10px;
   border-radius: 50%;
   background: var(--accent-color);
-  box-shadow: 0 0 10px 2px var(--accent-glow);
 }
 
 .sidebar__brand-text {
@@ -138,11 +138,10 @@ button {
   background: transparent;
   border: 1px solid transparent;
   text-align: left;
-  transition: background var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
 }
 
 .device-tab:active {
-  transform: scale(0.96);
+  background: var(--ctp-surface0);
 }
 
 .device-tab--active {
@@ -161,7 +160,6 @@ button {
 
 .device-tab--online .device-tab__dot {
   background: var(--accent-color);
-  box-shadow: 0 0 6px 1px var(--accent-glow);
 }
 
 .device-tab--offline {
@@ -209,7 +207,6 @@ button {
 
 .broker-status--online .broker-status__dot {
   background: var(--accent-color);
-  box-shadow: 0 0 6px 1px var(--accent-glow);
 }
 
 /* =========================================================
@@ -241,6 +238,12 @@ button {
   font-weight: 700;
 }
 
+.main__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .btn-pill {
   padding: 10px 18px;
   border-radius: 999px;
@@ -248,12 +251,21 @@ button {
   border: 1px solid var(--glass-border);
   font-size: 0.9rem;
   font-weight: 600;
-  transition: transform var(--transition-fast), background var(--transition-fast);
 }
 
 .btn-pill:active {
-  transform: scale(0.96);
   background: var(--ctp-surface1);
+}
+
+.btn-pill--active {
+  background: var(--accent-color);
+  color: var(--ctp-crust);
+  border-color: var(--accent-color);
+}
+
+.btn-pill--active:active {
+  background: var(--accent-color);
+  opacity: 0.9;
 }
 
 .badge {
@@ -284,31 +296,27 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  transition: opacity var(--transition-fast), filter var(--transition-fast);
 }
 
 .main-content--disabled {
   opacity: 0.35;
-  filter: grayscale(0.5);
   pointer-events: none;
 }
 
 .offline-overlay {
   position: absolute;
   inset: 0;
-  display: flex;
+  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
   color: var(--ctp-subtext0);
-  opacity: 0;
   pointer-events: none;
-  transition: opacity var(--transition-fast);
 }
 
 .offline-overlay--active {
-  opacity: 1;
+  display: flex;
 }
 
 .offline-overlay__icon {
@@ -329,7 +337,6 @@ button {
   border-radius: var(--radius-md);
   background: var(--card-color);
   border: 1px solid var(--glass-border);
-  transition: opacity var(--transition-fast);
 }
 
 .now-playing--empty {
@@ -342,21 +349,7 @@ button {
 }
 
 .np-icon--playing {
-  animation: np-pulse 2s infinite;
-}
-
-@keyframes np-pulse {
-  0% {
-    opacity: 0.6;
-  }
-
-  50% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0.6;
-  }
+  opacity: 1;
 }
 
 .np-info {
@@ -382,6 +375,210 @@ button {
 }
 
 /* =========================================================
+   BARRA DE BUSCA E FILTROS
+   ========================================================= */
+.search-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: var(--card-color);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.search-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  min-width: 0;
+}
+
+.search-input-wrapper:focus-within {
+  border-color: var(--accent-color);
+}
+
+.search-input__icon {
+  font-size: 1rem;
+  margin-right: 8px;
+  color: var(--ctp-overlay0);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  height: 38px;
+  background: transparent;
+  border: none;
+  color: var(--ctp-text);
+  font-size: 0.92rem;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.search-input::placeholder {
+  color: var(--ctp-overlay0);
+}
+
+.search-input__clear {
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--ctp-subtext0);
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.search-input__clear:active {
+  color: var(--ctp-text);
+}
+
+/* Alternador de Escopo (Página vs Global) */
+.scope-toggle {
+  display: flex;
+  background: var(--ctp-crust);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.scope-btn {
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ctp-subtext0);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scope-btn--active {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+}
+
+.scope-btn:active {
+  background: var(--ctp-surface0);
+}
+
+.btn-pill--pc {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-blue);
+  color: var(--ctp-blue);
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-pill--pc:active {
+  background: var(--ctp-surface1);
+  color: var(--ctp-sapphire);
+}
+
+/* Chips de Filtro por Tipo */
+.filter-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.filter-chips-row::-webkit-scrollbar {
+  height: 3px;
+}
+
+.filter-chips-row::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface1);
+  border-radius: 3px;
+}
+
+.filter-chip {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--glass-border);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ctp-subtext1);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-chip:active {
+  background: var(--ctp-surface1);
+}
+
+.filter-chip--active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: var(--ctp-crust);
+  font-weight: 700;
+}
+
+.filter-chip--active:active {
+  background: var(--accent-color);
+  opacity: 0.9;
+}
+
+/* Badge de página de origem quando em busca global */
+.tile-page-badge {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--ctp-subtext0);
+  background: var(--ctp-crust);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--glass-border);
+  pointer-events: none;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-reset-filters {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--glass-border);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent-color);
+  cursor: pointer;
+}
+
+.btn-reset-filters:active {
+  background: var(--ctp-surface1);
+}
+
+/* =========================================================
    GRID UNIFICADA (Bot�es e Sliders juntos)
    ========================================================= */
 .shortcuts-grid {
@@ -394,7 +591,19 @@ button {
   gap: 12px;
   align-content: start;
   padding: 2px;
-  /* para n�o cortar a sombra do active */
+}
+
+.shortcuts-grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.shortcuts-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.shortcuts-grid::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface1);
+  border-radius: 4px;
 }
 
 /* =========================================================
@@ -427,15 +636,11 @@ button {
   gap: 10px;
   font-size: 0.95rem;
   font-weight: 600;
-  contain: layout style;
-  transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
-  animation: shortcut-in var(--transition-med) both;
-  animation-delay: calc(var(--i, 0) * 25ms);
 }
 
 .shortcut-btn:active {
-  transform: scale(0.94);
   background: var(--ctp-surface0);
+  border-color: var(--accent-color);
 }
 
 .shortcut-btn__icon {
@@ -450,38 +655,20 @@ button {
 /* VARIANTES: Bot�o de Som (Sound Pad) */
 .shortcut-btn--sound {
   position: relative;
-  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .shortcut-btn--playing {
   border-color: var(--accent-color);
   background: var(--ctp-surface0);
-  box-shadow: 0 0 10px var(--accent-glow);
   cursor: pointer;
   pointer-events: auto;
 }
 
 .shortcut-btn--playing:active {
-  transform: scale(0.94);
   background: var(--ctp-surface1);
 }
 
-.shortcut-btn--playing .shortcut-btn__icon {
-  animation: sound-pulse 1s infinite alternate ease-in-out;
-}
-
-@keyframes sound-pulse {
-  0% {
-    transform: scale(1);
-    opacity: 0.85;
-  }
-  100% {
-    transform: scale(1.15);
-    opacity: 1;
-  }
-}
-
-/* Equalizador animado em miniatura no tile quando tocando (otimizado via scaleY em GPU) */
+/* Equalizador estático no tile quando tocando (sem custo de GPU/compositor) */
 .sound-wave-badge {
   display: none;
   position: absolute;
@@ -500,33 +687,13 @@ button {
 .sound-wave-badge span {
   display: block;
   width: 3px;
-  height: 12px;
   background-color: var(--accent-color);
   border-radius: 1px;
-  transform-origin: bottom;
-  animation: sound-wave 0.8s infinite ease-in-out alternate;
 }
 
-.sound-wave-badge span:nth-child(1) {
-  animation-delay: 0.1s;
-}
-
-.sound-wave-badge span:nth-child(2) {
-  animation-delay: 0.3s;
-}
-
-.sound-wave-badge span:nth-child(3) {
-  animation-delay: 0.2s;
-}
-
-@keyframes sound-wave {
-  0% {
-    transform: scaleY(0.25);
-  }
-  100% {
-    transform: scaleY(1);
-  }
-}
+.sound-wave-badge span:nth-child(1) { height: 5px; }
+.sound-wave-badge span:nth-child(2) { height: 12px; }
+.sound-wave-badge span:nth-child(3) { height: 8px; }
 
 /* VARIANTES: Card de Slider */
 .shortcut-btn--slider {
@@ -595,12 +762,6 @@ button {
   border-radius: 50%;
   background: var(--accent-color);
   border: 4px solid var(--ctp-base);
-  box-shadow: 0 0 12px 1px var(--accent-glow);
-  transition: transform var(--transition-fast);
-}
-
-.slider-horizontal::-webkit-slider-thumb:active {
-  transform: scale(1.15);
 }
 
 /* SLIDER VERTICAL (Fader F�sico 1x2) */
@@ -609,7 +770,7 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 10px;
+  padding: 8px 6px;
   height: 100%;
 }
 
@@ -617,17 +778,17 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
   margin-bottom: 2px;
 }
 
 .shortcut-slider__header--vertical .shortcut-slider__icon {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   color: var(--accent-color);
+  margin-bottom: 2px;
 }
 
 .shortcut-slider__header--vertical .shortcut-slider__value {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: var(--accent-color);
 }
@@ -639,12 +800,12 @@ button {
   align-items: center;
   justify-content: center;
   position: relative;
-  min-height: 140px;
+  min-height: 90px;
 }
 
 .slider-vertical {
-  width: 150px;
-  height: 40px;
+  width: 120px;
+  height: 36px;
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
@@ -655,7 +816,7 @@ button {
 }
 
 .slider-vertical::-webkit-slider-runnable-track {
-  height: 14px;
+  height: 12px;
   border-radius: 999px;
   background: var(--ctp-crust);
   border: 1px solid var(--glass-border);
@@ -663,51 +824,40 @@ button {
 
 .slider-vertical::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 34px;
-  height: 34px;
-  margin-top: -10px;
+  width: 30px;
+  height: 30px;
+  margin-top: -9px;
   border-radius: 50%;
   background: var(--accent-color);
   border: 3px solid var(--ctp-base);
-  box-shadow: 0 0 10px 1px var(--accent-glow);
-  transition: transform var(--transition-fast);
-}
-
-.slider-vertical::-webkit-slider-thumb:active {
-  transform: scale(1.15);
 }
 
 .shortcut-slider__label-v {
-  font-size: 0.8rem;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  max-height: 2.4em;
   color: var(--ctp-subtext0);
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
-  margin-top: 4px;
+  padding: 0 4px;
+  margin-top: 2px;
 }
-
-@keyframes shortcut-in {
-  from {
-    opacity: 0;
-    transform: scale(0.85) translateY(6px);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
 
 /* =========================================================
-   MIXER DRAWER (desliza da direita)
+   MIXER DRAWER
    ========================================================= */
 .mixer-drawer {
   position: fixed;
   inset: 0;
   z-index: 100;
+  display: none;
   pointer-events: none;
 }
 
@@ -715,8 +865,6 @@ button {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  opacity: 0;
-  transition: opacity var(--transition-med);
 }
 
 .mixer-drawer__panel {
@@ -729,20 +877,11 @@ button {
   border-left: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
-  transform: translateX(100%);
-  transition: transform var(--transition-med);
 }
 
 .mixer-drawer--open {
+  display: block;
   pointer-events: auto;
-}
-
-.mixer-drawer--open .mixer-drawer__backdrop {
-  opacity: 1;
-}
-
-.mixer-drawer--open .mixer-drawer__panel {
-  transform: translateX(0);
 }
 
 .mixer-drawer__header {
@@ -880,7 +1019,6 @@ button {
 .stat-card__bar-fill {
   height: 100%;
   background: var(--accent-color);
-  transition: width 300ms ease;
   width: 0%;
 }
 
@@ -943,7 +1081,6 @@ button {
 .stat-card__meter-fill-v {
   width: 100%;
   background: var(--accent-color);
-  transition: height 300ms ease;
   border-radius: 999px;
   height: 0%;
 }
@@ -1024,7 +1161,7 @@ button {
 }
 
 .toast {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 12px;
   background: var(--ctp-mantle);
@@ -1032,20 +1169,14 @@ button {
   border-left-width: 4px;
   border-radius: var(--radius-md);
   padding: 12px 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
   color: var(--ctp-text);
   font-size: 0.95rem;
   line-height: 1.3;
   pointer-events: none;
-  transform: translateX(120%);
-  opacity: 0;
-  transition: transform var(--transition-fast), opacity var(--transition-fast);
-  will-change: transform, opacity;
 }
 
 .toast--visible {
-  transform: translateX(0);
-  opacity: 1;
+  display: flex;
 }
 
 .toast--info    { border-left-color: var(--accent-color); }

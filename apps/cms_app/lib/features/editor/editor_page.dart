@@ -104,7 +104,13 @@ class _TopBar extends ConsumerWidget {
           const SizedBox(width: 24),
           const Icon(Icons.tablet_mac, size: 16, color: Colors.white54),
           const SizedBox(width: 8),
-          Text(deviceName, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Flexible(
+            child: Text(
+              deviceName,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.undo, size: 18),

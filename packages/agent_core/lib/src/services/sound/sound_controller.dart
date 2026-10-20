@@ -9,6 +9,9 @@ abstract class SoundController {
   Stream<SoundPlaybackState> get stateChanges;
   SoundPlaybackState get current;
 
+  int get volume;
+  Future<void> setVolume(int value);
+
   Future<void> play(String soundId, {String? targetDevice});
   Future<void> stop();
   Future<List<AudioOutputDevice>> listDevices();
@@ -24,12 +27,21 @@ class SystemSoundController implements SoundController {
   SoundPlaybackState _current = SoundPlaybackState.idle;
   Process? _activeProcess;
   String? _activeSoundId;
+  int _volume = 100;
 
   SystemSoundController({
     required this.soundsDir,
     this.defaultTargetDeviceProvider,
     this.customHelperPath,
   });
+
+  @override
+  int get volume => _volume;
+
+  @override
+  Future<void> setVolume(int value) async {
+    _volume = value.clamp(0, 100);
+  }
 
   @override
   Stream<SoundPlaybackState> get stateChanges => _stateController.stream;
@@ -140,10 +152,10 @@ class SystemSoundController implements SoundController {
       if (Platform.isWindows) {
         final helper = _resolveHelperPath();
         if (helper != null) {
-          final args = ['play-sound', soundFilePath];
-          if (device != null && device.trim().isNotEmpty && device != 'default') {
-            args.add(device.trim());
-          }
+          final target = (device != null && device.trim().isNotEmpty && device != 'default')
+              ? device.trim()
+              : 'default';
+          final args = ['play-sound', soundFilePath, target, '$_volume'];
           proc = await Process.start(helper, args);
         } else {
           // Fallback para nircmd mediaplay (apenas dispositivo padrão)
@@ -151,11 +163,13 @@ class SystemSoundController implements SoundController {
         }
       } else if (Platform.isLinux) {
         // Tenta paplay ou pw-play
+        final paplayVol = (_volume * 65536 / 100).round().clamp(0, 65536);
+        final args = <String>['--volume=$paplayVol'];
         if (device != null && device.trim().isNotEmpty && device != 'default') {
-          proc = await Process.start('paplay', ['-d', device.trim(), soundFilePath]);
-        } else {
-          proc = await Process.start('paplay', [soundFilePath]);
+          args.addAll(['-d', device.trim()]);
         }
+        args.add(soundFilePath);
+        proc = await Process.start('paplay', args);
       } else {
         stderr.writeln('SoundPad: plataforma não suportada para reprodução');
         return;

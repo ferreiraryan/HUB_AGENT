@@ -67,6 +67,7 @@ class Layout {
     'set_slider',
     'play_sound',
     'stop_sound',
+    'remote_search_prompt',
   };
   factory Layout.initial(String deviceName) => Layout(
         deviceName: deviceName,

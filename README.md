@@ -154,5 +154,5 @@ flutter run -d windows
 - [x] **Mixer de Áudio:** Master e apps no Linux (PipeWire/pactl) e Windows (WASAPI nativo).
 - [x] **Mesa de Sons (Sound Pad):** Gerenciador de biblioteca de sons, suporte a cabo virtual e toggle por reclique.
 - [x] **Telemetria de Sistema:** Leitura em tempo real de CPU, RAM e Disco no Linux e Windows.
-- [ ] **Wayland no Linux:** Suporte a envio de teclas via `ydotool`.
+- [x] **Wayland no Linux:** Suporte nativo a envio de teclas via `wtype` (Hyprland / wlroots) e fallback para `ydotool` / `xdotool`.
 - [ ] **Brilho no Windows:** Implementação de suporte nativo DDC/CI.

@@ -34,6 +34,9 @@ class AgentRuntime {
 
   final Duration echoGuard;
 
+  final _remoteSearchPromptCtl = StreamController<void>.broadcast();
+  Stream<void> get remoteSearchPrompts => _remoteSearchPromptCtl.stream;
+
   final _subs = <StreamSubscription<dynamic>>[];
   Timer? _brightnessPublishTimer;
   DateTime _suppressUntil = DateTime.fromMillisecondsSinceEpoch(0);
@@ -69,6 +72,11 @@ class AgentRuntime {
       allowedBinaries: allowedBinaries,
       onLocalVolumeChange: _armEchoGuard,
       onEvent: mqtt.publishEvent,
+      onRemoteSearchPrompt: () {
+        if (!_remoteSearchPromptCtl.isClosed) {
+          _remoteSearchPromptCtl.add(null);
+        }
+      },
     );
   }
 
@@ -145,9 +153,25 @@ class AgentRuntime {
       mqtt.publishApps(audio.apps);
     }
     _publishBrightness();
+    _publishSoundVolume();
     mqtt.publishMedia(media.current);
     if (sound != null) {
       mqtt.publishSoundState(sound!.current);
+    }
+  }
+
+  void _publishSoundVolume() {
+    if (!mqtt.isConnected || sound == null) return;
+    final layout = repository.isLoaded ? repository.current : null;
+    if (layout == null) return;
+
+    for (final page in layout.pages.values) {
+      for (final tile in page) {
+        if (tile is SliderTile &&
+            tile.source.kind == SliderSource.kindSoundVolume) {
+          mqtt.publishSliderState(tile.id, sound!.volume);
+        }
+      }
     }
   }
 
@@ -172,6 +196,17 @@ class AgentRuntime {
   Future<void> _onCommand(AgentCommand cmd) async {
     try {
       await dispatcher.dispatch(cmd);
+      if (cmd.action == 'set_slider' && cmd.sliderId != null) {
+        final tile = dispatcher.findSliderTile(cmd.sliderId!);
+        if (tile != null) {
+          if (tile.source.kind == SliderSource.kindBrightness) {
+            final v = await brightness.readForDisplay(tile.source.match ?? '');
+            if (v != null) mqtt.publishSliderState(tile.id, v);
+          } else if (tile.source.kind == SliderSource.kindSoundVolume && sound != null) {
+            mqtt.publishSliderState(tile.id, sound!.volume);
+          }
+        }
+      }
     } catch (e) {
       stderr.writeln('erro ao processar $cmd:$e');
     }
@@ -196,12 +231,17 @@ class AgentRuntime {
     mqtt.publishVolume(v);
   }
 
+  void publishSearchQuery(String query, {bool active = true}) {
+    mqtt.publishSearchQuery(query, active: active);
+  }
+
   Future<void> dispose() async {
     for (final s in _subs) {
       await s.cancel();
     }
     _subs.clear();
     _brightnessPublishTimer?.cancel();
+    await _remoteSearchPromptCtl.close();
     await sound?.dispose();
     await keySender.dispose();
     await stats.dispose();

@@ -124,7 +124,7 @@ class _TileCardState extends State<TileCard>
     if (tile is SliderTile) {
       if (is1x2) {
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -163,10 +163,12 @@ class _TileCardState extends State<TileCard>
                 tile.label,
                 style: const TextStyle(
                   fontSize: 11,
+                  height: 1.15,
                   fontWeight: FontWeight.w500,
                   color: Colors.white70,
                 ),
-                maxLines: 1,
+                textAlign: TextAlign.center,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -233,7 +235,7 @@ class _TileCardState extends State<TileCard>
       if (is1x2) {
         // Medidor vertical
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -243,10 +245,12 @@ class _TileCardState extends State<TileCard>
                 tile.label,
                 style: const TextStyle(
                   fontSize: 10,
+                  height: 1.15,
                   fontWeight: FontWeight.w500,
                   color: Colors.white70,
                 ),
-                maxLines: 1,
+                textAlign: TextAlign.center,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 6),

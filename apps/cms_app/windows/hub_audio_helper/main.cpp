@@ -488,7 +488,7 @@ ComPtr<IMMDevice> FindDevice(IMMDeviceEnumerator* pEnumerator, const std::string
     return pFallback;
 }
 
-int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice) {
+int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice, int volumePercent = 100) {
     HRESULT hr = MFStartup(MF_VERSION);
     if (FAILED(hr)) return 1;
 
@@ -572,6 +572,12 @@ int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice) {
             CoTaskMemFree(pMixFormat);
             MFShutdown();
             return 4;
+        }
+
+        ComPtr<ISimpleAudioVolume> pSimpleVolume;
+        if (SUCCEEDED(pAudioClient->GetService(IID_PPV_ARGS(&pSimpleVolume)))) {
+            float volFloat = (float)std::max(0, std::min(100, volumePercent)) / 100.0f;
+            pSimpleVolume->SetMasterVolume(volFloat, NULL);
         }
 
         bool eos = false;
@@ -662,7 +668,8 @@ int main(int argc, char* argv[]) {
     } else if (cmd == "play-sound" && argc >= 3) {
         std::wstring filePath = Utf8ToWide(argv[2]);
         std::string targetDevice = (argc >= 4) ? argv[3] : "";
-        res = DoPlaySound(filePath, targetDevice);
+        int volumePercent = (argc >= 5) ? std::stoi(argv[4]) : 100;
+        res = DoPlaySound(filePath, targetDevice, volumePercent);
     } else if (cmd == "set-master" && argc >= 3) {
         res = DoSetMaster(std::stoi(argv[2]));
     } else if (cmd == "set-master-mute" && argc >= 3) {
