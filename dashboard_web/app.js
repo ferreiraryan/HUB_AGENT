@@ -382,29 +382,71 @@ const UI = {
     }
   },
 
-  updateStatsInPlace(deviceId) {
+  updateStatsInPlace(deviceId, targetKind) {
     const stats = state.statsCache[deviceId] || {};
-    const cards = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--stat');
+    const selector = targetKind 
+      ? '.shortcut-btn--stat[data-stat-kind="' + targetKind + '"]'
+      : '.shortcut-btn--stat';
+    const cards = dom.shortcutsGrid.querySelectorAll(selector);
 
     cards.forEach((card) => {
       const kind = card.dataset.statKind;
       const field = card.dataset.statField;
       const unit = card.dataset.statUnit;
 
-      // Remoção do operador ?? (Nullish Coalescing)
       const payload = stats[kind] || {};
       const raw = payload[field];
       const display = (raw === undefined || raw === null) ? '--' : raw;
+      const formatted = String(display) + (unit || '');
 
       const valueEl = card.querySelector('.stat-card__value');
-      if (valueEl) {
-        valueEl.textContent = String(display) + (unit || '');
+      if (valueEl && valueEl.textContent !== formatted) {
+        valueEl.textContent = formatted;
       }
 
-      const barFill = card.querySelector('.stat-card__bar-fill');
-      if (barFill && unit === '%' && typeof raw === 'number') {
+      if (unit === '%' && typeof raw === 'number') {
         const pct = Math.max(0, Math.min(100, raw));
-        barFill.style.width = pct + '%';
+        const barFill = card.querySelector('.stat-card__bar-fill');
+        if (barFill) {
+          const widthStr = pct + '%';
+          if (barFill.style.width !== widthStr) {
+            barFill.style.width = widthStr;
+          }
+        }
+        const meterFillV = card.querySelector('.stat-card__meter-fill-v');
+        if (meterFillV) {
+          const heightStr = pct + '%';
+          if (meterFillV.style.height !== heightStr) {
+            meterFillV.style.height = heightStr;
+          }
+        }
+      }
+
+      const detailEl = card.querySelector('.stat-card__detail');
+      if (detailEl) {
+        let detailText = '';
+        if (kind === 'cpu') {
+          if (typeof payload.temp === 'number') detailText += payload.temp + '°C';
+          if (typeof payload.freq_mhz === 'number') {
+            detailText += (detailText ? ' • ' : '') + payload.freq_mhz + ' MHz';
+          }
+          if (!detailText) detailText = 'Processador';
+        } else if (kind === 'ram') {
+          if (typeof payload.used_mb === 'number' && typeof payload.total_mb === 'number') {
+            detailText = (payload.used_mb / 1024).toFixed(1) + ' GB / ' + (payload.total_mb / 1024).toFixed(1) + ' GB';
+          } else {
+            detailText = 'Memória do Sistema';
+          }
+        } else if (kind === 'disk') {
+          if (typeof payload.used_gb === 'number' && typeof payload.total_gb === 'number') {
+            detailText = payload.used_gb + ' GB / ' + payload.total_gb + ' GB';
+          } else {
+            detailText = 'Armazenamento';
+          }
+        }
+        if (detailEl.textContent !== detailText) {
+          detailEl.textContent = detailText;
+        }
       }
     });
   },
@@ -445,9 +487,21 @@ const UI = {
       : items;
 
     renderList.forEach((item, index) => {
+      const defaultW = (item.type === 'slider' || item.type === 'stat') ? 2 : 1;
+      let w = (typeof item.width === 'number' && item.width >= 1 && item.width <= 2) ? item.width : defaultW;
+      const h = (typeof item.height === 'number' && item.height >= 1 && item.height <= 2) ? item.height : 1;
+
       if (item.type === 'slider') {
+        const isVertical = (h > w) || (item.height === 2 && item.width !== 2);
+        if (isVertical) w = 1;
+      }
+
+      const dimClasses = ' tile--w-' + w + ' tile--h-' + h;
+
+      if (item.type === 'slider') {
+        const isVertical = h > w;
         const card = document.createElement('div');
-        card.className = 'shortcut-btn shortcut-btn--slider';
+        card.className = 'shortcut-btn shortcut-btn--slider' + (isVertical ? ' shortcut-btn--slider-vertical' : '') + dimClasses;
         card.style.setProperty('--i', index);
 
         let val = 50;
@@ -460,15 +514,27 @@ const UI = {
           }
         }
 
-        card.innerHTML = 
-          '<div class="shortcut-slider__header">' +
-            '<div class="shortcut-slider__title">' +
+        if (isVertical) {
+          card.innerHTML = 
+            '<div class="shortcut-slider__header shortcut-slider__header--vertical">' +
               '<span class="shortcut-slider__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
-              '<span>' + UI.escapeHtml(item.label || item.id) + '</span>' +
+              '<output class="shortcut-slider__value" data-slider-value="' + item.id + '">' + val + '%</output>' +
             '</div>' +
-            '<output class="shortcut-slider__value" data-slider-value="' + item.id + '">' + val + '%</output>' +
-          '</div>' +
-          '<input type="range" class="slider-horizontal" data-slider-id="' + item.id + '" min="0" max="100" value="' + val + '">';
+            '<div class="shortcut-slider__track-v">' +
+              '<input type="range" class="slider-vertical" data-slider-id="' + item.id + '" min="0" max="100" value="' + val + '">' +
+            '</div>' +
+            '<div class="shortcut-slider__label-v">' + UI.escapeHtml(item.label || item.id) + '</div>';
+        } else {
+          card.innerHTML = 
+            '<div class="shortcut-slider__header">' +
+              '<div class="shortcut-slider__title">' +
+                '<span class="shortcut-slider__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+                '<span>' + UI.escapeHtml(item.label || item.id) + '</span>' +
+              '</div>' +
+              '<output class="shortcut-slider__value" data-slider-value="' + item.id + '">' + val + '%</output>' +
+            '</div>' +
+            '<input type="range" class="slider-horizontal" data-slider-id="' + item.id + '" min="0" max="100" value="' + val + '">';
+        }
 
         const input = card.querySelector('input');
         const output = card.querySelector('output');
@@ -500,7 +566,16 @@ const UI = {
         const display = (raw === undefined || raw === null) ? '--' : raw;
 
         const card = document.createElement('div');
-        card.className = 'shortcut-btn shortcut-btn--stat';
+        const is1x1 = (w === 1 && h === 1);
+        const isVertical = (w === 1 && h === 2);
+        const isPro = (w === 2 && h === 2);
+
+        let statVariantClass = '';
+        if (is1x1) statVariantClass = ' shortcut-btn--stat-1x1';
+        else if (isVertical) statVariantClass = ' shortcut-btn--stat-vertical';
+        else if (isPro) statVariantClass = ' shortcut-btn--stat-pro';
+
+        card.className = 'shortcut-btn shortcut-btn--stat' + statVariantClass + dimClasses;
         card.style.setProperty('--i', index);
         card.dataset.statKind = item.source.kind;
         card.dataset.statField = item.source.field;
@@ -510,15 +585,62 @@ const UI = {
           ? Math.max(0, Math.min(100, raw))
           : 0;
 
-        card.innerHTML = 
-          '<div class="stat-card__header">' +
-            '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
-            '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
-          '</div>' +
-          '<div class="stat-card__value">' + UI.escapeHtml(String(display)) + UI.escapeHtml(item.source.unit || '') + '</div>' +
-          '<div class="stat-card__bar">' +
-            '<div class="stat-card__bar-fill" style="width: ' + pct + '%"></div>' +
-          '</div>';
+        if (isVertical) {
+          card.innerHTML = 
+            '<div class="stat-card__header">' +
+              '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+              '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
+            '</div>' +
+            '<div class="stat-card__meter-v">' +
+              '<div class="stat-card__meter-fill-v" style="height: ' + pct + '%"></div>' +
+            '</div>' +
+            '<div class="stat-card__value">' + UI.escapeHtml(String(display)) + UI.escapeHtml(item.source.unit || '') + '</div>';
+        } else if (isPro) {
+          let detailText = '';
+          if (item.source.kind === 'cpu') {
+            if (typeof payload.temp === 'number') detailText += payload.temp + '°C';
+            if (typeof payload.freq_mhz === 'number') {
+              detailText += (detailText ? ' • ' : '') + payload.freq_mhz + ' MHz';
+            }
+            if (!detailText) detailText = 'Processador';
+          } else if (item.source.kind === 'ram') {
+            if (typeof payload.used_mb === 'number' && typeof payload.total_mb === 'number') {
+              detailText = (payload.used_mb / 1024).toFixed(1) + ' GB / ' + (payload.total_mb / 1024).toFixed(1) + ' GB';
+            } else {
+              detailText = 'Memória do Sistema';
+            }
+          } else if (item.source.kind === 'disk') {
+            if (typeof payload.used_gb === 'number' && typeof payload.total_gb === 'number') {
+              detailText = payload.used_gb + ' GB / ' + payload.total_gb + ' GB';
+            } else {
+              detailText = 'Armazenamento';
+            }
+          }
+          const badgeLabel = (item.source.kind || 'STAT').toUpperCase();
+          card.innerHTML = 
+            '<div class="stat-card__pro-header">' +
+              '<div class="stat-card__pro-title">' +
+                '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+                '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
+              '</div>' +
+              '<span class="stat-card__badge">' + UI.escapeHtml(badgeLabel) + '</span>' +
+            '</div>' +
+            '<div class="stat-card__value">' + UI.escapeHtml(String(display)) + UI.escapeHtml(item.source.unit || '') + '</div>' +
+            '<div class="stat-card__detail">' + UI.escapeHtml(detailText) + '</div>' +
+            '<div class="stat-card__bar">' +
+              '<div class="stat-card__bar-fill" style="width: ' + pct + '%"></div>' +
+            '</div>';
+        } else {
+          card.innerHTML = 
+            '<div class="stat-card__header">' +
+              '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+              '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
+            '</div>' +
+            '<div class="stat-card__value">' + UI.escapeHtml(String(display)) + UI.escapeHtml(item.source.unit || '') + '</div>' +
+            '<div class="stat-card__bar">' +
+              '<div class="stat-card__bar-fill" style="width: ' + pct + '%"></div>' +
+            '</div>';
+        }
 
         dom.shortcutsGrid.appendChild(card);
       }
@@ -527,7 +649,7 @@ const UI = {
         const isThisPlaying = soundPlayback.isPlaying && (soundPlayback.soundId === item.sound_id);
 
         const btn = document.createElement('button');
-        btn.className = 'shortcut-btn shortcut-btn--sound' + (isThisPlaying ? ' shortcut-btn--playing' : '');
+        btn.className = 'shortcut-btn shortcut-btn--sound' + (isThisPlaying ? ' shortcut-btn--playing' : '') + dimClasses;
         btn.type = 'button';
         btn.style.setProperty('--i', index);
         btn.dataset.soundId = item.sound_id;
@@ -554,7 +676,7 @@ const UI = {
       }
       else {
         const btn = document.createElement('button');
-        btn.className = 'shortcut-btn';
+        btn.className = 'shortcut-btn' + dimClasses;
         btn.type = 'button';
         btn.style.setProperty('--i', index);
         btn.innerHTML = 

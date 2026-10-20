@@ -156,6 +156,8 @@ class Layout {
             'id': t.id,
             'icon': t.icon,
             'label': t.label,
+            if (t.width != 1) 'width': t.width,
+            if (t.height != 1) 'height': t.height,
             'source': sJson,
           };
         }

@@ -29,5 +29,3 @@ export 'src/services/media_service.dart';
 export 'src/services/media_windows.dart' show WindowsMediaService;
 export 'src/services/mqtt_service.dart';
 export 'src/util/hex_color.dart';
-
-export 'src/util/hex_color.dart';

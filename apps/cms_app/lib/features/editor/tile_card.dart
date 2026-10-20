@@ -98,86 +98,410 @@ class _TileCardState extends State<TileCard>
     super.dispose();
   }
 
-  Widget _buildTileIcon(String? iconValue) {
+  Widget _buildTileIcon(String? iconValue, {double size = 32}) {
     if (iconValue == null || iconValue.isEmpty) {
-      return const Icon(Icons.widgets, size: 32, color: Colors.white);
+      return Icon(Icons.widgets, size: size, color: Colors.white);
     }
 
     // Verifica se a string é um nome válido de Material Symbol
     if (iconMap.containsKey(iconValue)) {
-      return Icon(iconMap[iconValue], size: 32, color: Colors.white);
+      return Icon(iconMap[iconValue], size: size, color: Colors.white);
     }
 
     // Se não estiver no mapa, é um emoji antigo. Renderiza como texto.
     return Text(
       iconValue,
-      style: const TextStyle(fontSize: 32),
+      style: TextStyle(fontSize: size),
     );
   }
 
   Widget _buildContent(Color accentColor) {
-    if (widget.tile is SliderTile) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+    final tile = widget.tile;
+    final is2x2 = tile.is2x2;
+    final is2x1 = tile.is2x1;
+    final is1x2 = tile.is1x2;
+
+    if (tile is SliderTile) {
+      if (is1x2) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildTileIcon(widget.tile.icon),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  widget.tile.label,
+              _buildTileIcon(tile.icon, size: 24),
+              const SizedBox(height: 2),
+              Text(
+                '50%',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: accentColor,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Container(
+                  width: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.bottomCenter,
+                    heightFactor: 0.5,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                tile.label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white70,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        );
+      }
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                _buildTileIcon(tile.icon, size: is2x2 ? 36 : 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    tile.label,
+                    style: TextStyle(
+                      fontSize: is2x2 ? 14 : 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  '50%',
+                  style: TextStyle(
+                    fontSize: is2x2 ? 14 : 12,
+                    fontWeight: FontWeight.bold,
+                    color: accentColor,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: is2x2 ? 12 : 6),
+            Container(
+              height: is2x2 ? 14 : 8,
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: 0.5,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: accentColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (tile is StatTile) {
+      if (is1x2) {
+        // Medidor vertical
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildTileIcon(tile.icon, size: 22),
+              const SizedBox(height: 2),
+              Text(
+                tile.label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white70,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Container(
+                  width: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.bottomCenter,
+                    heightFactor: 0.42,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '42${tile.source.unit}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: accentColor,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (is2x2) {
+        // Card Pro 2x2
+        final badgeLabel = tile.source.kind.toUpperCase();
+        String detailText;
+        switch (tile.source.kind) {
+          case 'cpu':
+            detailText = '52°C • 3.8 GHz';
+            break;
+          case 'ram':
+            detailText = '6.8 GB / 16.0 GB';
+            break;
+          case 'disk':
+            detailText = '210 GB / 512 GB';
+            break;
+          default:
+            detailText = 'Estatística do Sistema';
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      _buildTileIcon(tile.icon, size: 28),
+                      const SizedBox(width: 8),
+                      Text(
+                        tile.label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Text(
+                      badgeLabel,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: accentColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                '42${tile.source.unit}',
+                style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w800,
+                  color: accentColor,
+                  height: 1.1,
+                ),
+              ),
+              Text(
+                detailText,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white60,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: 0.42,
+                  backgroundColor: Colors.black45,
+                  valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                  minHeight: 8,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (is2x1) {
+        // Horizontal 2x1
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      _buildTileIcon(tile.icon, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        tile.label,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '42${tile.source.unit}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: accentColor,
+                    ),
+                  ),
+                ],
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: 0.42,
+                  backgroundColor: Colors.black45,
+                  valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                  minHeight: 6,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // Compacto 1x1
+      return Padding(
+        padding: const EdgeInsets.all(6),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildTileIcon(tile.icon, size: 20),
+                const SizedBox(height: 2),
+                Text(
+                  tile.label,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 10,
                     color: Colors.white70,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 12,
-            width: double.infinity,
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.black38,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: 0.5,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: accentColor,
-                  borderRadius: BorderRadius.circular(6),
+                const SizedBox(height: 4),
+                Text(
+                  '42${tile.source.unit}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: accentColor,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: 48,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: 0.42,
+                      backgroundColor: Colors.black45,
+                      valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                      minHeight: 4,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       );
     }
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildTileIcon(widget.tile.icon),
-        const SizedBox(height: 8),
-        Text(
-          widget.tile.label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.white70,
+    // Atalhos, sons, pastas e voltar
+    final iconSize = is2x2 ? 48.0 : (is1x2 ? 38.0 : 32.0);
+    final fontSize = is2x2 ? 15.0 : 12.0;
+
+    return Padding(
+      padding: const EdgeInsets.all(6.0),
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildTileIcon(tile.icon, size: iconSize),
+              const SizedBox(height: 6),
+              Text(
+                tile.label,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: is2x2 ? FontWeight.w600 : FontWeight.normal,
+                  color: Colors.white70,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: is2x2 ? 3 : 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
         ),
-      ],
+      ),
     );
   }
 
@@ -249,6 +573,9 @@ class _TileCardState extends State<TileCard>
       return cardUi;
     }
 
+    final feedbackW = widget.tile.width * 120.0 + (widget.tile.width - 1) * 16.0;
+    final feedbackH = widget.tile.height * 120.0 + (widget.tile.height - 1) * 16.0;
+
     return LongPressDraggable<TileDragPayload>(
       data: TileDragPayload(
         tileId: widget.tile.id,
@@ -260,8 +587,8 @@ class _TileCardState extends State<TileCard>
         child: Opacity(
           opacity: 0.85,
           child: SizedBox(
-            width: 120,
-            height: 120,
+            width: feedbackW,
+            height: feedbackH,
             child: cardUi,
           ),
         ),

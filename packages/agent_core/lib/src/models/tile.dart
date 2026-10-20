@@ -5,8 +5,21 @@ sealed class Tile {
   final String id;
   final String icon;
   final String label;
+  final int width;
+  final int height;
 
-  const Tile({required this.id, required this.icon, required this.label});
+  const Tile({
+    required this.id,
+    required this.icon,
+    required this.label,
+    this.width = 1,
+    this.height = 1,
+  });
+
+  bool get is1x1 => width == 1 && height == 1;
+  bool get is2x1 => width == 2 && height == 1;
+  bool get is1x2 => width == 1 && height == 2;
+  bool get is2x2 => width == 2 && height == 2;
 
   String get type;
   Map<String, dynamic> toJson();
@@ -17,19 +30,41 @@ sealed class Tile {
     final label = (json['label'] as String?) ?? '';
     final type = (json['type'] as String?) ?? 'shortcut';
 
+    final rawW = (json['width'] as num?)?.toInt() ?? (json['cols'] as num?)?.toInt();
+    final rawH = (json['height'] as num?)?.toInt() ?? (json['rows'] as num?)?.toInt();
+    final defaultW = (type == 'slider' || type == 'stat') ? 2 : 1;
+    final width = (rawW ?? defaultW).clamp(1, 2);
+    final height = (rawH ?? 1).clamp(1, 2);
+
     return switch (type) {
-      'shortcut' => ShortcutTile(id: id, icon: icon, label: label),
+      'shortcut' => ShortcutTile(
+          id: id,
+          icon: icon,
+          label: label,
+          width: width,
+          height: height,
+        ),
       'folder' => FolderTile(
           id: id,
           icon: icon,
           label: label,
           target: json['target'] as String,
+          width: width,
+          height: height,
         ),
-      'back' => BackTile(id: id, icon: icon, label: label),
+      'back' => BackTile(
+          id: id,
+          icon: icon,
+          label: label,
+          width: width,
+          height: height,
+        ),
       'slider' => SliderTile(
           id: id,
           icon: icon,
           label: label,
+          width: width,
+          height: height,
           source: SliderSource.fromJson(
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'master_volume'}),
@@ -38,6 +73,8 @@ sealed class Tile {
           id: id,
           icon: icon,
           label: label,
+          width: width,
+          height: height,
           source: StatSource.fromJson(
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'cpu', 'field': 'load', 'unit': '%'}),
@@ -47,6 +84,8 @@ sealed class Tile {
           icon: icon,
           label: label,
           soundId: (json['sound_id'] as String?) ?? id,
+          width: width,
+          height: height,
         ),
       _ => throw FormatException('tipo de tile desconhecido: "$type"'),
     };
@@ -58,20 +97,36 @@ final class ShortcutTile extends Tile {
     required super.id,
     required super.icon,
     required super.label,
+    super.width = 1,
+    super.height = 1,
   });
 
   @override
   String get type => 'shortcut';
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': 'shortcut', 'id': id, 'icon': icon, 'label': label};
+  Map<String, dynamic> toJson() => {
+        'type': 'shortcut',
+        'id': id,
+        'icon': icon,
+        'label': label,
+        if (width != 1) 'width': width,
+        if (height != 1) 'height': height,
+      };
 
-  ShortcutTile copyWith({String? id, String? icon, String? label}) =>
+  ShortcutTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    int? width,
+    int? height,
+  }) =>
       ShortcutTile(
         id: id ?? this.id,
         icon: icon ?? this.icon,
         label: label ?? this.label,
+        width: width ?? this.width,
+        height: height ?? this.height,
       );
 
   @override
@@ -79,10 +134,12 @@ final class ShortcutTile extends Tile {
       other is ShortcutTile &&
       other.id == id &&
       other.icon == icon &&
-      other.label == label;
+      other.label == label &&
+      other.width == width &&
+      other.height == height;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label);
+  int get hashCode => Object.hash(type, id, icon, label, width, height);
 }
 
 final class FolderTile extends Tile {
@@ -93,6 +150,8 @@ final class FolderTile extends Tile {
     required super.icon,
     required super.label,
     required this.target,
+    super.width = 1,
+    super.height = 1,
   });
 
   @override
@@ -105,15 +164,25 @@ final class FolderTile extends Tile {
         'icon': icon,
         'label': label,
         'target': target,
+        if (width != 1) 'width': width,
+        if (height != 1) 'height': height,
       };
 
-  FolderTile copyWith(
-          {String? id, String? icon, String? label, String? target}) =>
+  FolderTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    String? target,
+    int? width,
+    int? height,
+  }) =>
       FolderTile(
         id: id ?? this.id,
         icon: icon ?? this.icon,
         label: label ?? this.label,
         target: target ?? this.target,
+        width: width ?? this.width,
+        height: height ?? this.height,
       );
 
   @override
@@ -122,10 +191,12 @@ final class FolderTile extends Tile {
       other.id == id &&
       other.icon == icon &&
       other.label == label &&
-      other.target == target;
+      other.target == target &&
+      other.width == width &&
+      other.height == height;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, target);
+  int get hashCode => Object.hash(type, id, icon, label, target, width, height);
 }
 
 final class BackTile extends Tile {
@@ -133,27 +204,49 @@ final class BackTile extends Tile {
     required super.id,
     required super.icon,
     required super.label,
+    super.width = 1,
+    super.height = 1,
   });
 
   @override
   String get type => 'back';
 
   @override
-  Map<String, dynamic> toJson() =>
-      {'type': 'back', 'id': id, 'icon': icon, 'label': label};
+  Map<String, dynamic> toJson() => {
+        'type': 'back',
+        'id': id,
+        'icon': icon,
+        'label': label,
+        if (width != 1) 'width': width,
+        if (height != 1) 'height': height,
+      };
 
-  BackTile copyWith({String? id, String? icon, String? label}) => BackTile(
+  BackTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    int? width,
+    int? height,
+  }) =>
+      BackTile(
         id: id ?? this.id,
         icon: icon ?? this.icon,
         label: label ?? this.label,
+        width: width ?? this.width,
+        height: height ?? this.height,
       );
 
   @override
   bool operator ==(Object other) =>
-      other is BackTile && other.id == id && other.icon == icon && other.label == label;
+      other is BackTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label &&
+      other.width == width &&
+      other.height == height;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label);
+  int get hashCode => Object.hash(type, id, icon, label, width, height);
 }
 
 @immutable
@@ -236,6 +329,8 @@ final class SliderTile extends Tile {
     required super.id,
     required super.icon,
     required super.label,
+    super.width = 2,
+    super.height = 1,
     required this.source,
   });
 
@@ -248,6 +343,8 @@ final class SliderTile extends Tile {
         'id': id,
         'icon': icon,
         'label': label,
+        if (width != 2) 'width': width,
+        if (height != 1) 'height': height,
         'source': source.toJson(),
       };
 
@@ -255,12 +352,16 @@ final class SliderTile extends Tile {
     String? id,
     String? icon,
     String? label,
+    int? width,
+    int? height,
     SliderSource? source,
   }) =>
       SliderTile(
         id: id ?? this.id,
         icon: icon ?? this.icon,
         label: label ?? this.label,
+        width: width ?? this.width,
+        height: height ?? this.height,
         source: source ?? this.source,
       );
 
@@ -270,10 +371,12 @@ final class SliderTile extends Tile {
       other.id == id &&
       other.icon == icon &&
       other.label == label &&
+      other.width == width &&
+      other.height == height &&
       other.source == source;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, source);
+  int get hashCode => Object.hash(type, id, icon, label, width, height, source);
 }
 
 @immutable
@@ -332,6 +435,8 @@ final class StatTile extends Tile {
     required super.id,
     required super.icon,
     required super.label,
+    super.width = 2,
+    super.height = 1,
     required this.source,
   });
 
@@ -344,6 +449,8 @@ final class StatTile extends Tile {
         'id': id,
         'icon': icon,
         'label': label,
+        if (width != 2) 'width': width,
+        if (height != 1) 'height': height,
         'source': source.toJson(),
       };
 
@@ -351,12 +458,16 @@ final class StatTile extends Tile {
     String? id,
     String? icon,
     String? label,
+    int? width,
+    int? height,
     StatSource? source,
   }) =>
       StatTile(
         id: id ?? this.id,
         icon: icon ?? this.icon,
         label: label ?? this.label,
+        width: width ?? this.width,
+        height: height ?? this.height,
         source: source ?? this.source,
       );
 
@@ -366,10 +477,12 @@ final class StatTile extends Tile {
       other.id == id &&
       other.icon == icon &&
       other.label == label &&
+      other.width == width &&
+      other.height == height &&
       other.source == source;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, source);
+  int get hashCode => Object.hash(type, id, icon, label, width, height, source);
 }
 
 final class SoundTile extends Tile {
@@ -380,6 +493,8 @@ final class SoundTile extends Tile {
     required super.icon,
     required super.label,
     required this.soundId,
+    super.width = 1,
+    super.height = 1,
   });
 
   @override
@@ -392,6 +507,8 @@ final class SoundTile extends Tile {
         'icon': icon,
         'label': label,
         'sound_id': soundId,
+        if (width != 1) 'width': width,
+        if (height != 1) 'height': height,
       };
 
   SoundTile copyWith({
@@ -399,12 +516,16 @@ final class SoundTile extends Tile {
     String? icon,
     String? label,
     String? soundId,
+    int? width,
+    int? height,
   }) =>
       SoundTile(
         id: id ?? this.id,
         icon: icon ?? this.icon,
         label: label ?? this.label,
         soundId: soundId ?? this.soundId,
+        width: width ?? this.width,
+        height: height ?? this.height,
       );
 
   @override
@@ -413,9 +534,11 @@ final class SoundTile extends Tile {
       other.id == id &&
       other.icon == icon &&
       other.label == label &&
-      other.soundId == soundId;
+      other.soundId == soundId &&
+      other.width == width &&
+      other.height == height;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, soundId);
+  int get hashCode => Object.hash(type, id, icon, label, soundId, width, height);
 }
 

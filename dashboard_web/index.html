@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Smart Kiosk Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 
 <body>
@@ -89,12 +89,23 @@
   <!-- ===================== TOAST CONTAINER (CANTO SUPERIOR DIREITO) ===================== -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-  <div id="debug-log" style="position:fixed;bottom:0;left:0;right:0;height:150px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:12px;padding:10px;z-index:9999;overflow-y:auto;pointer-events:none;backdrop-filter:blur(4px);"></div>
+  <div id="debug-log" style="display:none;position:fixed;bottom:0;left:0;right:0;height:140px;background:rgba(17,17,27,0.95);color:#0f0;font-family:monospace;font-size:12px;padding:10px;z-index:9999;overflow-y:auto;pointer-events:none;border-top:1px solid #45475a;"></div>
   <script>
     var dbg = document.getElementById('debug-log');
+    var isDebug = window.location.search.indexOf('debug=1') !== -1;
+    if (isDebug && dbg) {
+      dbg.style.display = 'block';
+    }
     window.logMsg = function(msg, color) {
+      if (!isDebug || !dbg) return;
       var c = color ? color : '#0f0';
-      dbg.innerHTML += '<div style="color:' + c + '">[' + new Date().toLocaleTimeString() + '] ' + msg + '</div>';
+      var item = document.createElement('div');
+      item.style.color = c;
+      item.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+      dbg.appendChild(item);
+      while (dbg.childNodes.length > 50) {
+        dbg.removeChild(dbg.firstChild);
+      }
       dbg.scrollTop = dbg.scrollHeight;
     };
     window.onerror = function(msg, src, line) { 
@@ -103,7 +114,6 @@
   </script>
 
   <script src="mqtt.min.js"></script>
-  <script src="twemoji.min.js"></script>
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

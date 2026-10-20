@@ -113,10 +113,88 @@ class InspectorPanel extends ConsumerWidget {
 
     return Column(
       children: [
+        _TileSizeSelector(tile: tile, currentPage: state.currentPage),
+        const Divider(height: 1, thickness: 1, color: Colors.white10),
         Expanded(child: child),
         const Divider(height: 1, thickness: 1, color: Colors.white10),
         _InspectorFooter(tile: tile, state: state),
       ],
+    );
+  }
+}
+
+class _TileSizeSelector extends ConsumerWidget {
+  final Tile tile;
+  final String currentPage;
+
+  const _TileSizeSelector({required this.tile, required this.currentPage});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentSize = (tile.width, tile.height);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Tamanho do Widget',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<(int, int)>(
+            segments: const [
+              ButtonSegment<(int, int)>(
+                value: (1, 1),
+                label: Text('1×1', style: TextStyle(fontSize: 11)),
+                tooltip: '1 coluna × 1 linha (Padrão)',
+              ),
+              ButtonSegment<(int, int)>(
+                value: (2, 1),
+                label: Text('2×1 ↔', style: TextStyle(fontSize: 11)),
+                tooltip: '2 colunas × 1 linha (Horizontal)',
+              ),
+              ButtonSegment<(int, int)>(
+                value: (1, 2),
+                label: Text('1×2 ↕', style: TextStyle(fontSize: 11)),
+                tooltip: '1 coluna × 2 linhas (Vertical / Fader)',
+              ),
+              ButtonSegment<(int, int)>(
+                value: (2, 2),
+                label: Text('2×2 ⤢', style: TextStyle(fontSize: 11)),
+                tooltip: '2 colunas × 2 linhas (Grande / Pro)',
+              ),
+            ],
+            selected: {currentSize},
+            onSelectionChanged: (newSelection) {
+              final selected = newSelection.first;
+              final w = selected.$1;
+              final h = selected.$2;
+
+              final notifier = ref.read(editorControllerProvider.notifier);
+              final Tile updated = switch (tile) {
+                ShortcutTile t => t.copyWith(width: w, height: h),
+                FolderTile t => t.copyWith(width: w, height: h),
+                BackTile t => t.copyWith(width: w, height: h),
+                SliderTile t => t.copyWith(width: w, height: h),
+                StatTile t => t.copyWith(width: w, height: h),
+                SoundTile t => t.copyWith(width: w, height: h),
+              };
+              notifier.upsertTile(currentPage, updated);
+            },
+            showSelectedIcon: false,
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

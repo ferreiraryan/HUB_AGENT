@@ -351,6 +351,138 @@ void main() {
       expect(events, hasLength(1));
     });
   });
+
+  group('Contrato de Dimensões de Tiles (Widgets 1x1, 2x1, 1x2, 2x2)', () {
+    test('Valores padrão e helpers de dimensão', () {
+      const sh = ShortcutTile(id: 's1', icon: '🚀', label: 'Launch');
+      expect(sh.width, equals(1));
+      expect(sh.height, equals(1));
+      expect(sh.is1x1, isTrue);
+      expect(sh.is2x1, isFalse);
+      expect(sh.is1x2, isFalse);
+      expect(sh.is2x2, isFalse);
+
+      const sl = SliderTile(
+        id: 'vol',
+        icon: '🔊',
+        label: 'Volume',
+        source: SliderSource(kind: SliderSource.kindMasterVolume),
+      );
+      expect(sl.width, equals(2));
+      expect(sl.height, equals(1));
+      expect(sl.is2x1, isTrue);
+
+      const st = StatTile(
+        id: 'cpu',
+        icon: '📊',
+        label: 'CPU',
+        source: StatSource(kind: 'cpu', field: 'load', unit: '%'),
+      );
+      expect(st.width, equals(2));
+      expect(st.height, equals(1));
+      expect(st.is2x1, isTrue);
+    });
+
+    test('Serialização omite width: 1 e height: 1 para preservar golden', () {
+      const sh = ShortcutTile(id: 's1', icon: '🚀', label: 'Launch');
+      final json = sh.toJson();
+      expect(json.containsKey('width'), isFalse);
+      expect(json.containsKey('height'), isFalse);
+
+      final sh2x2 = sh.copyWith(width: 2, height: 2);
+      final json2x2 = sh2x2.toJson();
+      expect(json2x2['width'], equals(2));
+      expect(json2x2['height'], equals(2));
+
+      final sh1x2 = sh.copyWith(height: 2);
+      final json1x2 = sh1x2.toJson();
+      expect(json1x2.containsKey('width'), isFalse);
+      expect(json1x2['height'], equals(2));
+    });
+
+    test('Desserialização com clamp e retrocompatibilidade', () {
+      // JSON legado sem width/height
+      final legacyShortcut = Tile.fromJson({
+        'type': 'shortcut',
+        'id': 'play',
+        'icon': '▶️',
+        'label': 'Play',
+      });
+      expect(legacyShortcut.width, equals(1));
+      expect(legacyShortcut.height, equals(1));
+
+      final legacySlider = Tile.fromJson({
+        'type': 'slider',
+        'id': 'vol',
+        'icon': '🔊',
+        'label': 'Volume',
+      });
+      expect(legacySlider.width, equals(2));
+      expect(legacySlider.height, equals(1));
+
+      // JSON com valores extremos sofre clamp para 1..2
+      final clamped = Tile.fromJson({
+        'type': 'shortcut',
+        'id': 's_clamped',
+        'icon': '⚡',
+        'label': 'Test',
+        'width': 10,
+        'height': 0,
+      });
+      expect(clamped.width, equals(2));
+      expect(clamped.height, equals(1));
+    });
+
+    test('Round-trip completo de todos os tamanhos (1x1, 2x1, 1x2, 2x2)', () {
+      final tiles = [
+        const ShortcutTile(id: 's_1x1', icon: '1', label: '1x1', width: 1, height: 1),
+        const ShortcutTile(id: 's_2x1', icon: '2', label: '2x1', width: 2, height: 1),
+        const ShortcutTile(id: 's_1x2', icon: '3', label: '1x2', width: 1, height: 2),
+        const ShortcutTile(id: 's_2x2', icon: '4', label: '2x2', width: 2, height: 2),
+        const SoundTile(id: 'snd_2x2', icon: '🔔', label: 'Sound', soundId: 's1', width: 2, height: 2),
+        const SliderTile(
+          id: 'sl_vert',
+          icon: '🔊',
+          label: 'Fader',
+          width: 1,
+          height: 2,
+          source: SliderSource(kind: 'master_volume'),
+        ),
+        const SliderTile(
+          id: 'sl_horiz',
+          icon: '🔊',
+          label: 'Vol',
+          width: 2,
+          height: 1,
+          source: SliderSource(kind: 'master_volume'),
+        ),
+        const StatTile(
+          id: 'st_compact',
+          icon: '📊',
+          label: 'CPU',
+          width: 1,
+          height: 1,
+          source: StatSource(kind: 'cpu', field: 'load', unit: '%'),
+        ),
+        const StatTile(
+          id: 'st_vert',
+          icon: '📊',
+          label: 'RAM',
+          width: 1,
+          height: 2,
+          source: StatSource(kind: 'ram', field: 'percent', unit: '%'),
+        ),
+      ];
+
+      for (final t in tiles) {
+        final json = t.toJson();
+        final fromJson = Tile.fromJson(json);
+        expect(fromJson, equals(t));
+        expect(fromJson.width, equals(t.width));
+        expect(fromJson.height, equals(t.height));
+      }
+    });
+  });
 }
 
 class _MockAudio implements AudioController {
