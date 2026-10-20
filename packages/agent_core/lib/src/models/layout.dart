@@ -156,8 +156,10 @@ class Layout {
             'id': t.id,
             'icon': t.icon,
             'label': t.label,
-            if (t.width != 1) 'width': t.width,
+            if (t.width != 2) 'width': t.width,
             if (t.height != 1) 'height': t.height,
+            if (t.x != null) 'x': t.x,
+            if (t.y != null) 'y': t.y,
             'source': sJson,
           };
         }
@@ -229,6 +231,12 @@ class Layout {
 
   Map<String, List<Tile>> _mutablePages() =>
       {for (final e in pages.entries) e.key: List<Tile>.of(e.value)};
+
+  Layout setPageTiles(String pageId, List<Tile> tiles) {
+    final next = _mutablePages();
+    next[pageId] = List<Tile>.of(tiles);
+    return copyWith(pages: next);
+  }
 
   Layout upsertTile(String pageId, Tile tile) {
     final next = _mutablePages();

@@ -177,15 +177,7 @@ class _TileSizeSelector extends ConsumerWidget {
               final h = selected.$2;
 
               final notifier = ref.read(editorControllerProvider.notifier);
-              final Tile updated = switch (tile) {
-                ShortcutTile t => t.copyWith(width: w, height: h),
-                FolderTile t => t.copyWith(width: w, height: h),
-                BackTile t => t.copyWith(width: w, height: h),
-                SliderTile t => t.copyWith(width: w, height: h),
-                StatTile t => t.copyWith(width: w, height: h),
-                SoundTile t => t.copyWith(width: w, height: h),
-              };
-              notifier.upsertTile(currentPage, updated);
+              notifier.resizeTile(currentPage, tile.id, w, h);
             },
             showSelectedIcon: false,
             style: const ButtonStyle(
@@ -249,41 +241,22 @@ class _InspectorFooter extends ConsumerWidget {
       counter++;
     }
 
-    Tile newTile;
-    if (tile is ShortcutTile) {
-      newTile = ShortcutTile(id: newId, icon: tile.icon, label: tile.label);
-    } else if (tile is SliderTile) {
-      final s = tile as SliderTile;
-      newTile = SliderTile(
-          id: newId, icon: tile.icon, label: tile.label, source: s.source);
-    } else if (tile is StatTile) {
-      final s = tile as StatTile;
-      newTile = StatTile(
-          id: newId, icon: tile.icon, label: tile.label, source: s.source);
-    } else if (tile is FolderTile) {
-      final f = tile as FolderTile;
-      newTile = FolderTile(
-          id: newId, icon: tile.icon, label: tile.label, target: f.target);
-    } else if (tile is BackTile) {
-      newTile = BackTile(id: newId, icon: tile.icon, label: tile.label);
-    } else if (tile is SoundTile) {
-      final s = tile as SoundTile;
-      newTile = SoundTile(
-          id: newId, icon: tile.icon, label: tile.label, soundId: s.soundId);
-    } else {
-      return;
-    }
-
-    final tiles = state.layout.tilesOf(state.currentPage);
-    final originalIndex = tiles.indexWhere((t) => t.id == tile.id);
+    final Tile newTile = switch (tile) {
+      final ShortcutTile s =>
+        s.copyWith(id: newId, clearCoords: true),
+      final SliderTile s =>
+        s.copyWith(id: newId, clearCoords: true),
+      final StatTile s =>
+        s.copyWith(id: newId, clearCoords: true),
+      final FolderTile f =>
+        f.copyWith(id: newId, clearCoords: true),
+      final BackTile b =>
+        b.copyWith(id: newId, clearCoords: true),
+      final SoundTile s =>
+        s.copyWith(id: newId, clearCoords: true),
+    };
 
     notifier.upsertTile(state.currentPage, newTile);
-
-    if (originalIndex >= 0) {
-      final tempIndex = tiles.length;
-      notifier.reorderTile(state.currentPage, tempIndex, originalIndex + 1);
-    }
-
     notifier.selectTile(newId);
   }
 
@@ -508,12 +481,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                   : SliderSource(kind: kind);
               notifier.upsertTile(
                 widget.state.currentPage,
-                SliderTile(
-                  id: current.id,
-                  icon: current.icon,
-                  label: current.label,
-                  source: newSource,
-                ),
+                current.copyWith(source: newSource),
               );
             },
           ),
@@ -534,10 +502,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                 final current = widget.tile as SliderTile;
                 notifier.upsertTile(
                   widget.state.currentPage,
-                  SliderTile(
-                    id: current.id,
-                    icon: current.icon,
-                    label: current.label,
+                  current.copyWith(
                     source: current.source.copyWith(
                         match: val.trim(), clearMatch: val.trim().isEmpty),
                   ),
@@ -553,8 +518,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                     : current.icon;
                 notifier.upsertTile(
                   widget.state.currentPage,
-                  SliderTile(
-                    id: current.id,
+                  current.copyWith(
                     icon: newIcon,
                     label: newLabel,
                     source: current.source.copyWith(match: preset.match),
@@ -571,10 +535,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                 final current = widget.tile as SliderTile;
                 notifier.upsertTile(
                   widget.state.currentPage,
-                  SliderTile(
-                    id: current.id,
-                    icon: current.icon,
-                    label: current.label,
+                  current.copyWith(
                     source: current.source
                         .copyWith(match: val, clearMatch: val.isEmpty),
                   ),

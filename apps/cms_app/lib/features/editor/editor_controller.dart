@@ -4,6 +4,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
+import 'tile_grid_layout.dart';
 
 class EditorState {
   final Layout layout;
@@ -148,8 +149,96 @@ class EditorController extends Notifier<EditorState> {
     }
   }
 
-  void upsertTile(String pageId, Tile tile) =>
-      _mutate((l) => l.upsertTile(pageId, tile));
+  Set<(int, int)> _reservedCellsFor(Layout layout, String pageId) {
+    final tiles = layout.tilesOf(pageId);
+    final needsAutoBack =
+        pageId != Layout.homePage && !tiles.any((t) => t is BackTile);
+    return needsAutoBack ? const {(0, 0)} : const {};
+  }
+
+  void upsertTile(String pageId, Tile tile) => _mutate((l) {
+        final existingTiles = l.tilesOf(pageId);
+        final exists = existingTiles.any((t) => t.id == tile.id);
+        var tileToSave = tile;
+        if (!exists && (tile.x == null || tile.y == null)) {
+          final reserved = _reservedCellsFor(l, pageId);
+          final normalized = TileGridMetrics.normalizeCoordinates(
+            existingTiles,
+            cols: kGridColumns,
+            reservedCells: reserved,
+          );
+          final metrics = TileGridMetrics.calculate(
+            tiles: normalized,
+            containerWidth: 1000,
+            crossAxisCount: kGridColumns,
+          );
+          final free = metrics.findFirstFreeCell(
+            tile.width,
+            tile.height,
+            reservedCells: reserved,
+          );
+          tileToSave = tile.copyWithPosition(x: free.$1, y: free.$2);
+          final nextList = [...normalized, tileToSave];
+          return l.setPageTiles(pageId, nextList);
+        }
+        return l.upsertTile(pageId, tileToSave);
+      });
+
+  void resizeTile(String pageId, String tileId, int newWidth, int newHeight) =>
+      _mutate((l) {
+        final reserved = _reservedCellsFor(l, pageId);
+        final updatedTiles = TileGridMetrics.resizeTileWithCollisionResolution(
+          tiles: l.tilesOf(pageId),
+          tileId: tileId,
+          newWidth: newWidth,
+          newHeight: newHeight,
+          cols: kGridColumns,
+          reservedCells: reserved,
+        );
+        return l.setPageTiles(pageId, updatedTiles);
+      });
+
+  void moveTileToCell(
+    String fromPage,
+    String tileId,
+    String toPage,
+    int targetCol,
+    int targetRow,
+  ) =>
+      _mutate((l) {
+        if (fromPage == toPage) {
+          final reserved = _reservedCellsFor(l, toPage);
+          final updatedTiles = TileGridMetrics.placeOrSwapTile(
+            tiles: l.tilesOf(toPage),
+            tileId: tileId,
+            targetCol: targetCol,
+            targetRow: targetRow,
+            cols: kGridColumns,
+            reservedCells: reserved,
+          );
+          return l.setPageTiles(toPage, updatedTiles);
+        } else {
+          final sourceTiles = List<Tile>.of(l.tilesOf(fromPage));
+          final idx = sourceTiles.indexWhere((t) => t.id == tileId);
+          if (idx < 0) return l;
+          final movingTile = sourceTiles.removeAt(idx);
+          final next = l.setPageTiles(fromPage, sourceTiles);
+          final reserved = _reservedCellsFor(next, toPage);
+          final destWithMoving = [
+            ...next.tilesOf(toPage),
+            movingTile.copyWithPosition(x: targetCol, y: targetRow),
+          ];
+          final updatedDest = TileGridMetrics.placeOrSwapTile(
+            tiles: destWithMoving,
+            tileId: tileId,
+            targetCol: targetCol,
+            targetRow: targetRow,
+            cols: kGridColumns,
+            reservedCells: reserved,
+          );
+          return next.setPageTiles(toPage, updatedDest);
+        }
+      });
 
   void replaceTile(String pageId, String oldId, Tile newTile) {
     _mutate((l) => l.replaceTile(pageId, oldId, newTile));

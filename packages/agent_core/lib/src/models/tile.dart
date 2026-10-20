@@ -7,6 +7,8 @@ sealed class Tile {
   final String label;
   final int width;
   final int height;
+  final int? x;
+  final int? y;
 
   const Tile({
     required this.id,
@@ -14,6 +16,8 @@ sealed class Tile {
     required this.label,
     this.width = 1,
     this.height = 1,
+    this.x,
+    this.y,
   });
 
   bool get is1x1 => width == 1 && height == 1;
@@ -23,6 +27,58 @@ sealed class Tile {
 
   String get type;
   Map<String, dynamic> toJson();
+
+  Tile copyWithPosition({
+    int? width,
+    int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
+  }) =>
+      switch (this) {
+        final ShortcutTile t => t.copyWith(
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            clearCoords: clearCoords,
+          ),
+        final FolderTile t => t.copyWith(
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            clearCoords: clearCoords,
+          ),
+        final BackTile t => t.copyWith(
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            clearCoords: clearCoords,
+          ),
+        final SliderTile t => t.copyWith(
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            clearCoords: clearCoords,
+          ),
+        final StatTile t => t.copyWith(
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            clearCoords: clearCoords,
+          ),
+        final SoundTile t => t.copyWith(
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            clearCoords: clearCoords,
+          ),
+      };
 
   factory Tile.fromJson(Map<String, dynamic> json) {
     final id = json['id'] as String;
@@ -35,6 +91,10 @@ sealed class Tile {
     final defaultW = (type == 'slider' || type == 'stat') ? 2 : 1;
     final width = (rawW ?? defaultW).clamp(1, 2);
     final height = (rawH ?? 1).clamp(1, 2);
+    final rawX = (json['x'] as num?)?.toInt();
+    final rawY = (json['y'] as num?)?.toInt();
+    final x = rawX != null && rawX >= 0 ? rawX : null;
+    final y = rawY != null && rawY >= 0 ? rawY : null;
 
     return switch (type) {
       'shortcut' => ShortcutTile(
@@ -43,6 +103,8 @@ sealed class Tile {
           label: label,
           width: width,
           height: height,
+          x: x,
+          y: y,
         ),
       'folder' => FolderTile(
           id: id,
@@ -51,6 +113,8 @@ sealed class Tile {
           target: json['target'] as String,
           width: width,
           height: height,
+          x: x,
+          y: y,
         ),
       'back' => BackTile(
           id: id,
@@ -58,6 +122,8 @@ sealed class Tile {
           label: label,
           width: width,
           height: height,
+          x: x,
+          y: y,
         ),
       'slider' => SliderTile(
           id: id,
@@ -65,6 +131,8 @@ sealed class Tile {
           label: label,
           width: width,
           height: height,
+          x: x,
+          y: y,
           source: SliderSource.fromJson(
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'master_volume'}),
@@ -75,6 +143,8 @@ sealed class Tile {
           label: label,
           width: width,
           height: height,
+          x: x,
+          y: y,
           source: StatSource.fromJson(
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'cpu', 'field': 'load', 'unit': '%'}),
@@ -86,6 +156,8 @@ sealed class Tile {
           soundId: (json['sound_id'] as String?) ?? id,
           width: width,
           height: height,
+          x: x,
+          y: y,
         ),
       _ => throw FormatException('tipo de tile desconhecido: "$type"'),
     };
@@ -99,6 +171,8 @@ final class ShortcutTile extends Tile {
     required super.label,
     super.width = 1,
     super.height = 1,
+    super.x,
+    super.y,
   });
 
   @override
@@ -112,6 +186,8 @@ final class ShortcutTile extends Tile {
         'label': label,
         if (width != 1) 'width': width,
         if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
       };
 
   ShortcutTile copyWith({
@@ -120,6 +196,9 @@ final class ShortcutTile extends Tile {
     String? label,
     int? width,
     int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
   }) =>
       ShortcutTile(
         id: id ?? this.id,
@@ -127,6 +206,8 @@ final class ShortcutTile extends Tile {
         label: label ?? this.label,
         width: width ?? this.width,
         height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
       );
 
   @override
@@ -136,10 +217,12 @@ final class ShortcutTile extends Tile {
       other.icon == icon &&
       other.label == label &&
       other.width == width &&
-      other.height == height;
+      other.height == height &&
+      other.x == x &&
+      other.y == y;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, width, height);
+  int get hashCode => Object.hash(type, id, icon, label, width, height, x, y);
 }
 
 final class FolderTile extends Tile {
@@ -152,6 +235,8 @@ final class FolderTile extends Tile {
     required this.target,
     super.width = 1,
     super.height = 1,
+    super.x,
+    super.y,
   });
 
   @override
@@ -166,6 +251,8 @@ final class FolderTile extends Tile {
         'target': target,
         if (width != 1) 'width': width,
         if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
       };
 
   FolderTile copyWith({
@@ -175,6 +262,9 @@ final class FolderTile extends Tile {
     String? target,
     int? width,
     int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
   }) =>
       FolderTile(
         id: id ?? this.id,
@@ -183,6 +273,8 @@ final class FolderTile extends Tile {
         target: target ?? this.target,
         width: width ?? this.width,
         height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
       );
 
   @override
@@ -193,10 +285,13 @@ final class FolderTile extends Tile {
       other.label == label &&
       other.target == target &&
       other.width == width &&
-      other.height == height;
+      other.height == height &&
+      other.x == x &&
+      other.y == y;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, target, width, height);
+  int get hashCode =>
+      Object.hash(type, id, icon, label, target, width, height, x, y);
 }
 
 final class BackTile extends Tile {
@@ -206,6 +301,8 @@ final class BackTile extends Tile {
     required super.label,
     super.width = 1,
     super.height = 1,
+    super.x,
+    super.y,
   });
 
   @override
@@ -219,6 +316,8 @@ final class BackTile extends Tile {
         'label': label,
         if (width != 1) 'width': width,
         if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
       };
 
   BackTile copyWith({
@@ -227,6 +326,9 @@ final class BackTile extends Tile {
     String? label,
     int? width,
     int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
   }) =>
       BackTile(
         id: id ?? this.id,
@@ -234,6 +336,8 @@ final class BackTile extends Tile {
         label: label ?? this.label,
         width: width ?? this.width,
         height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
       );
 
   @override
@@ -243,10 +347,12 @@ final class BackTile extends Tile {
       other.icon == icon &&
       other.label == label &&
       other.width == width &&
-      other.height == height;
+      other.height == height &&
+      other.x == x &&
+      other.y == y;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, width, height);
+  int get hashCode => Object.hash(type, id, icon, label, width, height, x, y);
 }
 
 @immutable
@@ -331,6 +437,8 @@ final class SliderTile extends Tile {
     required super.label,
     super.width = 2,
     super.height = 1,
+    super.x,
+    super.y,
     required this.source,
   });
 
@@ -345,6 +453,8 @@ final class SliderTile extends Tile {
         'label': label,
         if (width != 2) 'width': width,
         if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
         'source': source.toJson(),
       };
 
@@ -354,6 +464,9 @@ final class SliderTile extends Tile {
     String? label,
     int? width,
     int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
     SliderSource? source,
   }) =>
       SliderTile(
@@ -362,6 +475,8 @@ final class SliderTile extends Tile {
         label: label ?? this.label,
         width: width ?? this.width,
         height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
         source: source ?? this.source,
       );
 
@@ -373,10 +488,13 @@ final class SliderTile extends Tile {
       other.label == label &&
       other.width == width &&
       other.height == height &&
+      other.x == x &&
+      other.y == y &&
       other.source == source;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, width, height, source);
+  int get hashCode =>
+      Object.hash(type, id, icon, label, width, height, x, y, source);
 }
 
 @immutable
@@ -437,6 +555,8 @@ final class StatTile extends Tile {
     required super.label,
     super.width = 2,
     super.height = 1,
+    super.x,
+    super.y,
     required this.source,
   });
 
@@ -451,6 +571,8 @@ final class StatTile extends Tile {
         'label': label,
         if (width != 2) 'width': width,
         if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
         'source': source.toJson(),
       };
 
@@ -460,6 +582,9 @@ final class StatTile extends Tile {
     String? label,
     int? width,
     int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
     StatSource? source,
   }) =>
       StatTile(
@@ -468,6 +593,8 @@ final class StatTile extends Tile {
         label: label ?? this.label,
         width: width ?? this.width,
         height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
         source: source ?? this.source,
       );
 
@@ -479,10 +606,13 @@ final class StatTile extends Tile {
       other.label == label &&
       other.width == width &&
       other.height == height &&
+      other.x == x &&
+      other.y == y &&
       other.source == source;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, width, height, source);
+  int get hashCode =>
+      Object.hash(type, id, icon, label, width, height, x, y, source);
 }
 
 final class SoundTile extends Tile {
@@ -495,6 +625,8 @@ final class SoundTile extends Tile {
     required this.soundId,
     super.width = 1,
     super.height = 1,
+    super.x,
+    super.y,
   });
 
   @override
@@ -509,6 +641,8 @@ final class SoundTile extends Tile {
         'sound_id': soundId,
         if (width != 1) 'width': width,
         if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
       };
 
   SoundTile copyWith({
@@ -518,6 +652,9 @@ final class SoundTile extends Tile {
     String? soundId,
     int? width,
     int? height,
+    int? x,
+    int? y,
+    bool clearCoords = false,
   }) =>
       SoundTile(
         id: id ?? this.id,
@@ -526,6 +663,8 @@ final class SoundTile extends Tile {
         soundId: soundId ?? this.soundId,
         width: width ?? this.width,
         height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
       );
 
   @override
@@ -536,9 +675,12 @@ final class SoundTile extends Tile {
       other.label == label &&
       other.soundId == soundId &&
       other.width == width &&
-      other.height == height;
+      other.height == height &&
+      other.x == x &&
+      other.y == y;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, soundId, width, height);
+  int get hashCode =>
+      Object.hash(type, id, icon, label, soundId, width, height, x, y);
 }
 

@@ -16,7 +16,7 @@ class PreviewPanel extends ConsumerStatefulWidget {
 }
 
 class _PreviewPanelState extends ConsumerState<PreviewPanel> {
-  int? _targetGap;
+  (int col, int row, int w, int h)? _targetCell;
   double _zoom = 1.0;
 
   Widget _buildZoomToolbar() {
@@ -32,11 +32,23 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 6, right: 4),
+            child: Text(
+              'Grade 6×3',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Container(width: 1, height: 14, color: Colors.white12),
           IconButton(
             icon: const Icon(Icons.remove, size: 16, color: Colors.white70),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: 'Diminuir tamanho dos widgets (Zoom -)',
+            tooltip: 'Diminuir escala visual (mantém 6 colunas)',
             onPressed: _zoom > 0.61
                 ? () => setState(() => _zoom = math.max(0.6, _zoom - 0.1))
                 : null,
@@ -60,7 +72,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
             icon: const Icon(Icons.add, size: 16, color: Colors.white70),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-            tooltip: 'Aumentar tamanho dos widgets (Zoom +)',
+            tooltip: 'Aumentar escala visual (mantém 6 colunas)',
             onPressed: _zoom < 1.39
                 ? () => setState(() => _zoom = math.min(1.4, _zoom + 0.1))
                 : null,
@@ -68,6 +80,18 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
         ],
       ),
     );
+  }
+
+  Tile? _findTileInLayout(Layout layout, String pageId, String tileId) {
+    for (final t in layout.tilesOf(pageId)) {
+      if (t.id == tileId) return t;
+    }
+    for (final list in layout.pages.values) {
+      for (final t in list) {
+        if (t.id == tileId) return t;
+      }
+    }
+    return null;
   }
 
   @override
@@ -85,7 +109,13 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     if (needsAutoBack) {
       tiles.insert(
         0,
-        const BackTile(id: '__auto_back__', icon: '⬅️', label: 'Voltar'),
+        const BackTile(
+          id: '__auto_back__',
+          icon: '⬅️',
+          label: 'Voltar',
+          x: 0,
+          y: 0,
+        ),
       );
     }
 
@@ -99,7 +129,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
         final availH = math.max(
             100.0, constraints.maxHeight - (marginV * 2) - zoomBarHeight);
 
-        // AspectRatio 16 / 10
+        // Proporção do painel de atalhos do tablet (6 colunas × 3 linhas visíveis)
         const aspect = 16.0 / 10.0;
         double tabletW = availW;
         double tabletH = tabletW / aspect;
@@ -122,11 +152,11 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                     borderRadius: BorderRadius.circular(16),
                     border:
                         Border.all(color: const Color(0xFF313244), width: 4),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(
-                        color: const Color(0x66000000),
+                        color: Color(0x66000000),
                         blurRadius: 16,
-                        offset: const Offset(0, 4),
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
@@ -148,144 +178,204 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                                 ),
                               ),
                               Expanded(
-                                child: tiles.isEmpty && !needsAutoBack
-                                    ? const Center(
-                                        child: Text(
-                                          'Página vazia',
-                                          style:
-                                              TextStyle(color: Colors.white54),
-                                        ),
-                                      )
-                                    : LayoutBuilder(
-                                        builder: (context, gridConstraints) {
-                                          final metrics =
-                                              TileGridMetrics.calculate(
-                                            tiles: tiles,
-                                            containerWidth:
-                                                gridConstraints.maxWidth,
-                                            maxCrossAxisExtent: 140 * _zoom,
-                                            spacing: 16 * _zoom,
-                                            padding: 16 * _zoom,
-                                          );
+                                child: LayoutBuilder(
+                                  builder: (context, gridConstraints) {
+                                    final boardWidth =
+                                        gridConstraints.maxWidth * _zoom;
+                                    final metrics = TileGridMetrics.calculate(
+                                      tiles: tiles,
+                                      containerWidth: boardWidth,
+                                      crossAxisCount: kGridColumns,
+                                      minRows: kMinGridRows,
+                                      spacing: 12 * _zoom,
+                                      padding: 16 * _zoom,
+                                    );
 
-                                    return DragTarget<TileDragPayload>(
-                                      onWillAcceptWithDetails: (_) => true,
-                                      onMove: (details) {
-                                        final box = context.findRenderObject()
-                                            as RenderBox?;
-                                        if (box == null) return;
-                                        final local =
-                                            box.globalToLocal(details.offset);
-                                        var gap = metrics.findDropIndex(local,
-                                            tileCount: tiles.length);
+                                    final contentHeight = math.max(
+                                      gridConstraints.maxHeight,
+                                      metrics.totalHeight,
+                                    );
 
-                                        if (needsAutoBack && gap == 0) gap = 1;
+                                    return SingleChildScrollView(
+                                      child: Center(
+                                        child: SizedBox(
+                                          width: boardWidth,
+                                          height: contentHeight,
+                                          child: Builder(
+                                            builder: (boardContext) {
+                                              return DragTarget<
+                                                  TileDragPayload>(
+                                                onWillAcceptWithDetails: (_) =>
+                                                    true,
+                                                onMove: (details) {
+                                                  final box = boardContext
+                                                          .findRenderObject()
+                                                      as RenderBox?;
+                                                  if (box == null) return;
+                                                  final local =
+                                                      box.globalToLocal(
+                                                          details.offset);
+                                                  final dragged =
+                                                      _findTileInLayout(
+                                                    layout,
+                                                    details.data.fromPage,
+                                                    details.data.tileId,
+                                                  );
+                                                  final dw = (dragged?.width ??
+                                                          1)
+                                                      .clamp(1, kGridColumns);
+                                                  final dh = (dragged?.height ??
+                                                          1)
+                                                      .clamp(1, 2);
 
-                                        if (gap != _targetGap) {
-                                          setState(() => _targetGap = gap);
-                                        }
-                                      },
-                                      onLeave: (_) =>
-                                          setState(() => _targetGap = null),
-                                      onAcceptWithDetails: (d) {
-                                        final gap = _targetGap;
-                                        if (gap == null) return;
+                                                  var (col, row) =
+                                                      metrics.cellAtOffset(
+                                                    local,
+                                                    tileWidth: dw,
+                                                    tileHeight: dh,
+                                                  );
+                                                  if (needsAutoBack &&
+                                                      col == 0 &&
+                                                      row == 0) {
+                                                    col = 1;
+                                                  }
+                                                  final nextTarget =
+                                                      (col, row, dw, dh);
+                                                  if (_targetCell !=
+                                                      nextTarget) {
+                                                    setState(() => _targetCell =
+                                                        nextTarget);
+                                                  }
+                                                },
+                                                onLeave: (_) => setState(
+                                                    () => _targetCell = null),
+                                                onAcceptWithDetails: (d) {
+                                                  final target = _targetCell;
+                                                  setState(
+                                                      () => _targetCell = null);
+                                                  if (target == null) return;
 
-                                        final payload = d.data;
-                                        final origemIndex = state.layout
-                                            .tilesOf(state.currentPage)
-                                            .indexWhere(
-                                                (t) => t.id == payload.tileId);
-                                        final notifier = ref.read(
-                                            editorControllerProvider.notifier);
-
-                                        final realGap =
-                                            needsAutoBack ? gap - 1 : gap;
-
-                                        if (payload.fromPage ==
-                                            state.currentPage) {
-                                          if (origemIndex < 0) return;
-                                          var target = realGap;
-                                          if (origemIndex < target) target -= 1;
-                                          if (origemIndex == target) {
-                                            setState(() => _targetGap = null);
-                                            return;
-                                          }
-                                          notifier.reorderTile(
-                                              state.currentPage,
-                                              origemIndex,
-                                              target);
-                                        } else {
-                                          notifier.moveTile(payload.fromPage,
-                                              payload.tileId, state.currentPage,
-                                              index: realGap);
-                                        }
-                                        setState(() => _targetGap = null);
-                                      },
-                                      builder: (context, candidate, rejected) {
-                                        final contentHeight = math.max(
-                                            gridConstraints.maxHeight,
-                                            metrics.totalHeight);
-
-                                        return SingleChildScrollView(
-                                          child: SizedBox(
-                                            width: gridConstraints.maxWidth,
-                                            height: contentHeight,
-                                            child: Stack(
-                                              children: [
-                                                for (final p in metrics.placements) ...[
-                                                  Positioned.fromRect(
-                                                    rect: p.getRect(
-                                                      pad: metrics.padding,
-                                                      spacing: metrics.spacing,
-                                                      cellWidth: metrics.cellWidth,
-                                                      cellHeight: metrics.cellHeight,
-                                                    ),
-                                                    child: _buildTileCard(
-                                                      context,
-                                                      ref,
-                                                      state,
-                                                      theme,
-                                                      p.tile,
-                                                      p.index,
-                                                      needsAutoBack,
-                                                    ),
-                                                  ),
-                                                ],
-                                                if (_targetGap != null)
-                                                  _GapPlaceholder(
-                                                    gap: _targetGap!,
-                                                    metrics: metrics,
-                                                    accentColor: Color(theme.accentColor),
-                                                  ),
-                                              ],
-                                            ),
+                                                  final payload = d.data;
+                                                  final notifier = ref.read(
+                                                      editorControllerProvider
+                                                          .notifier);
+                                                  notifier.moveTileToCell(
+                                                    payload.fromPage,
+                                                    payload.tileId,
+                                                    state.currentPage,
+                                                    target.$1,
+                                                    target.$2,
+                                                  );
+                                                },
+                                                builder: (context, candidate,
+                                                    rejected) {
+                                                  return Stack(
+                                                    children: [
+                                                      // Grade de quadrados base (clicáveis para adicionar em célula vazia)
+                                                      for (int r = 0;
+                                                          r <
+                                                              metrics
+                                                                  .visibleRowCount;
+                                                          r++)
+                                                        for (int c = 0;
+                                                            c <
+                                                                metrics
+                                                                    .crossAxisCount;
+                                                            c++)
+                                                          Positioned.fromRect(
+                                                            rect: metrics
+                                                                .getSpanRect(
+                                                                    c, r, 1, 1),
+                                                            child:
+                                                                _EmptyGridCell(
+                                                              col: c,
+                                                              row: r,
+                                                              onTap: () =>
+                                                                  _showAddMenu(
+                                                                context,
+                                                                ref,
+                                                                state,
+                                                                targetCell: (
+                                                                  c,
+                                                                  r
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      // Realce de destino durante o drag
+                                                      if (_targetCell != null)
+                                                        Positioned.fromRect(
+                                                          rect: metrics
+                                                              .getSpanRect(
+                                                            _targetCell!.$1,
+                                                            _targetCell!.$2,
+                                                            _targetCell!.$3,
+                                                            _targetCell!.$4,
+                                                          ),
+                                                          child:
+                                                              _CellTargetHighlight(
+                                                            accentColor: Color(
+                                                                theme
+                                                                    .accentColor),
+                                                          ),
+                                                        ),
+                                                      // Widgets posicionados na grade
+                                                      for (final p in metrics
+                                                          .placements)
+                                                        Positioned.fromRect(
+                                                          rect: p.getRect(
+                                                            pad:
+                                                                metrics.padding,
+                                                            spacing:
+                                                                metrics.spacing,
+                                                            cellWidth: metrics
+                                                                .cellWidth,
+                                                            cellHeight: metrics
+                                                                .cellHeight,
+                                                          ),
+                                                          child: _buildTileCard(
+                                                            context,
+                                                            ref,
+                                                            state,
+                                                            theme,
+                                                            p.tile,
+                                                            p.index,
+                                                            needsAutoBack,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  );
+                                                },
+                                              );
+                                            },
                                           ),
-                                        );
-                                      },
+                                        ),
+                                      ),
                                     );
                                   },
                                 ),
-                        ),
-                      ],
-                    ),
-                    Positioned(
-                      right: 12,
-                      bottom: 12,
-                      child: FloatingActionButton.small(
-                        onPressed: () => _showAddMenu(context, ref, state),
-                        child: const Icon(Icons.add),
+                              ),
+                            ],
+                          ),
+                          Positioned(
+                            right: 12,
+                            bottom: 12,
+                            child: FloatingActionButton.small(
+                              tooltip: 'Adicionar widget no próximo quadrado livre',
+                              onPressed: () =>
+                                  _showAddMenu(context, ref, state),
+                              child: const Icon(Icons.add),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ),
-      ],
-    ),
-  );
+        );
       },
     );
   }
@@ -299,7 +389,7 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     int index,
     bool needsAutoBack,
   ) {
-    final isAutoBack = needsAutoBack && index == 0;
+    final isAutoBack = needsAutoBack && tile.id == '__auto_back__';
 
     Widget card = TileCard(
       tile: tile,
@@ -352,7 +442,12 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     return card;
   }
 
-  void _showAddMenu(BuildContext context, WidgetRef ref, EditorState state) {
+  void _showAddMenu(
+    BuildContext context,
+    WidgetRef ref,
+    EditorState state, {
+    (int col, int row)? targetCell,
+  }) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) {
@@ -360,12 +455,31 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (targetCell != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.grid_on, size: 16, color: Colors.white54),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Adicionar na coluna ${targetCell.$1 + 1}, linha ${targetCell.$2 + 1}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ListTile(
                 leading: const Icon(Icons.flash_on),
                 title: const Text('Atalho'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'shortcut', context);
+                  _handleCreateTile(ref, state, 'shortcut', context,
+                      targetCell: targetCell);
                 },
               ),
               ListTile(
@@ -373,7 +487,8 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Pasta'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'folder', context);
+                  _handleCreateTile(ref, state, 'folder', context,
+                      targetCell: targetCell);
                 },
               ),
               ListTile(
@@ -381,7 +496,8 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Voltar'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'back', context);
+                  _handleCreateTile(ref, state, 'back', context,
+                      targetCell: targetCell);
                 },
               ),
               ListTile(
@@ -389,7 +505,8 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Slider'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'slider', context);
+                  _handleCreateTile(ref, state, 'slider', context,
+                      targetCell: targetCell);
                 },
               ),
               ListTile(
@@ -397,15 +514,18 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
                 title: const Text('Stat (CPU/RAM/Disco)'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'stat', context);
+                  _handleCreateTile(ref, state, 'stat', context,
+                      targetCell: targetCell);
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.music_note, color: Colors.deepPurpleAccent),
+                leading:
+                    const Icon(Icons.music_note, color: Colors.deepPurpleAccent),
                 title: const Text('Som (Sound Pad)'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'sound', context);
+                  _handleCreateTile(ref, state, 'sound', context,
+                      targetCell: targetCell);
                 },
               ),
             ],
@@ -416,8 +536,13 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
   }
 
   Future<void> _handleCreateTile(
-      WidgetRef ref, EditorState state, String type, BuildContext context) async {
-    final tile = await showCreateTileDialog(
+    WidgetRef ref,
+    EditorState state,
+    String type,
+    BuildContext context, {
+    (int col, int row)? targetCell,
+  }) async {
+    var tile = await showCreateTileDialog(
       context: context,
       type: type,
       state: state,
@@ -425,79 +550,98 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     if (tile == null) return;
 
     final notifier = ref.read(editorControllerProvider.notifier);
+    if (targetCell != null) {
+      final col = targetCell.$1.clamp(0, kGridColumns - tile.width);
+      final row = math.max(0, targetCell.$2);
+      tile = tile.copyWithPosition(x: col, y: row);
+    }
     notifier.upsertTile(state.currentPage, tile);
+    if (targetCell != null) {
+      notifier.moveTileToCell(
+        state.currentPage,
+        tile.id,
+        state.currentPage,
+        targetCell.$1,
+        targetCell.$2,
+      );
+    }
     notifier.selectTile(tile.id);
   }
 }
 
-class _GapPlaceholder extends StatelessWidget {
-  final int gap;
-  final TileGridMetrics metrics;
-  final Color accentColor;
+class _EmptyGridCell extends StatefulWidget {
+  final int col;
+  final int row;
+  final VoidCallback onTap;
 
-  const _GapPlaceholder({
-    required this.gap,
-    required this.metrics,
-    required this.accentColor,
+  const _EmptyGridCell({
+    required this.col,
+    required this.row,
+    required this.onTap,
   });
 
   @override
+  State<_EmptyGridCell> createState() => _EmptyGridCellState();
+}
+
+class _EmptyGridCellState extends State<_EmptyGridCell> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    if (metrics.placements.isEmpty) {
-      return Positioned(
-        left: metrics.padding,
-        top: metrics.padding,
-        width: 4,
-        height: metrics.cellHeight,
-        child: IgnorePointer(
-          child: Container(
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(2),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: BoxDecoration(
+            color: _hovered
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.white.withValues(alpha: 0.015),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _hovered
+                  ? Colors.white.withValues(alpha: 0.22)
+                  : Colors.white.withValues(alpha: 0.07),
+              width: 1,
+            ),
+          ),
+          child: Center(
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 120),
+              opacity: _hovered ? 0.6 : 0.15,
+              child: const Icon(
+                Icons.add,
+                size: 18,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
+}
 
-    final double left;
-    final double top;
-    final double height;
+class _CellTargetHighlight extends StatelessWidget {
+  final Color accentColor;
 
-    if (gap < metrics.placements.length) {
-      final p = metrics.placements[gap];
-      final rect = p.getRect(
-        pad: metrics.padding,
-        spacing: metrics.spacing,
-        cellWidth: metrics.cellWidth,
-        cellHeight: metrics.cellHeight,
-      );
-      left = rect.left - (metrics.spacing / 2) - 2;
-      top = rect.top;
-      height = rect.height;
-    } else {
-      final last = metrics.placements.last;
-      final rect = last.getRect(
-        pad: metrics.padding,
-        spacing: metrics.spacing,
-        cellWidth: metrics.cellWidth,
-        cellHeight: metrics.cellHeight,
-      );
-      left = rect.right + (metrics.spacing / 2) - 2;
-      top = rect.top;
-      height = rect.height;
-    }
+  const _CellTargetHighlight({required this.accentColor});
 
-    return Positioned(
-      left: left.clamp(0.0, double.infinity),
-      top: top.clamp(0.0, double.infinity),
-      width: 4,
-      height: height,
-      child: IgnorePointer(
-        child: Container(
-          decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(2),
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        decoration: BoxDecoration(
+          color: accentColor.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: accentColor.withValues(alpha: 0.9),
+            width: 2,
           ),
         ),
       ),

@@ -117,6 +117,80 @@ void main() {
       );
       expect(idxRight, equals(1));
     });
+
+    test('Posiciona tiles nas coordenadas explicitas (x, y) deixando quadrados vazios', () {
+      final tiles = [
+        const ShortcutTile(id: 'a', icon: '1', label: 'A', x: 0, y: 0),
+        const ShortcutTile(id: 'b', icon: '2', label: 'B', x: 4, y: 2, width: 2, height: 1),
+      ];
+
+      final metrics = TileGridMetrics.calculate(
+        tiles: tiles,
+        containerWidth: 748,
+        crossAxisCount: kGridColumns,
+      );
+
+      expect(metrics.crossAxisCount, equals(6));
+      expect(metrics.placements[0].col, equals(0));
+      expect(metrics.placements[0].row, equals(0));
+      expect(metrics.placements[1].col, equals(4));
+      expect(metrics.placements[1].row, equals(2));
+      expect(metrics.placements[1].width, equals(2));
+    });
+
+    test('placeOrSwapTile move para quadrado vazio e faz swap quando ocupado', () {
+      final initial = [
+        const ShortcutTile(id: 't1', icon: '1', label: '1', x: 0, y: 0),
+        const ShortcutTile(id: 't2', icon: '2', label: '2', x: 2, y: 1),
+      ];
+
+      // Move t1 para quadrado vazio (5, 2)
+      final movedEmpty = TileGridMetrics.placeOrSwapTile(
+        tiles: initial,
+        tileId: 't1',
+        targetCol: 5,
+        targetRow: 2,
+      );
+      expect(movedEmpty[0].x, equals(5));
+      expect(movedEmpty[0].y, equals(2));
+      expect(movedEmpty[1].x, equals(2));
+      expect(movedEmpty[1].y, equals(1));
+
+      // Move t1 de (5, 2) para cima de t2 em (2, 1) -> swap!
+      final swapped = TileGridMetrics.placeOrSwapTile(
+        tiles: movedEmpty,
+        tileId: 't1',
+        targetCol: 2,
+        targetRow: 1,
+      );
+      expect(swapped[0].x, equals(2));
+      expect(swapped[0].y, equals(1));
+      expect(swapped[1].x, equals(5));
+      expect(swapped[1].y, equals(2));
+    });
+
+    test('resizeTileWithCollisionResolution expande widget e realoca vizinho colidido', () {
+      final initial = [
+        const ShortcutTile(id: 't1', icon: '1', label: '1', x: 0, y: 0, width: 1, height: 1),
+        const ShortcutTile(id: 't2', icon: '2', label: '2', x: 1, y: 0, width: 1, height: 1),
+      ];
+
+      final resized = TileGridMetrics.resizeTileWithCollisionResolution(
+        tiles: initial,
+        tileId: 't1',
+        newWidth: 2,
+        newHeight: 2,
+      );
+
+      expect(resized[0].x, equals(0));
+      expect(resized[0].y, equals(0));
+      expect(resized[0].width, equals(2));
+      expect(resized[0].height, equals(2));
+
+      // t2 não pode continuar em (1, 0) pois colide com t1 (0..1, 0..1)
+      expect(resized[1].x, equals(2));
+      expect(resized[1].y, equals(0));
+    });
   });
 }
 

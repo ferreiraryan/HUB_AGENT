@@ -473,6 +473,86 @@ const UI = {
     });
   },
 
+  resolveGridPlacements(items, cols) {
+    const occupied = [];
+    function ensureRows(targetRowExclusive) {
+      while (occupied.length < targetRowExclusive) {
+        const rowArr = [];
+        for (let c = 0; c < cols; c++) rowArr.push(false);
+        occupied.push(rowArr);
+      }
+    }
+    function canFitAt(r, c, w, h) {
+      if (c < 0 || c + w > cols || r < 0) return false;
+      ensureRows(r + h);
+      for (let dr = 0; dr < h; dr++) {
+        for (let dc = 0; dc < w; dc++) {
+          if (occupied[r + dr][c + dc]) return false;
+        }
+      }
+      return true;
+    }
+    function markOccupied(r, c, w, h) {
+      ensureRows(r + h);
+      for (let dr = 0; dr < h; dr++) {
+        for (let dc = 0; dc < w; dc++) {
+          occupied[r + dr][c + dc] = true;
+        }
+      }
+    }
+
+    const placements = new Array(items.length);
+    const unpositioned = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const defaultW = (item.type === 'slider' || item.type === 'stat') ? 2 : 1;
+      let w = (typeof item.width === 'number' && item.width >= 1 && item.width <= 2) ? item.width : defaultW;
+      const h = (typeof item.height === 'number' && item.height >= 1 && item.height <= 2) ? item.height : 1;
+      if (item.type === 'slider') {
+        const isVert = (h > w) || (item.height === 2 && item.width !== 2);
+        if (isVert) w = 1;
+      }
+
+      if (typeof item.x === 'number' && typeof item.y === 'number' && item.x >= 0 && item.y >= 0) {
+        const col = Math.min(Math.max(0, Math.floor(item.x)), cols - w);
+        const row = Math.max(0, Math.floor(item.y));
+        if (canFitAt(row, col, w, h)) {
+          markOccupied(row, col, w, h);
+          placements[i] = { col: col, row: row, w: w, h: h };
+        } else {
+          unpositioned.push({ index: i, w: w, h: h });
+        }
+      } else {
+        unpositioned.push({ index: i, w: w, h: h });
+      }
+    }
+
+    for (let u = 0; u < unpositioned.length; u++) {
+      const entry = unpositioned[u];
+      const w = entry.w;
+      const h = entry.h;
+      let row = 0;
+      let col = 0;
+      let found = false;
+      while (!found) {
+        ensureRows(row + h);
+        for (let c = 0; c <= cols - w; c++) {
+          if (canFitAt(row, c, w, h)) {
+            col = c;
+            found = true;
+            break;
+          }
+        }
+        if (!found) row++;
+      }
+      markOccupied(row, col, w, h);
+      placements[entry.index] = { col: col, row: row, w: w, h: h };
+    }
+
+    return placements;
+  },
+
   renderShortcuts(deviceId) {
     dom.shortcutsGrid.innerHTML = '';
     const pages = state.shortcutsCache[deviceId];
@@ -483,18 +563,17 @@ const UI = {
     const hasExplicitBack = items.some((item) => item.type === 'back');
 
     const renderList = (currentPageId !== 'home' && !hasExplicitBack)
-      ? [{ type: 'back', icon: '⬅️', label: 'Voltar' }].concat(items)
+      ? [{ type: 'back', icon: '⬅️', label: 'Voltar', x: 0, y: 0 }].concat(items)
       : items;
 
-    renderList.forEach((item, index) => {
-      const defaultW = (item.type === 'slider' || item.type === 'stat') ? 2 : 1;
-      let w = (typeof item.width === 'number' && item.width >= 1 && item.width <= 2) ? item.width : defaultW;
-      const h = (typeof item.height === 'number' && item.height >= 1 && item.height <= 2) ? item.height : 1;
+    const placements = this.resolveGridPlacements(renderList, 6);
 
-      if (item.type === 'slider') {
-        const isVertical = (h > w) || (item.height === 2 && item.width !== 2);
-        if (isVertical) w = 1;
-      }
+    renderList.forEach((item, index) => {
+      const pos = placements[index];
+      const w = pos.w;
+      const h = pos.h;
+      const gridColumnStyle = (pos.col + 1) + ' / span ' + w;
+      const gridRowStyle = (pos.row + 1) + ' / span ' + h;
 
       const dimClasses = ' tile--w-' + w + ' tile--h-' + h;
 
@@ -503,6 +582,8 @@ const UI = {
         const card = document.createElement('div');
         card.className = 'shortcut-btn shortcut-btn--slider' + (isVertical ? ' shortcut-btn--slider-vertical' : '') + dimClasses;
         card.style.setProperty('--i', index);
+        card.style.gridColumn = gridColumnStyle;
+        card.style.gridRow = gridRowStyle;
 
         let val = 50;
         if (item.id === 'master_volume') {
@@ -577,6 +658,8 @@ const UI = {
 
         card.className = 'shortcut-btn shortcut-btn--stat' + statVariantClass + dimClasses;
         card.style.setProperty('--i', index);
+        card.style.gridColumn = gridColumnStyle;
+        card.style.gridRow = gridRowStyle;
         card.dataset.statKind = item.source.kind;
         card.dataset.statField = item.source.field;
         card.dataset.statUnit = item.source.unit || '';
@@ -652,6 +735,8 @@ const UI = {
         btn.className = 'shortcut-btn shortcut-btn--sound' + (isThisPlaying ? ' shortcut-btn--playing' : '') + dimClasses;
         btn.type = 'button';
         btn.style.setProperty('--i', index);
+        btn.style.gridColumn = gridColumnStyle;
+        btn.style.gridRow = gridRowStyle;
         btn.dataset.soundId = item.sound_id;
         btn.disabled = false;
 
@@ -679,6 +764,8 @@ const UI = {
         btn.className = 'shortcut-btn' + dimClasses;
         btn.type = 'button';
         btn.style.setProperty('--i', index);
+        btn.style.gridColumn = gridColumnStyle;
+        btn.style.gridRow = gridRowStyle;
         btn.innerHTML = 
           '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
           '<span>' + UI.escapeHtml(item.label || item.id || 'Sem Nome') + '</span>';

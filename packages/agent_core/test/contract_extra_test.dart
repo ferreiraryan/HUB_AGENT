@@ -482,6 +482,50 @@ void main() {
         expect(fromJson.height, equals(t.height));
       }
     });
+
+    test('Coordenadas x e y de grade são serializadas apenas quando definidas e preservam round-trip', () {
+      const shLegacy = ShortcutTile(id: 's_leg', icon: '1', label: 'Legacy');
+      expect(shLegacy.x, isNull);
+      expect(shLegacy.y, isNull);
+      expect(shLegacy.toJson().containsKey('x'), isFalse);
+      expect(shLegacy.toJson().containsKey('y'), isFalse);
+
+      final shPos = shLegacy.copyWithPosition(x: 4, y: 2, width: 2, height: 1);
+      expect(shPos.x, equals(4));
+      expect(shPos.y, equals(2));
+      expect(shPos.width, equals(2));
+      expect(shPos.height, equals(1));
+      final json = shPos.toJson();
+      expect(json['x'], equals(4));
+      expect(json['y'], equals(2));
+      expect(Tile.fromJson(json), equals(shPos));
+
+      // Slider customizado em Layout.toPublishJson preserva x, y e width != 2
+      const customVertSlider = SliderTile(
+        id: 'sl_cust_v',
+        icon: '🎚️',
+        label: 'Custom V',
+        width: 1,
+        height: 2,
+        x: 5,
+        y: 0,
+        source: SliderSource(kind: SliderSource.kindCustom, cmd: ['echo', '1']),
+      );
+      final layout = Layout(
+        deviceName: 'PC',
+        theme: HubTheme.fallback,
+        pages: const {
+          'home': [customVertSlider],
+        },
+      );
+      final pub = layout.toPublishJson();
+      final pubTileJson = (pub['pages']['home'] as List).first as Map<String, dynamic>;
+      expect(pubTileJson['width'], equals(1));
+      expect(pubTileJson['height'], equals(2));
+      expect(pubTileJson['x'], equals(5));
+      expect(pubTileJson['y'], equals(0));
+      expect((pubTileJson['source'] as Map).containsKey('cmd'), isFalse);
+    });
   });
 }
 
