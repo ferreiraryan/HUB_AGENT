@@ -71,6 +71,20 @@ static void my_application_activate(GApplication *application) {
     gtk_window_set_title(window, "cms_app");
   }
 
+  // Define o ícone da janela GTK a partir do asset incluído no bundle
+  {
+    g_autoptr(GError) error = nullptr;
+    gchar* exe_path = g_file_read_link("/proc/self/exe", &error);
+    if (exe_path != nullptr) {
+      g_autofree gchar* exe_dir = g_path_get_dirname(exe_path);
+      g_autofree gchar* icon_path = g_build_filename(
+          exe_dir, "data", "flutter_assets", "assets", "icons", "app_icon.png",
+          nullptr);
+      gtk_window_set_icon_from_file(window, icon_path, nullptr);
+      g_free(exe_path);
+    }
+  }
+
   gtk_window_set_default_size(window, 1280, 720);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();

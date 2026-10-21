@@ -27,10 +27,10 @@ class TrayController with TrayListener {
     trayManager.addListener(this);
 
     try {
-      if (Platform.isLinux) {
-        await trayManager.setIcon('application-x-executable');
+      if (Platform.isLinux || Platform.isWindows) {
+        await trayManager.setIcon('assets/icons/app_icon.png');
       } else {
-        // TODO: Adicionar asset real e chamar setIcon() passando o caminho no Windows/macOS.
+        await trayManager.setIcon('assets/icons/app_icon.png');
       }
     } catch (e) {
       stderr.writeln('Falha ao configurar ícone da bandeja: $e');
