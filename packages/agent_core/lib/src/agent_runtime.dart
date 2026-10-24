@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'models/agent_event.dart';
 import 'models/audio_state.dart';
 import 'models/layout.dart';
 import 'models/media_state.dart';
@@ -119,14 +118,8 @@ class AgentRuntime {
       ..add(media.changes.listen(mqtt.publishMedia));
 
     if (sound != null) {
-      String? lastPlayingSoundId;
       _subs.add(sound!.stateChanges.listen((state) {
         mqtt.publishSoundState(state);
-        if (!state.isPlaying && lastPlayingSoundId != null) {
-          final soundLabel = _findSoundLabel(lastPlayingSoundId!) ?? lastPlayingSoundId!;
-          mqtt.publishEvent(AgentEvent.info('Som "$soundLabel" finalizado'));
-        }
-        lastPlayingSoundId = state.isPlaying ? state.soundId : null;
       }));
     }
 
@@ -246,18 +239,6 @@ class AgentRuntime {
   }
 
   void _armEchoGuard() => _suppressUntil = DateTime.now().add(echoGuard);
-
-  String? _findSoundLabel(String soundId) {
-    if (!repository.isLoaded) return null;
-    for (final page in repository.current.pages.values) {
-      for (final tile in page) {
-        if (tile is SoundTile && tile.soundId == soundId) {
-          return tile.label;
-        }
-      }
-    }
-    return null;
-  }
 
   void _onLocalVolume(MasterVolume v) {
     if (DateTime.now().isBefore(_suppressUntil)) return;

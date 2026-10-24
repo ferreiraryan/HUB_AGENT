@@ -1051,16 +1051,15 @@ const UI = {
           '<span class="sound-wave-badge" aria-hidden="true"><span></span><span></span><span></span></span>';
 
         btn.addEventListener('click', () => {
-          const currentState = UI.parseSoundState(state.soundStateCache[deviceId]);
-          const isCurrentlyPlayingThis = currentState.isPlaying && (currentState.soundId === item.sound_id);
+          btn.classList.add('shortcut-btn--pulse');
+          setTimeout(function() {
+            btn.classList.remove('shortcut-btn--pulse');
+          }, 200);
+
           const device = state.devices[deviceId];
           if (!device) return;
 
-          if (isCurrentlyPlayingThis) {
-            MqttLayer.publishCommand(device, 'stop_sound');
-          } else {
-            MqttLayer.publishCommand(device, 'play_sound', { sound_id: item.sound_id });
-          }
+          MqttLayer.publishCommand(device, 'play_sound', { sound_id: item.sound_id });
         });
         if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
         dom.shortcutsGrid.appendChild(btn);

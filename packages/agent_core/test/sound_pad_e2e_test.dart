@@ -220,7 +220,7 @@ void main() {
       }
     });
 
-    test('Toggle: Tocar no mesmo som enquanto em reproducao interrompe o audio', () async {
+    test('Re-trigger: Tocar no mesmo som enquanto em reproducao reinicia o audio e stop_sound interrompe', () async {
       const soundTile = SoundTile(
         id: 'tile_vinheta',
         icon: 'graphic_eq',
@@ -249,26 +249,24 @@ void main() {
         'sound_id': 'vinheta_de_abertura',
       }));
       expect(soundController.current.isPlaying, isTrue);
+      expect(soundController.playHistory, equals(['vinheta_de_abertura']));
 
-      // Toca novamente no mesmo som -> deve interromper (stop)
+      // Toca novamente no mesmo som -> deve reiniciar (play), não parar
       await dispatcher.dispatch(const AgentCommand('play_sound', {
         'sound_id': 'vinheta_de_abertura',
       }));
-      expect(soundController.current.isPlaying, isFalse);
+      expect(soundController.current.isPlaying, isTrue);
+      expect(soundController.playHistory, equals(['vinheta_de_abertura', 'vinheta_de_abertura']));
+      // play() reiniciou cortando o anterior
       expect(soundController.stopCalls, equals(1));
 
-      // Agora via acao direta do tile
+      // Agora via acao direta do tile -> reinicia
       await dispatcher.dispatch(const AgentCommand('tile_vinheta', {}));
       expect(soundController.current.isPlaying, isTrue);
-
-      await dispatcher.dispatch(const AgentCommand('tile_vinheta', {}));
-      expect(soundController.current.isPlaying, isFalse);
+      expect(soundController.playHistory, equals(['vinheta_de_abertura', 'vinheta_de_abertura', 'vinheta_de_abertura']));
       expect(soundController.stopCalls, equals(2));
 
-      // E comando explicito stop_sound
-      await dispatcher.dispatch(const AgentCommand('tile_vinheta', {}));
-      expect(soundController.current.isPlaying, isTrue);
-
+      // E comando explicito stop_sound -> para
       await dispatcher.dispatch(const AgentCommand('stop_sound', {}));
       expect(soundController.current.isPlaying, isFalse);
       expect(soundController.stopCalls, equals(3));

@@ -167,7 +167,7 @@ void main() {
       expect(fakeSound.playedSounds, equals(['applause_wav']));
     });
 
-    test('CommandDispatcher interrompe som ativo ao receber play_sound repetido ou acao de tile repetida (toggle)', () async {
+    test('CommandDispatcher reinicia som ao receber play_sound repetido e para apenas com stop_sound', () async {
       final fakeSound = FakeSoundController();
       final layout = Layout(
         deviceName: 'PC',
@@ -195,21 +195,24 @@ void main() {
 
       // Dispara play_sound
       await dispatcher.dispatch(const AgentCommand('play_sound', {'sound_id': 'horn_fx'}));
+      expect(fakeSound.playedSounds, equals(['horn_fx']));
       expect(fakeSound.current.isPlaying, isTrue);
       expect(fakeSound.current.soundId, equals('horn_fx'));
 
-      // Dispara o mesmo play_sound novamente -> deve chamar stop()
+      // Dispara o mesmo play_sound novamente -> deve chamar play() novamente (reiniciar som)
       await dispatcher.dispatch(const AgentCommand('play_sound', {'sound_id': 'horn_fx'}));
-      expect(fakeSound.stopCalls, equals(1));
-      expect(fakeSound.current.isPlaying, isFalse);
+      expect(fakeSound.playedSounds, equals(['horn_fx', 'horn_fx']));
+      expect(fakeSound.stopCalls, equals(0));
+      expect(fakeSound.current.isPlaying, isTrue);
 
       // Dispara via tile
       await dispatcher.dispatch(const AgentCommand('btn_horn', {}));
-      expect(fakeSound.current.isPlaying, isTrue);
+      expect(fakeSound.playedSounds, equals(['horn_fx', 'horn_fx', 'horn_fx']));
+      expect(fakeSound.stopCalls, equals(0));
 
-      // Clica novamente no mesmo tile -> deve chamar stop()
-      await dispatcher.dispatch(const AgentCommand('btn_horn', {}));
-      expect(fakeSound.stopCalls, equals(2));
+      // Parada explícita apenas com stop_sound
+      await dispatcher.dispatch(const AgentCommand('stop_sound', {}));
+      expect(fakeSound.stopCalls, equals(1));
       expect(fakeSound.current.isPlaying, isFalse);
     });
 

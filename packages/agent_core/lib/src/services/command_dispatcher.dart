@@ -115,11 +115,7 @@ class CommandDispatcher {
           stderr.writeln('play_sound exige id ou sound_id');
           return;
         }
-        if (sound?.current.isPlaying == true && sound?.current.soundId == soundId) {
-          await sound?.stop();
-        } else {
-          await sound?.play(soundId);
-        }
+        await sound?.play(soundId);
 
       case 'stop_sound':
         await sound?.stop();
@@ -160,11 +156,7 @@ class CommandDispatcher {
 
         final soundTile = _findSoundTile(cmd.action);
         if (soundTile != null) {
-          if (sound?.current.isPlaying == true && sound?.current.soundId == soundTile.soundId) {
-            await sound?.stop();
-          } else {
-            await sound?.play(soundTile.soundId);
-          }
+          await sound?.play(soundTile.soundId);
           return;
         }
         await runShortcut(cmd.action);

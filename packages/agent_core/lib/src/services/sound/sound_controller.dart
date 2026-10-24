@@ -63,17 +63,30 @@ class SystemSoundController implements SoundController {
 
   String? _findSoundFile(String soundId) {
     if (!soundsDir.existsSync()) return null;
-    final entities = soundsDir.listSync();
-    for (final entity in entities) {
-      if (entity is File) {
-        final filename = entity.uri.pathSegments.last;
-        final dotIndex = filename.lastIndexOf('.');
-        final base = (dotIndex != -1) ? filename.substring(0, dotIndex) : filename;
-        if (base == soundId) {
-          return entity.path;
-        }
+
+    // Tenta primeiro acesso direto pelas extensões mais comuns sem escanear a pasta
+    const extensions = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
+    for (final ext in extensions) {
+      final direct = File('${soundsDir.path}/$soundId$ext');
+      if (direct.existsSync()) {
+        return direct.path;
       }
     }
+
+    // Fallback: varre diretório caso tenha extensão arbitrária
+    try {
+      final entities = soundsDir.listSync();
+      for (final entity in entities) {
+        if (entity is File) {
+          final filename = entity.uri.pathSegments.last;
+          final dotIndex = filename.lastIndexOf('.');
+          final base = (dotIndex != -1) ? filename.substring(0, dotIndex) : filename;
+          if (base == soundId) {
+            return entity.path;
+          }
+        }
+      }
+    } catch (_) {}
     return null;
   }
 
@@ -145,15 +158,14 @@ class SystemSoundController implements SoundController {
 
   @override
   Future<void> play(String soundId, {String? targetDevice}) async {
-    // Se o mesmo som já estiver tocando, para a reprodução (comportamento de toggle do Sound Pad)
-    if (_activeSoundId == soundId && _current.isPlaying) {
-      await stop();
-      return;
-    }
-
-    // Se outro som estiver tocando, para o anterior ("um som por vez")
+    // Se algum som já estiver tocando (o mesmo ou outro), encerra imediatamente para reiniciar/trocar
     if (_activeProcess != null) {
-      await stop();
+      final prevProc = _activeProcess;
+      _activeProcess = null;
+      _activeSoundId = null;
+      try {
+        prevProc?.kill();
+      } catch (_) {}
     }
 
     final soundFilePath = _findSoundFile(soundId);

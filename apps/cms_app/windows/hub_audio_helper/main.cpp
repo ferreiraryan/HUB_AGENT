@@ -560,7 +560,7 @@ int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice, i
             pReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, pTargetType.Get());
         }
 
-        REFERENCE_TIME hnsBufferDuration = 5000000; // 500 ms
+        REFERENCE_TIME hnsBufferDuration = 600000; // 60 ms para baixa latencia (responsividade de soundpad)
         hr = pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, hnsBufferDuration, 0, pMixFormat, NULL);
         if (FAILED(hr)) {
             CoTaskMemFree(pMixFormat);
@@ -577,13 +577,6 @@ int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice, i
         UINT32 bytesPerFrame = pMixFormat->nBlockAlign;
         if (bytesPerFrame == 0) bytesPerFrame = 4;
 
-        hr = pAudioClient->Start();
-        if (FAILED(hr)) {
-            CoTaskMemFree(pMixFormat);
-            MFShutdown();
-            return 4;
-        }
-
         ComPtr<ISimpleAudioVolume> pSimpleVolume;
         if (SUCCEEDED(pAudioClient->GetService(IID_PPV_ARGS(&pSimpleVolume)))) {
             float volFloat = (float)std::max(0, std::min(100, volumePercent)) / 100.0f;
@@ -592,6 +585,49 @@ int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice, i
 
         bool eos = false;
         std::vector<BYTE> pendingData;
+
+        // Pré-carrega primeiras amostras antes de iniciar o stream WASAPI para eliminar delay inicial e gaps
+        while (pendingData.size() < bufferFrameCount * bytesPerFrame && !eos) {
+            DWORD streamIndex = 0;
+            DWORD flags = 0;
+            LONGLONG llTimeStamp = 0;
+            ComPtr<IMFSample> pSample;
+            hr = pReader->ReadSample(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &streamIndex, &flags, &llTimeStamp, &pSample);
+            if (FAILED(hr) || (flags & MF_SOURCE_READERF_ENDOFSTREAM)) {
+                eos = true;
+                break;
+            }
+            if (pSample) {
+                ComPtr<IMFMediaBuffer> pBuffer;
+                if (SUCCEEDED(pSample->ConvertToContiguousBuffer(&pBuffer))) {
+                    BYTE* pAudioData = NULL;
+                    DWORD currentLength = 0;
+                    if (SUCCEEDED(pBuffer->Lock(&pAudioData, NULL, &currentLength))) {
+                        pendingData.insert(pendingData.end(), pAudioData, pAudioData + currentLength);
+                        pBuffer->Unlock();
+                    }
+                }
+            }
+        }
+
+        if (!pendingData.empty()) {
+            UINT32 initialFrames = (UINT32)(pendingData.size() / bytesPerFrame);
+            if (initialFrames > bufferFrameCount) initialFrames = bufferFrameCount;
+            BYTE* pData = NULL;
+            if (SUCCEEDED(pRenderClient->GetBuffer(initialFrames, &pData))) {
+                DWORD bytesToWrite = initialFrames * bytesPerFrame;
+                memcpy(pData, pendingData.data(), bytesToWrite);
+                pRenderClient->ReleaseBuffer(initialFrames, 0);
+                pendingData.erase(pendingData.begin(), pendingData.begin() + bytesToWrite);
+            }
+        }
+
+        hr = pAudioClient->Start();
+        if (FAILED(hr)) {
+            CoTaskMemFree(pMixFormat);
+            MFShutdown();
+            return 4;
+        }
 
         while (!eos) {
             if (pendingData.empty()) {
@@ -641,14 +677,14 @@ int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice, i
             }
 
             if (framesAvailable == 0 || pendingData.size() >= framesAvailable * bytesPerFrame) {
-                Sleep(15);
+                Sleep(5);
             }
         }
 
         // Aguarda esvaziar o que restou no buffer de saída
         UINT32 pad = 0;
         while (SUCCEEDED(pAudioClient->GetCurrentPadding(&pad)) && pad > 0) {
-            Sleep(20);
+            Sleep(5);
         }
 
         pAudioClient->Stop();
