@@ -169,14 +169,16 @@ sealed class Tile {
       'toggle' => ToggleTile(
           id: id,
           stateA: ToggleStateConfig.fromJson(
-            (json['state_a'] as Map?)?.cast<String, dynamic>() ??
+            ((json['state_a'] ?? json['stateA']) as Map?)?.cast<String, dynamic>() ??
                 {'icon': icon, 'label': label},
           ),
           stateB: ToggleStateConfig.fromJson(
-            (json['state_b'] as Map?)?.cast<String, dynamic>() ??
+            ((json['state_b'] ?? json['stateB']) as Map?)?.cast<String, dynamic>() ??
                 {'icon': icon, 'label': label},
           ),
-          initialState: (json['initial_state'] as String?) ?? 'a',
+          initialState: (json['initial_state'] as String?) ??
+              (json['initialState'] as String?) ??
+              'a',
           width: width,
           height: height,
           x: x,

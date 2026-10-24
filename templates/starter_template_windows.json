@@ -1,0 +1,556 @@
+{
+  "deviceName": "Windows-PC",
+  "theme": {
+    "bgColor": "#0b0f19",
+    "cardColor": "#161f30",
+    "accentColor": "#38bdf8"
+  },
+  "pages": {
+    "home": [
+      {
+        "type": "slider",
+        "id": "master_volume",
+        "icon": "🔊",
+        "label": "Volume Principal",
+        "width": 1,
+        "height": 2,
+        "x": 0,
+        "y": 0,
+        "source": { "kind": "master_volume" }
+      },
+      {
+        "type": "slider",
+        "id": "soundpad_vol",
+        "icon": "🎚️",
+        "label": "Volume Som",
+        "width": 1,
+        "height": 2,
+        "x": 1,
+        "y": 0,
+        "source": { "kind": "sound_volume" }
+      },
+      {
+        "type": "stat",
+        "id": "stat_cpu",
+        "icon": "⚡",
+        "label": "CPU",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 0,
+        "source": { "kind": "cpu", "field": "load", "unit": "%" }
+      },
+      {
+        "type": "stat",
+        "id": "stat_ram",
+        "icon": "🧠",
+        "label": "RAM",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 0,
+        "source": { "kind": "ram", "field": "percent", "unit": "%" }
+      },
+      {
+        "type": "folder",
+        "id": "folder_audio",
+        "icon": "🎵",
+        "label": "Áudio & Mídia",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 0,
+        "target": "audio"
+      },
+      {
+        "type": "folder",
+        "id": "folder_tools",
+        "icon": "🛠️",
+        "label": "Ferramentas",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 0,
+        "target": "tools"
+      },
+      {
+        "type": "stat",
+        "id": "stat_disk",
+        "icon": "💾",
+        "label": "Disco C:",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 1,
+        "source": { "kind": "disk", "field": "percent", "unit": "%" }
+      },
+      {
+        "type": "folder",
+        "id": "folder_apps",
+        "icon": "🚀",
+        "label": "Aplicativos",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 1,
+        "target": "apps"
+      },
+      {
+        "type": "folder",
+        "id": "folder_soundpad",
+        "icon": "🔊",
+        "label": "Sound Pad",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 1,
+        "target": "soundpad"
+      },
+      {
+        "type": "shortcut",
+        "id": "mute_toggle",
+        "icon": "🔇",
+        "label": "Mudo",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "screenshot",
+        "icon": "📸",
+        "label": "Captura Win",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "prev",
+        "icon": "⏮️",
+        "label": "Anterior",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "play_pause",
+        "icon": "⏯️",
+        "label": "Play/Pause",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "next",
+        "icon": "⏭️",
+        "label": "Próximo",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "lock_screen",
+        "icon": "🔒",
+        "label": "Bloquear",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 2
+      }
+    ],
+    "audio": [
+      {
+        "type": "back",
+        "id": "back_audio",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "shortcut",
+        "id": "prev",
+        "icon": "⏮️",
+        "label": "Anterior",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "play_pause",
+        "icon": "⏯️",
+        "label": "Play/Pause",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "next",
+        "icon": "⏭️",
+        "label": "Próximo",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "mute_toggle",
+        "icon": "🔇",
+        "label": "Mudo Master",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 0
+      },
+      {
+        "type": "slider",
+        "id": "master_volume",
+        "icon": "🔊",
+        "label": "Master",
+        "width": 1,
+        "height": 2,
+        "x": 0,
+        "y": 1,
+        "source": { "kind": "master_volume" }
+      },
+      {
+        "type": "slider",
+        "id": "soundpad_vol",
+        "icon": "🎚️",
+        "label": "Sound Pad",
+        "width": 1,
+        "height": 2,
+        "x": 1,
+        "y": 1,
+        "source": { "kind": "sound_volume" }
+      },
+      {
+        "type": "shortcut",
+        "id": "open_spotify",
+        "icon": "🎧",
+        "label": "Spotify",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "clipboard_history",
+        "icon": "📋",
+        "label": "Histórico Clipboard",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 1
+      },
+      {
+        "type": "toggle",
+        "id": "mic_toggle",
+        "initial_state": "a",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 2,
+        "state_a": {
+          "label": "Microfone Ativo",
+          "icon": "🎙️"
+        },
+        "state_b": {
+          "label": "Microfone Mudo",
+          "icon": "🎙️❌"
+        }
+      },
+      {
+        "type": "shortcut",
+        "id": "notify_test",
+        "icon": "🔔",
+        "label": "Testar Toast",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 2
+      }
+    ],
+    "apps": [
+      {
+        "type": "back",
+        "id": "back_apps",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "shortcut",
+        "id": "app_browser",
+        "icon": "🌐",
+        "label": "Navegador",
+        "width": 1,
+        "height": 1,
+        "x": 1,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_code",
+        "icon": "💻",
+        "label": "VS Code",
+        "width": 1,
+        "height": 1,
+        "x": 2,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_discord",
+        "icon": "💬",
+        "label": "Discord",
+        "width": 1,
+        "height": 1,
+        "x": 3,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_steam",
+        "icon": "🎮",
+        "label": "Steam",
+        "width": 1,
+        "height": 1,
+        "x": 4,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_explorer",
+        "icon": "📁",
+        "label": "Arquivos",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "app_terminal",
+        "icon": "⬛",
+        "label": "Terminal",
+        "width": 2,
+        "height": 1,
+        "x": 0,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "app_notepad",
+        "icon": "📝",
+        "label": "Bloco de Notas",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "app_calc",
+        "icon": "🧮",
+        "label": "Calculadora",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "app_taskmgr",
+        "icon": "📊",
+        "label": "Gerenciador Tarefas",
+        "width": 2,
+        "height": 1,
+        "x": 0,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "app_settings",
+        "icon": "⚙️",
+        "label": "Configurações Win",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 2
+      },
+      {
+        "type": "shortcut",
+        "id": "task_view",
+        "icon": "🪟",
+        "label": "Visão de Tarefas",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 2
+      }
+    ],
+    "tools": [
+      {
+        "type": "back",
+        "id": "back_tools",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "shortcut",
+        "id": "screenshot",
+        "icon": "📸",
+        "label": "Captura (Win+Shift+S)",
+        "width": 2,
+        "height": 1,
+        "x": 1,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "clipboard_history",
+        "icon": "📋",
+        "label": "Histórico (Win+V)",
+        "width": 2,
+        "height": 1,
+        "x": 3,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "lock_screen",
+        "icon": "🔒",
+        "label": "Bloquear (Win+L)",
+        "width": 1,
+        "height": 1,
+        "x": 5,
+        "y": 0
+      },
+      {
+        "type": "shortcut",
+        "id": "show_desktop",
+        "icon": "🖥️",
+        "label": "Exibir Desktop (Win+D)",
+        "width": 2,
+        "height": 1,
+        "x": 0,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "task_view",
+        "icon": "🪟",
+        "label": "Task View (Win+Tab)",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "app_taskmgr",
+        "icon": "📈",
+        "label": "Ctrl+Shift+Esc",
+        "width": 2,
+        "height": 1,
+        "x": 4,
+        "y": 1
+      },
+      {
+        "type": "shortcut",
+        "id": "notify_test",
+        "icon": "🔔",
+        "label": "Enviar Notificação Teste",
+        "width": 6,
+        "height": 1,
+        "x": 0,
+        "y": 2
+      }
+    ],
+    "soundpad": [
+      {
+        "type": "back",
+        "id": "back_soundpad",
+        "icon": "⬅️",
+        "label": "Voltar",
+        "width": 1,
+        "height": 1,
+        "x": 0,
+        "y": 0,
+        "target": "home"
+      },
+      {
+        "type": "slider",
+        "id": "soundpad_vol",
+        "icon": "🎚️",
+        "label": "Volume Som",
+        "width": 1,
+        "height": 2,
+        "x": 1,
+        "y": 0,
+        "source": { "kind": "sound_volume" }
+      },
+      {
+        "type": "shortcut",
+        "id": "stop_sound",
+        "icon": "⏹️",
+        "label": "Parar Tudo",
+        "width": 2,
+        "height": 1,
+        "x": 2,
+        "y": 0
+      }
+    ]
+  },
+  "bindings": {
+    "mute_toggle": ["__sendkeys__", "volume_mute"],
+    "screenshot": ["__sendkeys__", "win+shift+s"],
+    "lock_screen": ["rundll32.exe", "user32.dll,LockWorkStation"],
+    "show_desktop": ["__sendkeys__", "win+d"],
+    "task_view": ["__sendkeys__", "win+tab"],
+    "clipboard_history": ["__sendkeys__", "win+v"],
+    "open_spotify": ["cmd.exe", "/c", "start", "spotify:"],
+    "notify_test": ["powershell.exe", "-NoProfile", "-EncodedCommand", "WwB2AG8AaQBkAF0AWwBXAGkAbgBkAG8AdwBzAC4AVQBJAC4ATgBvAHQAaQBmAGkAYwBhAHQAaQBvAG4AcwAuAFQAbwBhAHMAdABOAG8AdABpAGYAaQBjAGEAdABpAG8AbgBNAGEAbgBhAGcAZQByACwAIABXAGkAbgBkAG8AdwBzAC4AVQBJAC4ATgBvAHQAaQBmAGkAYwBhAHQAaQBvAG4AcwAsACAAQwBvAG4AdABlAG4AdABUAHkAcABlACAAPQAgAFcAaQBuAGQAbwB3AHMAUgB1AG4AdABpAG0AZQBdAAoAWwB2AG8AaQBkAF0AWwBXAGkAbgBkAG8AdwBzAC4ARABhAHQAYQAuAFgAbQBsAC4ARABvAG0ALgBYAG0AbABEAG8AYwB1AG0AZQBuAHQALAAgAFcAaQBuAGQAbwB3AHMALgBEAGEAdABhAC4AWABtAGwALgBEAG8AbQAuAFgAbQBsAEQAbwBjAHUAbQBlAG4AdAAsACAAQwBvAG4AdABlAG4AdABUAHkAcABlACAAPQAgAFcAaQBuAGQAbwB3AHMAUgB1AG4AdABpAG0AZQBdAAoAJAB4AG0AbAAgAD0AIABOAGUAdwAtAE8AYgBqAGUAYwB0ACAAVwBpAG4AZABvAHcAcwAuAEQAYQB0AGEALgBYAG0AbAAuAEQAbwBtAC4AWABtAGwARABvAGMAdQBtAGUAbgB0AAoAJAB4AG0AbAAuAEwAbwBhAGQAWABtAGwAKAAnADwAdABvAGEAcwB0AD4APAB2AGkAcwB1AGEAbAA+ADwAYgBpAG4AZABpAG4AZwAgAHQAZQBtAHAAbABhAHQAZQA9ACIAVABvAGEAcwB0AEcAZQBuAGUAcgBpAGMAIgA+ADwAdABlAHgAdAA+AEgAdQBiACAAQQBnAGUAbgB0ADwALwB0AGUAeAB0AD4APAB0AGUAeAB0AD4ATgBvAHQAaQBmAGkAYwBhAGMAYQBvACAAZABlACAAdABlAHMAdABlACAAbgBvACAAVwBpAG4AZABvAHcAcwAhADwALwB0AGUAeAB0AD4APAAvAGIAaQBuAGQAaQBuAGcAPgA8AC8AdgBpAHMAdQBhAGwAPgA8AC8AdABvAGEAcwB0AD4AJwApAAoAJAB0AG8AYQBzAHQAIAA9ACAAWwBXAGkAbgBkAG8AdwBzAC4AVQBJAC4ATgBvAHQAaQBmAGkAYwBhAHQAaQBvAG4AcwAuAFQAbwBhAHMAdABOAG8AdABpAGYAaQBjAGEAdABpAG8AbgBdADoAOgBuAGUAdwAoACQAeABtAGwAKQAKACQAYQB1AG0AaQBkACAAPQAgACcAewAxAEEAQwAxADQARQA3ADcALQAwADIARQA3AC0ANABFADUARAAtAEIANwA0ADQALQAyAEUAQgAxAEEARQA1ADEAOQA4AEIANwB9AFwAVwBpAG4AZABvAHcAcwBQAG8AdwBlAHIAUwBoAGUAbABsAFwAdgAxAC4AMABcAHAAbwB3AGUAcgBzAGgAZQBsAGwALgBlAHgAZQAnAAoAWwBXAGkAbgBkAG8AdwBzAC4AVQBJAC4ATgBvAHQAaQBmAGkAYwBhAHQAaQBvAG4AcwAuAFQAbwBhAHMAdABOAG8AdABpAGYAaQBjAGEAdABpAG8AbgBNAGEAbgBhAGcAZQByAF0AOgA6AEMAcgBlAGEAdABlAFQAbwBhAHMAdABOAG8AdABpAGYAaQBlAHIAKAAkAGEAdQBtAGkAZAApAC4AUwBoAG8AdwAoACQAdABvAGEAcwB0ACkACgA="],
+    "mic_toggle:a": ["nircmd.exe", "mutesysvolume", "0", "default_record"],
+    "mic_toggle:b": ["nircmd.exe", "mutesysvolume", "1", "default_record"],
+    "app_browser": ["cmd.exe", "/c", "start", "https://google.com"],
+    "app_code": ["code.cmd"],
+    "app_discord": ["cmd.exe", "/c", "start", "discord:"],
+    "app_steam": ["cmd.exe", "/c", "start", "steam:"],
+    "app_explorer": ["explorer.exe"],
+    "app_terminal": ["wt.exe"],
+    "app_notepad": ["notepad.exe"],
+    "app_calc": ["calc.exe"],
+    "app_taskmgr": ["taskmgr.exe"],
+    "app_settings": ["cmd.exe", "/c", "start", "ms-settings:"]
+  }
+}
+

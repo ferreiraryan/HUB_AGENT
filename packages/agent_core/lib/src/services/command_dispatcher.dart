@@ -147,6 +147,11 @@ class CommandDispatcher {
         }
 
       default:
+        if (cmd.action == 'stop_sound') {
+          await sound?.stop();
+          return;
+        }
+
         final toggleTile = _findToggleTile(cmd.action);
         if (toggleTile != null) {
           await _handleToggle(toggleTile);
@@ -265,7 +270,7 @@ class CommandDispatcher {
         argv.first,
         argv.skip(1).toList(),
         environment: env,
-        runInShell: false,
+        runInShell: Platform.isWindows,
       );
     } catch (e) {
       stderr.writeln('slider custom ${argv.join(' ')} falhou: $e');
@@ -341,7 +346,7 @@ class CommandDispatcher {
         argv.first,
         argv.skip(1).toList(),
         mode: ProcessStartMode.detachedWithStdio,
-        runInShell: false,
+        runInShell: Platform.isWindows,
       );
       return true;
     } catch (e) {
@@ -409,7 +414,8 @@ class CommandDispatcher {
     }
 
     try {
-      final proc = await Process.start(argv.first, argv.skip(1).toList());
+      final proc = await Process.start(argv.first, argv.skip(1).toList(),
+          runInShell: Platform.isWindows);
       final out = StringBuffer();
       final err = StringBuffer();
       final subs = [

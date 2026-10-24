@@ -41,6 +41,18 @@ class SystemSoundController implements SoundController {
   @override
   Future<void> setVolume(int value) async {
     _volume = value.clamp(0, 100);
+    if (Platform.isWindows && _activeProcess != null) {
+      final helper = _resolveHelperPath();
+      if (helper != null) {
+        try {
+          await Process.run(
+            helper,
+            ['set-app', '${_activeProcess!.pid}', '$_volume'],
+            runInShell: false,
+          );
+        } catch (_) {}
+      }
+    }
   }
 
   @override
@@ -69,14 +81,19 @@ class SystemSoundController implements SoundController {
     if (customHelperPath != null && File(customHelperPath!).existsSync()) {
       return customHelperPath;
     }
-    final scriptDir = File(Platform.script.toFilePath()).parent.path;
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
     final candidates = [
-      '$scriptDir/hub_audio_helper.exe',
-      '$scriptDir/resources/hub_audio_helper.exe',
-      '$scriptDir/data/flutter_assets/resources/hub_audio_helper.exe',
+      '$exeDir/hub_audio_helper.exe',
+      '$exeDir/resources/hub_audio_helper.exe',
+      '$exeDir/data/flutter_assets/resources/hub_audio_helper.exe',
       'windows/runner/resources/hub_audio_helper.exe',
       'apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
-      '../cms_app/windows/runner/resources/hub_audio_helper.exe',
+      '../apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
+      '../../apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
+      'build/windows/x64/runner/Debug/hub_audio_helper.exe',
+      'apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
+      '../apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
+      '../../apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
     ];
     for (final c in candidates) {
       if (File(c).existsSync()) return c;

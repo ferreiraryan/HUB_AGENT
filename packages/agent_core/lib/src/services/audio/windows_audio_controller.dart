@@ -73,6 +73,9 @@ class WindowsAudioController implements AudioController {
       '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
       '${Directory.current.path}${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
       '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
+      '${Directory.current.path}${Platform.pathSeparator}..${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
+      '${Directory.current.path}${Platform.pathSeparator}..${Platform.pathSeparator}..${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
+      '${Directory.current.path}${Platform.pathSeparator}..${Platform.pathSeparator}..${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
     ];
     for (final c in candidates) {
       if (await File(c).exists()) return c;

@@ -16,6 +16,15 @@
 #include <map>
 #include <algorithm>
 #include <sstream>
+#include <set>
+#include <thread>
+#include <chrono>
+#include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.UI.Notifications.h>
+#include <winrt/Windows.UI.Notifications.Management.h>
+#include <winrt/Windows.ApplicationModel.h>
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "psapi.lib")
@@ -24,6 +33,7 @@
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
+#pragma comment(lib, "windowsapp.lib")
 
 using Microsoft::WRL::ComPtr;
 
@@ -649,11 +659,63 @@ int DoPlaySound(const std::wstring& filePath, const std::string& targetDevice, i
     return exitCode;
 }
 
+int DoWatchNotifications() {
+    try {
+        auto listener = winrt::Windows::UI::Notifications::Management::UserNotificationListener::Current();
+        if (listener.GetAccessStatus() != winrt::Windows::UI::Notifications::Management::UserNotificationListenerAccessStatus::Allowed) {
+            std::cerr << "Notification access not allowed\n";
+            return 1;
+        }
+
+        std::set<uint32_t> seenIds;
+        auto initialNotifs = listener.GetNotificationsAsync(winrt::Windows::UI::Notifications::NotificationKinds::Toast).get();
+        for (uint32_t i = 0; i < initialNotifs.Size(); i++) {
+            seenIds.insert(initialNotifs.GetAt(i).Id());
+        }
+
+        std::cout << "{\"status\":\"ready\",\"initial_count\":" << seenIds.size() << "}" << std::endl;
+
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            try {
+                auto notifs = listener.GetNotificationsAsync(winrt::Windows::UI::Notifications::NotificationKinds::Toast).get();
+                for (uint32_t i = 0; i < notifs.Size(); i++) {
+                    auto n = notifs.GetAt(i);
+                    uint32_t id = n.Id();
+                    if (seenIds.find(id) == seenIds.end()) {
+                        seenIds.insert(id);
+                        std::string appName = "Sistema";
+                        try {
+                            if (n.AppInfo() && n.AppInfo().DisplayInfo()) {
+                                appName = WideToUtf8(n.AppInfo().DisplayInfo().DisplayName().c_str());
+                            }
+                        } catch (...) {}
+                        auto binding = n.Notification().Visual().GetBinding(winrt::Windows::UI::Notifications::KnownNotificationBindings::ToastGeneric());
+                        if (binding) {
+                            auto texts = binding.GetTextElements();
+                            std::string title = texts.Size() > 0 ? WideToUtf8(texts.GetAt(0).Text().c_str()) : "";
+                            std::string body = texts.Size() > 1 ? WideToUtf8(texts.GetAt(1).Text().c_str()) : "";
+                            std::cout << "{\"id\":" << id
+                                      << ",\"app\":\"" << EscapeJsonString(appName) << "\""
+                                      << ",\"title\":\"" << EscapeJsonString(title) << "\""
+                                      << ",\"body\":\"" << EscapeJsonString(body) << "\"}" << std::endl;
+                        }
+                    }
+                }
+            } catch (...) {}
+        }
+    } catch (const winrt::hresult_error& ex) {
+        std::wcerr << L"Error: " << ex.message().c_str() << L"\n";
+        return 1;
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: hub_audio_helper <status|list-devices|play-sound <file> [device]|set-master <0-100>|set-master-mute <0|1>|set-app <target> <0-100>|set-app-mute <target> <0|1>>\n";
+        std::cerr << "Usage: hub_audio_helper <status|list-devices|watch-notifications|play-sound <file> [device] [volume]|set-master <0-100>|set-master-mute <0|1>|set-app <target> <0-100>|set-app-mute <target> <0|1>>\n";
         return 1;
     }
 
@@ -665,6 +727,8 @@ int main(int argc, char* argv[]) {
         res = DoStatus();
     } else if (cmd == "list-devices") {
         res = DoListDevices();
+    } else if (cmd == "watch-notifications") {
+        res = DoWatchNotifications();
     } else if (cmd == "play-sound" && argc >= 3) {
         std::wstring filePath = Utf8ToWide(argv[2]);
         std::string targetDevice = (argc >= 4) ? argv[3] : "";

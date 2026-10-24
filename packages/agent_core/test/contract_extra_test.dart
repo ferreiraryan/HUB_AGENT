@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
 import 'package:agent_core/src/services/stats/stats_service.dart';
@@ -598,7 +599,7 @@ void main() {
     test('CommandDispatcher alterna entre estados e executa comandos respectivos', () async {
       String? currentToggleState = 'a';
       final toggledStates = <String, String>{};
-      final executedCombos = <String>[];
+
 
       final layout = Layout(
         deviceName: 'PC',
@@ -646,6 +647,40 @@ void main() {
       await dispatcher.dispatch(const AgentCommand('toggle', {'id': 'light_toggle'}));
       expect(toggledStates['light_toggle'], equals('a'));
       expect(keySender.receivedCombos.last, equals('ctrl+shift+a'));
+    });
+  });
+group('Starter Templates (Linux e Windows)', () {
+    test('carrega starter_template_windows.json e valida contrato e coordenadas', () {
+      final file = File('../../templates/starter_template_windows.json');
+      final fallbackFile = File('templates/starter_template_windows.json');
+      final target = file.existsSync() ? file : fallbackFile;
+      expect(target.existsSync(), isTrue);
+
+      final json = jsonDecode(target.readAsStringSync()) as Map<String, dynamic>;
+      final layout = Layout.fromJson(json);
+
+      expect(layout.deviceName, isNotEmpty);
+      expect(layout.pages.containsKey('home'), isTrue);
+      expect(layout.pages.containsKey('audio'), isTrue);
+      expect(layout.pages.containsKey('apps'), isTrue);
+      expect(layout.pages.containsKey('tools'), isTrue);
+      expect(layout.pages.containsKey('soundpad'), isTrue);
+
+      for (final tiles in layout.pages.values) {
+        for (final t in tiles) {
+          expect(t.x, inInclusiveRange(0, 5));
+          expect(t.y, inInclusiveRange(0, 2));
+          expect(t.width, inInclusiveRange(1, 6));
+          expect(t.height, inInclusiveRange(1, 3));
+          expect((t.x ?? 0) + t.width, lessThanOrEqualTo(6));
+          expect((t.y ?? 0) + t.height, lessThanOrEqualTo(3));
+        }
+      }
+
+      expect(layout.validate(), isEmpty);
+
+      final published = layout.toPublishJson();
+      expect(published.containsKey('bindings'), isFalse);
     });
   });
 }

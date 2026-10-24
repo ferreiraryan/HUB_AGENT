@@ -124,6 +124,7 @@ O tablet dispara comandos em formato JSON. Formatos reconhecidos:
 | **Controle de Brilho**| `LinuxBrightnessController` via `ddcutil`. | Não suportado (`UnsupportedBrightnessController`). |
 | **Estatísticas** | Leitura de `/proc/stat`, `/proc/meminfo`, `/proc/cpuinfo`, thermal zones e `df -B1 /`. | PowerShell CIM (`Win32_Processor`, `Win32_OperatingSystem`, `Win32_LogicalDisk`). Sem temp/freq. |
 | **Sound Pad** | `paplay` (suporta `--volume` e `-d <sink>`). Enumera sinks via `pactl list sinks short`. | `hub_audio_helper.exe play-sound` (WASAPI + Media Foundation com controle de volume) e `list-devices`. |
+| **Notificações do PC** | `LinuxNotificationMonitor` via `dbus-monitor` (D-Bus). | `WindowsNotificationMonitor` via `hub_audio_helper.exe watch-notifications` (WinRT `UserNotificationListener`). |
 | **Execução de Comandos** | Subprocessos com `runInShell: false`. | Subprocessos com `runInShell: true` nos bindings. |
 | **Instância Única** | Socket TCP loopback em `127.0.0.1:45871`. | Lock de arquivo exclusivo `cms_app.lock` em `<appSupport>`. |
 
