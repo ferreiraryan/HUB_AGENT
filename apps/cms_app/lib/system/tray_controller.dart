@@ -27,8 +27,8 @@ class TrayController with TrayListener {
     trayManager.addListener(this);
 
     try {
-      if (Platform.isLinux || Platform.isWindows) {
-        await trayManager.setIcon('assets/icons/app_icon.png');
+      if (Platform.isWindows) {
+        await trayManager.setIcon('assets/icons/app_icon.ico');
       } else {
         await trayManager.setIcon('assets/icons/app_icon.png');
       }
@@ -76,6 +76,11 @@ class TrayController with TrayListener {
   @override
   void onTrayIconMouseDown() {
     _onShowWindow?.call();
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    trayManager.popUpContextMenu();
   }
 
   @override

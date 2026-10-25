@@ -32,3 +32,4 @@ flutter:
   assets:
     - assets/icons/app_icon.png
     - assets/icons/app_icon_32.png
+    - assets/icons/app_icon.ico
