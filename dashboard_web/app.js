@@ -338,13 +338,14 @@ const MqttLayer = {
         state.currentPageCache[device.id] = 'home';
         if (state.currentDeviceId === device.id) UI.renderShortcuts(device.id);
       }
-    } catch (err) {
-      if (window.logMsg) {
-        window.logMsg('MQTT MSG ERR: ' + (err && err.message ? err.message : err), '#f55');
-      }
-      console.error('MQTT message error: ' + topic, err);
     }
-  },
+  } catch (err) {
+    if (window.logMsg) {
+      window.logMsg('MQTT MSG ERR: ' + (err && err.message ? err.message : err), '#f55');
+    }
+    console.error('MQTT message error: ' + topic, err);
+  }
+},
 
   // Ajustado para não usar default parameters
   publishCommand(device, action, payloadExtra) {
