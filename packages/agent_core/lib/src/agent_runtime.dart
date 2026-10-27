@@ -203,11 +203,28 @@ class AgentRuntime {
             tile.source.kind == SliderSource.kindAppVolume &&
             tile.source.match != null &&
             tile.source.match!.isNotEmpty) {
-          final target = tile.source.match!.toLowerCase();
+          final rawTarget = tile.source.match!.trim().toLowerCase();
+          final cleanTarget = rawTarget.endsWith('.exe')
+              ? rawTarget.substring(0, rawTarget.length - 4).trim()
+              : rawTarget;
+          if (cleanTarget.isEmpty) continue;
+
           for (final app in apps) {
-            final appName = app.name.toLowerCase();
-            final appId = app.id.toLowerCase();
-            if (appName.contains(target) || appId.contains(target)) {
+            final rawName = app.name.trim().toLowerCase();
+            final cleanName = rawName.endsWith('.exe')
+                ? rawName.substring(0, rawName.length - 4).trim()
+                : rawName;
+            final rawId = app.id.trim().toLowerCase();
+            final cleanId = rawId.endsWith('.exe')
+                ? rawId.substring(0, rawId.length - 4).trim()
+                : rawId;
+
+            final matched = (cleanName.isNotEmpty &&
+                    (cleanName.contains(cleanTarget) || cleanTarget.contains(cleanName))) ||
+                (cleanId.isNotEmpty &&
+                    (cleanId.contains(cleanTarget) || cleanTarget.contains(cleanId)));
+
+            if (matched) {
               mqtt.publishSliderState(tile.id, app.volume);
               break;
             }

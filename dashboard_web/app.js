@@ -179,23 +179,24 @@ const MqttLayer = {
   },
 
   handleMessage(topic, payloadBuffer) {
-    let data;
     try {
-      data = JSON.parse(payloadBuffer.toString());
-    } catch (e) { return; }
+      let data;
+      try {
+        data = JSON.parse(payloadBuffer.toString());
+      } catch (e) { return; }
 
-    const topicParts = topic.split('/');
-    if (topicParts[0] !== 'nodes' || topicParts.length < 3) return;
+      const topicParts = topic.split('/');
+      if (topicParts[0] !== 'nodes' || topicParts.length < 3) return;
 
-    const deviceId = topicParts[1];
-    const topicType = topicParts.slice(2).join('/');
+      const deviceId = topicParts[1];
+      const topicType = topicParts.slice(2).join('/');
 
-    if (!state.devices[deviceId]) {
-      state.devices[deviceId] = { id: deviceId, name: deviceId, online: false, cmdTopic: 'nodes/' + deviceId + '/cmd' };
-      state.slidersCache[deviceId] = {};
-      if (!state.currentDeviceId) Navigation.selectDevice(deviceId);
-    }
-    const device = state.devices[deviceId];
+      if (!state.devices[deviceId]) {
+        state.devices[deviceId] = { id: deviceId, name: deviceId, online: false, cmdTopic: 'nodes/' + deviceId + '/cmd' };
+        state.slidersCache[deviceId] = {};
+        if (!state.currentDeviceId) Navigation.selectDevice(deviceId);
+      }
+      const device = state.devices[deviceId];
 
     if (topicType === 'status') {
       const nextOnline = !!data.online;
@@ -337,6 +338,11 @@ const MqttLayer = {
         state.currentPageCache[device.id] = 'home';
         if (state.currentDeviceId === device.id) UI.renderShortcuts(device.id);
       }
+    } catch (err) {
+      if (window.logMsg) {
+        window.logMsg('MQTT MSG ERR: ' + (err && err.message ? err.message : err), '#f55');
+      }
+      console.error('MQTT message error: ' + topic, err);
     }
   },
 
@@ -561,26 +567,28 @@ const UI = {
     }
   },
 
+  findTile(deviceId, id) {
+    if (!deviceId || !id) return null;
+    var pages = state.shortcutsCache[deviceId];
+    if (!pages) return null;
+    var pageKeys = Object.keys(pages);
+    for (var p = 0; p < pageKeys.length; p++) {
+      var list = pages[pageKeys[p]] || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === id) {
+          return list[i];
+        }
+      }
+    }
+    return null;
+  },
+
   updateToggleUI(id, value) {
     const btn = dom.shortcutsGrid.querySelector('[data-toggle-id="' + id + '"]');
     if (!btn) return;
 
     const deviceId = state.currentDeviceId;
-    const pages = state.shortcutsCache[deviceId];
-    if (!pages) return;
-
-    let item = null;
-    const pageKeys = Object.keys(pages);
-    for (let p = 0; p < pageKeys.length; p++) {
-      const list = pages[pageKeys[p]] || [];
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].id === id) {
-          item = list[i];
-          break;
-        }
-      }
-      if (item) break;
-    }
+    const item = UI.findTile(deviceId, id);
     if (!item) return;
 
     const isB = (String(value).toLowerCase() === 'b' || value === true || value === 1);
@@ -697,7 +705,7 @@ const UI = {
   updateSoundStateInPlace(deviceId) {
     const soundPlayback = this.parseSoundState(state.soundStateCache[deviceId]);
     const soundButtons = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--sound');
-    soundButtons.forEach((btn) => {
+    soundButtons.forEach(function(btn) {
       const soundId = btn.dataset.soundId;
       const isThisPlaying = soundPlayback.isPlaying && (soundId === soundPlayback.soundId);
       const currentlyPlaying = btn.classList.contains('shortcut-btn--playing');
@@ -709,92 +717,54 @@ const UI = {
         var gifSrc = img.getAttribute('data-gif-src');
         var staticSrc = img.getAttribute('data-static-src') || gifSrc;
         var targetSrc = isThisPlaying ? gifSrc : staticSrc;
-        if (img.getAttribute('src') !== targetSrc) {
+        if (!img._currentSrc || img._currentSrc !== targetSrc) {
+          img._currentSrc = targetSrc;
           img.src = targetSrc;
         }
       }
     });
   },
 
-  bindFastClick(element, callback) {
-    if (!element || typeof callback !== 'function') return;
-
-    var startX = 0;
-    var startY = 0;
-    var startTime = 0;
-    var isTouch = false;
-
-    element.addEventListener('touchstart', function(e) {
-      if (e.touches && e.touches.length === 1) {
-        isTouch = true;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        startTime = Date.now();
-      }
-    }, { passive: true });
-
-    element.addEventListener('touchend', function(e) {
-      if (!isTouch) return;
-      var elapsed = Date.now() - startTime;
-      if (elapsed > 600) {
-        isTouch = false;
-        return;
-      }
-      var endTouch = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
-      if (endTouch) {
-        var dx = Math.abs(endTouch.clientX - startX);
-        var dy = Math.abs(endTouch.clientY - startY);
-        if (dx > 10 || dy > 10) {
-          isTouch = false;
-          return;
-        }
-      }
-      if (e.cancelable) {
-        e.preventDefault();
-      }
-      isTouch = false;
-      element._lastFastTap = Date.now();
-      callback(e);
-    });
-
-    element.addEventListener('click', function(e) {
-      if (element._lastFastTap && (Date.now() - element._lastFastTap < 500)) {
-        return;
-      }
-      callback(e);
-    });
-  },
-
   updateAppSlidersInPlace(deviceId) {
-    const apps = state.appsCache[deviceId] || [];
-    if (!apps.length) return;
-    const sliders = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--slider');
-    sliders.forEach(function(card) {
-      const input = card.querySelector('input[data-slider-id]');
-      if (!input) return;
-      const sliderId = input.getAttribute('data-slider-id');
-      const item = UI.findTile(deviceId, sliderId);
-      if (!item || !item.source || item.source.kind !== 'app_volume') return;
-      const targetMatch = (item.source.match || '').toLowerCase().trim();
-      if (!targetMatch) return;
+    try {
+      const apps = state.appsCache[deviceId] || [];
+      if (!apps.length) return;
+      const sliders = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--slider');
+      sliders.forEach(function(card) {
+        const input = card.querySelector('input[data-slider-id]');
+        if (!input || input._isDragging) return;
+        const sliderId = input.getAttribute('data-slider-id');
+        const item = UI.findTile(deviceId, sliderId);
+        if (!item || !item.source || item.source.kind !== 'app_volume') return;
+        var rawMatch = (item.source.match || '').toLowerCase().trim();
+        if (!rawMatch) return;
+        var cleanMatch = (rawMatch.slice(-4) === '.exe') ? rawMatch.slice(0, -4).trim() : rawMatch;
+        if (!cleanMatch) return;
 
-      var foundApp = null;
-      for (var i = 0; i < apps.length; i++) {
-        var app = apps[i];
-        var name = (app.name || '').toLowerCase();
-        var id = (app.id || '').toLowerCase();
-        if (name.indexOf(targetMatch) !== -1 || id.indexOf(targetMatch) !== -1) {
-          foundApp = app;
-          break;
+        var foundApp = null;
+        for (var i = 0; i < apps.length; i++) {
+          var app = apps[i];
+          var rawName = (app.name || '').toLowerCase().trim();
+          var cleanName = (rawName.slice(-4) === '.exe') ? rawName.slice(0, -4).trim() : rawName;
+          var rawId = (app.id || '').toLowerCase().trim();
+          var cleanId = (rawId.slice(-4) === '.exe') ? rawId.slice(0, -4).trim() : rawId;
+
+          if ((cleanName && (cleanName.indexOf(cleanMatch) !== -1 || cleanMatch.indexOf(cleanName) !== -1)) ||
+              (cleanId && (cleanId.indexOf(cleanMatch) !== -1 || cleanMatch.indexOf(cleanId) !== -1))) {
+            foundApp = app;
+            break;
+          }
         }
-      }
 
-      if (foundApp && typeof foundApp.volume === 'number') {
-        if (!state.slidersCache[deviceId]) state.slidersCache[deviceId] = {};
-        state.slidersCache[deviceId][sliderId] = foundApp.volume;
-        UI.updateSliderUI(sliderId, foundApp.volume);
-      }
-    });
+        if (foundApp && typeof foundApp.volume === 'number') {
+          if (!state.slidersCache[deviceId]) state.slidersCache[deviceId] = {};
+          state.slidersCache[deviceId][sliderId] = foundApp.volume;
+          UI.updateSliderUI(sliderId, foundApp.volume);
+        }
+      });
+    } catch (err) {
+      if (window.logMsg) window.logMsg('ERR updateAppSliders: ' + err, '#f55');
+    }
   },
 
   resolveGridPlacements(items, cols) {
@@ -1043,15 +1013,21 @@ const UI = {
         } else if (state.slidersCache[deviceId] && state.slidersCache[deviceId][item.id] !== undefined) {
           val = state.slidersCache[deviceId][item.id];
         } else if (item.source && item.source.kind === 'app_volume' && item.source.match) {
-          const apps = state.appsCache[deviceId] || [];
-          const target = item.source.match.toLowerCase().trim();
-          for (var a = 0; a < apps.length; a++) {
-            var aname = (apps[a].name || '').toLowerCase();
-            var aid = (apps[a].id || '').toLowerCase();
-            if (aname.indexOf(target) !== -1 || aid.indexOf(target) !== -1) {
-              if (typeof apps[a].volume === 'number') {
-                val = apps[a].volume;
-                break;
+          var apps = state.appsCache[deviceId] || [];
+          var rawTarget = (item.source.match || '').toLowerCase().trim();
+          var cleanTarget = (rawTarget.slice(-4) === '.exe') ? rawTarget.slice(0, -4).trim() : rawTarget;
+          if (cleanTarget) {
+            for (var a = 0; a < apps.length; a++) {
+              var aname = (apps[a].name || '').toLowerCase().trim();
+              var cname = (aname.slice(-4) === '.exe') ? aname.slice(0, -4).trim() : aname;
+              var aid = (apps[a].id || '').toLowerCase().trim();
+              var cid = (aid.slice(-4) === '.exe') ? aid.slice(0, -4).trim() : aid;
+              if ((cname && (cname.indexOf(cleanTarget) !== -1 || cleanTarget.indexOf(cname) !== -1)) ||
+                  (cid && (cid.indexOf(cleanTarget) !== -1 || cleanTarget.indexOf(cid) !== -1))) {
+                if (typeof apps[a].volume === 'number') {
+                  val = apps[a].volume;
+                  break;
+                }
               }
             }
           }
@@ -1085,8 +1061,8 @@ const UI = {
         const output = card.querySelector('output');
         let lastPublish = 0;
 
-        const markDragging = () => { input._isDragging = true; input._lastUserInput = Date.now(); };
-        const unmarkDragging = () => { input._isDragging = false; input._lastUserInput = Date.now(); };
+        const markDragging = function() { input._isDragging = true; input._lastUserInput = Date.now(); };
+        const unmarkDragging = function() { input._isDragging = false; input._lastUserInput = Date.now(); };
 
         input.addEventListener('touchstart', markDragging, { passive: true });
         input.addEventListener('touchend', unmarkDragging, { passive: true });
@@ -1094,7 +1070,7 @@ const UI = {
         input.addEventListener('mousedown', markDragging);
         input.addEventListener('mouseup', unmarkDragging);
 
-        input.addEventListener('input', (e) => {
+        input.addEventListener('input', function(e) {
           input._lastUserInput = Date.now();
           const v = e.target.value;
           output.textContent = v + '%';
@@ -1221,7 +1197,7 @@ const UI = {
           '<span>' + UI.escapeHtml(item.label || 'Som') + '</span>' +
           '<span class="sound-wave-badge" aria-hidden="true"><span></span><span></span><span></span></span>';
 
-        UI.bindFastClick(btn, () => {
+        btn.addEventListener('click', function() {
           UI.triggerTapAnimation(btn);
           btn.classList.add('shortcut-btn--pulse');
           setTimeout(function() {
@@ -1263,7 +1239,7 @@ const UI = {
           '<span class="shortcut-btn__label">' + UI.escapeHtml(label || item.id) + '</span>' +
           '<span class="toggle-state-badge" aria-hidden="true">' + (isB ? 'B' : 'A') + '</span>';
 
-        UI.bindFastClick(btn, function() {
+        btn.addEventListener('click', function() {
           UI.triggerTapAnimation(btn);
           const device = state.devices[deviceId];
           if (!device) return;
@@ -1292,7 +1268,7 @@ const UI = {
 
         if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
 
-        UI.bindFastClick(btn, () => {
+        btn.addEventListener('click', function() {
           UI.triggerTapAnimation(btn);
           if (item.type === 'folder' && item.target) {
             state.currentPageCache[deviceId] = item.target;

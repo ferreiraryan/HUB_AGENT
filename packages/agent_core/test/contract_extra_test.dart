@@ -683,6 +683,45 @@ group('Starter Templates (Linux e Windows)', () {
       expect(published.containsKey('bindings'), isFalse);
     });
   });
+
+  group('App Volume Match Normalization', () {
+    test('normaliza .exe e compara case-insensitive em ambos os sentidos', () {
+      final apps = [
+        const AppVolume(id: 'spotify.exe', name: 'Spotify', volume: 65),
+        const AppVolume(id: 'firefox.exe', name: 'Firefox', volume: 80),
+      ];
+
+      bool matches(String matchTarget, AppVolume app) {
+        final rawTarget = matchTarget.trim().toLowerCase();
+        final cleanTarget = rawTarget.endsWith('.exe')
+            ? rawTarget.substring(0, rawTarget.length - 4).trim()
+            : rawTarget;
+        if (cleanTarget.isEmpty) return false;
+
+        final rawName = app.name.trim().toLowerCase();
+        final cleanName = rawName.endsWith('.exe')
+            ? rawName.substring(0, rawName.length - 4).trim()
+            : rawName;
+        final rawId = app.id.trim().toLowerCase();
+        final cleanId = rawId.endsWith('.exe')
+            ? rawId.substring(0, rawId.length - 4).trim()
+            : rawId;
+
+        return (cleanName.isNotEmpty &&
+                (cleanName.contains(cleanTarget) || cleanTarget.contains(cleanName))) ||
+            (cleanId.isNotEmpty &&
+                (cleanId.contains(cleanTarget) || cleanTarget.contains(cleanId)));
+      }
+
+      expect(matches('spotify.exe', apps[0]), isTrue);
+      expect(matches('spotify', apps[0]), isTrue);
+      expect(matches('SPOTIFY', apps[0]), isTrue);
+      expect(matches('Spotify.exe', apps[0]), isTrue);
+      expect(matches('firefox', apps[1]), isTrue);
+      expect(matches('firefox.exe', apps[1]), isTrue);
+      expect(matches('chrome', apps[0]), isFalse);
+    });
+  });
 }
 
 class _MockAudio implements AudioController {
