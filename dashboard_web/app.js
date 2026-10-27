@@ -466,12 +466,15 @@ const UI = {
   },
 
   iconFor(item) {
-    const raw = (item && item.icon) ? item.icon : '';
+    const raw = (item && item.icon) ? String(item.icon).trim() : '';
+    if (raw && (raw.indexOf('data:image/') === 0 || raw.indexOf('http://') === 0 || raw.indexOf('https://') === 0)) {
+      return '';
+    }
     return ICON_MAP[raw] || raw || '⚡';
   },
 
   renderTileIconHtml(item, customClass) {
-    const raw = (item && item.icon) ? item.icon : '';
+    const raw = (item && item.icon) ? String(item.icon).trim() : '';
     const iconClass = customClass || 'shortcut-btn__icon';
     if (!raw) {
       return '<span class="' + iconClass + '">⚡</span>';
