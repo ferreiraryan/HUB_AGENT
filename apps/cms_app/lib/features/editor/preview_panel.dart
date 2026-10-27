@@ -552,13 +552,14 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     BuildContext context, {
     (int col, int row)? targetCell,
   }) async {
-    var tile = await showCreateTileDialog(
+    final result = await showCreateTileDialog(
       context: context,
       type: type,
       state: state,
     );
-    if (tile == null) return;
+    if (result == null) return;
 
+    var tile = result.tile;
     final notifier = ref.read(editorControllerProvider.notifier);
     if (targetCell != null) {
       final col = targetCell.$1.clamp(0, kGridColumns - tile.width);
@@ -566,6 +567,9 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
       tile = tile.copyWithPosition(x: col, y: row);
     }
     notifier.upsertTile(state.currentPage, tile);
+    if (result.initialBinding != null) {
+      notifier.setBinding(tile.id, result.initialBinding);
+    }
     if (targetCell != null) {
       notifier.moveTileToCell(
         state.currentPage,

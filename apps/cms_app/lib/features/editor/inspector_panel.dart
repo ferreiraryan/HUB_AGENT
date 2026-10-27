@@ -361,10 +361,12 @@ enum _ShortcutBehavior {
   custom,
 }
 
-const _builtinMediaActions = <String, String>{
-  'play_pause': 'Reproduzir / Pausar',
-  'next': 'Próxima faixa',
-  'prev': 'Faixa anterior',
+const _builtinActions = <String, String>{
+  'stop_sound': '⏹️ Parar todos os sons (Sound Pad)',
+  'play_pause': '⏯️ Reproduzir / Pausar (Mídia)',
+  'next': '⏭️ Próxima faixa (Mídia)',
+  'prev': '⏮️ Faixa anterior (Mídia)',
+  'remote_search_prompt': '🔍 Busca rápida no PC (Spotlight)',
 };
 
 class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
@@ -373,15 +375,29 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
   static _ShortcutBehavior _detectBehavior(
       Tile tile, Map<String, List<List<String>>> bindings) {
     if (tile is! ShortcutTile) return _ShortcutBehavior.custom;
-    if (_builtinMediaActions.containsKey(tile.id)) {
+    if (_builtinActions.containsKey(tile.id)) {
       return _ShortcutBehavior.builtin;
     }
     final cmds = bindings[tile.id];
-    if (cmds != null &&
-        cmds.length == 1 &&
-        cmds.first.isNotEmpty &&
-        cmds.first.first == '__sendkeys__') {
-      return _ShortcutBehavior.hotkey;
+    if (cmds != null && cmds.isNotEmpty) {
+      if (cmds.length == 1 &&
+          cmds.first.isNotEmpty &&
+          cmds.first.first == '__sendkeys__') {
+        return _ShortcutBehavior.hotkey;
+      }
+      if (cmds.length == 1 &&
+          cmds.first.isNotEmpty &&
+          (cmds.first.first == '__builtin__' || _builtinActions.containsKey(cmds.first.first))) {
+        return _ShortcutBehavior.builtin;
+      }
+    }
+    final labelNorm = tile.label.trim().toLowerCase();
+    if (labelNorm == 'parar sons' ||
+        labelNorm == 'parar tudo' ||
+        labelNorm == 'parar som' ||
+        labelNorm == 'stop sound' ||
+        labelNorm == 'stop sounds') {
+      return _ShortcutBehavior.builtin;
     }
     return _ShortcutBehavior.custom;
   }
@@ -722,14 +738,22 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
               setState(() => _behavior = newBehavior);
 
               if (newBehavior == _ShortcutBehavior.builtin) {
-                const targetAction = 'play_pause';
-                notifier.setBinding(widget.tile.id, null);
-                notifier.replaceTile(
-                    widget.state.currentPage, widget.tile.id, _updateTile(id: targetAction));
-                notifier.selectTile(targetAction);
+                const targetAction = 'stop_sound';
+                final hasConflict = widget.state.layout.pages[widget.state.currentPage]!
+                    .any((t) => t.id == targetAction && t != widget.tile);
+                if (!hasConflict) {
+                  notifier.setBinding(widget.tile.id, null);
+                  notifier.replaceTile(
+                      widget.state.currentPage, widget.tile.id, _updateTile(id: targetAction, icon: '⏹️', label: 'Parar Sons'));
+                  notifier.selectTile(targetAction);
+                } else {
+                  notifier.setBinding(widget.tile.id, [
+                    ['__builtin__', targetAction]
+                  ]);
+                }
               } else if (newBehavior == _ShortcutBehavior.hotkey) {
                 String targetId = widget.tile.id;
-                if (_builtinMediaActions.containsKey(targetId)) {
+                if (_builtinActions.containsKey(targetId)) {
                   targetId = widget.state.layout.nextTileId('shortcut');
                   notifier.replaceTile(
                       widget.state.currentPage, widget.tile.id, _updateTile(id: targetId));
@@ -748,7 +772,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                 ]);
               } else if (newBehavior == _ShortcutBehavior.custom) {
                 String targetId = widget.tile.id;
-                if (_builtinMediaActions.containsKey(targetId)) {
+                if (_builtinActions.containsKey(targetId)) {
                   targetId = widget.state.layout.nextTileId('shortcut');
                   notifier.replaceTile(
                       widget.state.currentPage, widget.tile.id, _updateTile(id: targetId));
@@ -760,34 +784,73 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           ),
           const SizedBox(height: 16),
           if (_behavior == _ShortcutBehavior.builtin) ...[
-            DropdownButtonFormField<String>(
-              initialValue: _builtinMediaActions.containsKey(widget.tile.id)
-                  ? widget.tile.id
-                  : 'play_pause',
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Ação de Mídia',
-                border: OutlineInputBorder(),
-              ),
-              items: _builtinMediaActions.entries
-                  .map((e) => DropdownMenuItem(
-                      value: e.key, child: Text(e.value)))
-                  .toList(),
-              onChanged: (val) {
-                if (val != null) {
-                  notifier.setBinding(widget.tile.id, null);
-                  notifier.replaceTile(
-                      widget.state.currentPage, widget.tile.id, _updateTile(id: val));
-                  notifier.selectTile(val);
+            Builder(
+              builder: (context) {
+                String currentBuiltin = 'stop_sound';
+                if (_builtinActions.containsKey(widget.tile.id)) {
+                  currentBuiltin = widget.tile.id;
+                } else {
+                  final b = widget.state.layout.bindings[widget.tile.id];
+                  if (b != null && b.isNotEmpty && b.first.isNotEmpty) {
+                    if (b.first.first == '__builtin__' && b.first.length > 1 && _builtinActions.containsKey(b.first[1])) {
+                      currentBuiltin = b.first[1];
+                    } else if (_builtinActions.containsKey(b.first.first)) {
+                      currentBuiltin = b.first.first;
+                    }
+                  }
                 }
+
+                return DropdownButtonFormField<String>(
+                  // ignore: deprecated_member_use
+                  value: currentBuiltin,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Ação Pré-determinada',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _builtinActions.entries
+                      .map((e) => DropdownMenuItem(
+                          value: e.key, child: Text(e.value)))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      final hasConflict = widget.state.layout.pages[widget.state.currentPage]!
+                          .any((t) => t.id == val && t != widget.tile);
+                      if (!hasConflict) {
+                        notifier.setBinding(widget.tile.id, null);
+                        notifier.replaceTile(
+                            widget.state.currentPage, widget.tile.id, _updateTile(id: val));
+                        notifier.selectTile(val);
+                      } else {
+                        notifier.setBinding(widget.tile.id, [
+                          ['__builtin__', val]
+                        ]);
+                      }
+                    }
+                  },
+                );
               },
             ),
             const SizedBox(height: 6),
-            Text(
-                Platform.isWindows
-                    ? 'Esta ação controla o player de mídia nativo via NirCmd.'
-                    : 'Esta ação controla o player de mídia ativo via playerctl.',
-                style: const TextStyle(fontSize: 11, color: Colors.white54)),
+            Builder(
+              builder: (context) {
+                final currentId = widget.tile.id;
+                final b = widget.state.layout.bindings[currentId];
+                final isStop = currentId == 'stop_sound' || (b != null && b.isNotEmpty && b.first.contains('stop_sound'));
+                final isSearch = currentId == 'remote_search_prompt' || (b != null && b.isNotEmpty && b.first.contains('remote_search_prompt'));
+                String desc;
+                if (isStop) {
+                  desc = 'Interrompe imediatamente a reprodução de todos os sons do Sound Pad.';
+                } else if (isSearch) {
+                  desc = 'Abre a barra de busca rápida (Spotlight) no PC.';
+                } else {
+                  desc = Platform.isWindows
+                      ? 'Controla o player de mídia nativo via NirCmd.'
+                      : 'Controla o player de mídia ativo via playerctl.';
+                }
+                return Text(desc, style: const TextStyle(fontSize: 11, color: Colors.white54));
+              },
+            ),
           ] else if (_behavior == _ShortcutBehavior.hotkey) ...[
             _HotkeyEditor(
               initialCombo: () {

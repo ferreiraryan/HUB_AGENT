@@ -143,7 +143,7 @@ class CommandDispatcher {
         }
 
       default:
-        if (cmd.action == 'stop_sound') {
+        if (cmd.action == 'stop_sound' || cmd.action.startsWith('stop_sound')) {
           await sound?.stop();
           return;
         }
@@ -159,6 +159,24 @@ class CommandDispatcher {
           await sound?.play(soundTile.soundId);
           return;
         }
+
+        final shortcut = _findShortcutTile(cmd.action);
+        if (shortcut != null) {
+          if (shortcut.id == 'stop_sound' || shortcut.id.startsWith('stop_sound')) {
+            await sound?.stop();
+            return;
+          }
+          final labelNorm = shortcut.label.trim().toLowerCase();
+          if (labelNorm == 'parar sons' ||
+              labelNorm == 'parar tudo' ||
+              labelNorm == 'parar som' ||
+              labelNorm == 'stop sound' ||
+              labelNorm == 'stop sounds') {
+            await sound?.stop();
+            return;
+          }
+        }
+
         await runShortcut(cmd.action);
     }
   }
@@ -210,6 +228,31 @@ class CommandDispatcher {
   }
 
   SliderTile? findSliderTile(String id) => _findSliderTile(id);
+
+  ShortcutTile? _findShortcutTile(String id) {
+    final layout = layoutProvider();
+    for (final tiles in layout.pages.values) {
+      for (final t in tiles) {
+        if (t is ShortcutTile && t.id == id) return t;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _dispatchBuiltin(String action) async {
+    switch (action) {
+      case 'stop_sound':
+        await sound?.stop();
+      case 'play_pause':
+        await media.playPause();
+      case 'next':
+        await media.next();
+      case 'prev':
+        await media.previous();
+      case 'remote_search_prompt':
+        onRemoteSearchPrompt?.call();
+    }
+  }
 
   Future<void> _applySlider(String sliderId, SliderSource source, int value) async {
     switch (source.kind) {
@@ -270,6 +313,27 @@ class CommandDispatcher {
   }
 
   Future<bool> runShortcut(String id) async {
+    if (id == 'stop_sound' || id.startsWith('stop_sound')) {
+      await sound?.stop();
+      return true;
+    }
+    if (id == 'play_pause') {
+      await media.playPause();
+      return true;
+    }
+    if (id == 'next') {
+      await media.next();
+      return true;
+    }
+    if (id == 'prev') {
+      await media.previous();
+      return true;
+    }
+    if (id == 'remote_search_prompt') {
+      onRemoteSearchPrompt?.call();
+      return true;
+    }
+
     final cmds = layoutProvider().bindingFor(id);
     if (cmds == null || cmds.isEmpty) {
       stderr.writeln('shortcut "$id" sem binding; ignorado');
@@ -297,6 +361,33 @@ class CommandDispatcher {
           stderr.writeln('__sendkeys__: combo inválida: "${argv[1]}"');
           return false;
         }
+        continue;
+      }
+
+      if (argv.first == '__builtin__') {
+        final action = argv.length > 1 ? argv[1] : '';
+        await _dispatchBuiltin(action);
+        continue;
+      }
+
+      if (argv.first == 'stop_sound') {
+        await sound?.stop();
+        continue;
+      }
+      if (argv.first == 'play_pause') {
+        await media.playPause();
+        continue;
+      }
+      if (argv.first == 'next') {
+        await media.next();
+        continue;
+      }
+      if (argv.first == 'prev') {
+        await media.previous();
+        continue;
+      }
+      if (argv.first == 'remote_search_prompt') {
+        onRemoteSearchPrompt?.call();
         continue;
       }
 

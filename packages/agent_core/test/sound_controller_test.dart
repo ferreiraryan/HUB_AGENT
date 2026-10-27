@@ -167,6 +167,47 @@ void main() {
       expect(fakeSound.playedSounds, equals(['applause_wav']));
     });
 
+    test('CommandDispatcher para som via atalho stop_sound, binding __builtin__ ou label Parar Tudo', () async {
+      final fakeSound = FakeSoundController();
+      final layout = Layout(
+        deviceName: 'PC',
+        theme: HubTheme.fallback,
+        pages: const {
+          'home': [
+            ShortcutTile(id: 'stop_sound', icon: '⏹️', label: 'Parar Sons'),
+            ShortcutTile(id: 'btn_custom_stop', icon: '🛑', label: 'Parar Agora'),
+            ShortcutTile(id: 'shortcut_1', icon: '⏹️', label: 'Parar Tudo'),
+          ],
+        },
+        bindings: const {
+          'btn_custom_stop': [
+            ['__builtin__', 'stop_sound']
+          ],
+        },
+      );
+
+      final dispatcher = CommandDispatcher(
+        audio: MockAudioController(),
+        brightness: UnsupportedBrightnessController(),
+        media: MediaService(),
+        keySender: FakeKeySender(),
+        sound: fakeSound,
+        layoutProvider: () => layout,
+      );
+
+      // 1. Acionamento direto pelo ID stop_sound
+      await dispatcher.dispatch(const AgentCommand('stop_sound', {}));
+      expect(fakeSound.stopCalls, equals(1));
+
+      // 2. Acionamento por atalho com binding __builtin__
+      await dispatcher.dispatch(const AgentCommand('btn_custom_stop', {}));
+      expect(fakeSound.stopCalls, equals(2));
+
+      // 3. Acionamento por atalho com label heurístico 'Parar Tudo' sem binding
+      await dispatcher.dispatch(const AgentCommand('shortcut_1', {}));
+      expect(fakeSound.stopCalls, equals(3));
+    });
+
     test('CommandDispatcher reinicia som ao receber play_sound repetido e para apenas com stop_sound', () async {
       final fakeSound = FakeSoundController();
       final layout = Layout(

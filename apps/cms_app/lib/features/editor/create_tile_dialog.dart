@@ -6,12 +6,19 @@ import '../../providers.dart';
 import 'editor_controller.dart';
 import 'sound_library_dialog.dart';
 
-Future<Tile?> showCreateTileDialog({
+class CreateTileResult {
+  final Tile tile;
+  final List<List<String>>? initialBinding;
+
+  const CreateTileResult({required this.tile, this.initialBinding});
+}
+
+Future<CreateTileResult?> showCreateTileDialog({
   required BuildContext context,
   required String type,
   required EditorState state,
 }) {
-  return showDialog<Tile>(
+  return showDialog<CreateTileResult>(
     context: context,
     builder: (ctx) => _CreateTileDialog(
       type: type,
@@ -43,6 +50,12 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
 
   List<SoundItem> _availableSounds = [];
   String? _selectedSoundId;
+  String _shortcutBehavior = 'custom';
+
+  String _suggestActionId(String base) {
+    if (!_existingIds.contains(base)) return base;
+    return widget.state.layout.nextTileId(base);
+  }
 
   @override
   void initState() {
@@ -185,12 +198,39 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
     Tile tile;
     switch (widget.type) {
       case 'shortcut':
+        String icon = '⚡';
+        List<List<String>>? initialBinding;
+        if (_shortcutBehavior != 'custom') {
+          switch (_shortcutBehavior) {
+            case 'stop_sound':
+              icon = '⏹️';
+              break;
+            case 'play_pause':
+              icon = '⏯️';
+              break;
+            case 'next':
+              icon = '⏭️';
+              break;
+            case 'prev':
+              icon = '⏮️';
+              break;
+            case 'remote_search_prompt':
+              icon = '🔍';
+              break;
+          }
+          if (id != _shortcutBehavior) {
+            initialBinding = [
+              ['__builtin__', _shortcutBehavior]
+            ];
+          }
+        }
         tile = ShortcutTile(
           id: id,
-          icon: '⚡',
+          icon: icon,
           label: label.isEmpty ? 'Novo atalho' : label,
         );
-        break;
+        Navigator.of(context).pop(CreateTileResult(tile: tile, initialBinding: initialBinding));
+        return;
       case 'slider':
         final isMaster = id == 'master_volume';
         tile = SliderTile(
@@ -259,7 +299,7 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
         return;
     }
 
-    Navigator.of(context).pop(tile);
+    Navigator.of(context).pop(CreateTileResult(tile: tile));
   }
 
   @override
@@ -277,6 +317,69 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.type == 'shortcut') ...[
+                DropdownButtonFormField<String>(
+                  // ignore: deprecated_member_use
+                  value: _shortcutBehavior,
+                  decoration: const InputDecoration(
+                    labelText: 'Comportamento do Atalho',
+                    border: OutlineInputBorder(),
+                    helperText: 'Ação pré-determinada do sistema ou comando customizado',
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'custom',
+                      child: Text('⚡ Personalizado (Comando / Teclas)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'stop_sound',
+                      child: Text('⏹️ Parar Todos os Sons (Sound Pad)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'play_pause',
+                      child: Text('⏯️ Reproduzir / Pausar (Mídia)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'next',
+                      child: Text('⏭️ Próxima Faixa (Mídia)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'prev',
+                      child: Text('⏮️ Faixa Anterior (Mídia)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'remote_search_prompt',
+                      child: Text('🔍 Busca Rápida no PC (Spotlight)'),
+                    ),
+                  ],
+                  onChanged: (val) {
+                    if (val == null) return;
+                    setState(() {
+                      _shortcutBehavior = val;
+                      if (val == 'custom') {
+                        _idCtrl.text = widget.state.layout.nextTileId('shortcut');
+                        _labelCtrl.text = 'Novo atalho';
+                      } else if (val == 'stop_sound') {
+                        _idCtrl.text = _suggestActionId('stop_sound');
+                        _labelCtrl.text = 'Parar Sons';
+                      } else if (val == 'play_pause') {
+                        _idCtrl.text = _suggestActionId('play_pause');
+                        _labelCtrl.text = 'Reproduzir / Pausar';
+                      } else if (val == 'next') {
+                        _idCtrl.text = _suggestActionId('next');
+                        _labelCtrl.text = 'Próxima Faixa';
+                      } else if (val == 'prev') {
+                        _idCtrl.text = _suggestActionId('prev');
+                        _labelCtrl.text = 'Faixa Anterior';
+                      } else if (val == 'remote_search_prompt') {
+                        _idCtrl.text = _suggestActionId('remote_search');
+                        _labelCtrl.text = 'Busca no PC';
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
               TextFormField(
                 controller: _idCtrl,
                 autofocus: true,
