@@ -13,6 +13,7 @@ import 'brightness_picker.dart';
 import 'key_combo_helper.dart';
 import 'process_discovery.dart';
 import 'sound_library_dialog.dart';
+import 'widgets/tile_icon_view.dart';
 
 class InspectorPanel extends ConsumerWidget {
   const InspectorPanel({super.key});
@@ -1186,8 +1187,8 @@ class _IconField extends StatelessWidget {
               border: Border.all(color: Colors.white24),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(icon.isEmpty ? '?' : icon,
-                style: const TextStyle(fontSize: 32)),
+            child: TileIconView(icon: icon, size: 30),
+
           ),
         ),
       ],

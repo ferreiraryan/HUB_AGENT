@@ -9,27 +9,34 @@ const ICON_MAP = {
 
   // Áudio & Som
   'volume_up': '🔊', 'volume_down': '🔉', 'volume_mute': '🔇', 'volume_off': '🔇',
-  'music_note': '🎵', 'headphones': '🎧', 'radio': '📻', 'mic': '🎙️', 'tv': '📺',
-  'graphic_eq': '🎛️',
+  'music_note': '🎵', 'headphones': '🎧', 'radio': '📻', 'mic': '🎙️', 'mic_off': '🔇',
+  'tv': '📺', 'graphic_eq': '🎛️', 'equalizer': '🎛️', 'tune': '🎚️',
 
   // Navegação & UI
   'arrow_back': '⬅️', 'arrow_forward': '➡️', 'arrow_upward': '⬆️', 'arrow_downward': '⬇️',
-  'home': '🏠', 'refresh': '🔄', 'search': '🔍', 'settings': '⚙️', 'close': '❌',
-  'check': '✔️', 'add': '➕', 'remove': '➖', 'delete': '🗑️', 'push_pin': '📌',
+  'home': '🏠', 'dashboard': '📊', 'refresh': '🔄', 'search': '🔍', 'settings': '⚙️',
+  'close': '❌', 'check': '✔️', 'add': '➕', 'remove': '➖', 'delete': '🗑️', 'push_pin': '📌',
   'location_on': '📍', 'link': '🔗', 'notifications': '🔔', 'notifications_off': '🔕',
+  'lock': '🔒', 'lock_open': '🔓', 'visibility': '👁️', 'visibility_off': '🙈',
+  'palette': '🎨', 'timer': '⏱️', 'alarm': '⏰', 'hourglass_empty': '⏳',
+  'rocket_launch': '🚀', 'flash_on': '⚡',
 
   // Pastas & Arquivos
-  'folder': '📁', 'folder_open': '📂', 'insert_drive_file': '📄', 'bar_chart': '📊',
+  'folder': '📁', 'folder_open': '📂', 'folder_zip': '📦', 'insert_drive_file': '📄',
+  'cloud_upload': '☁️⬆️', 'cloud_download': '☁️⬇️', 'bar_chart': '📊',
   'show_chart': '📈', 'content_paste': '📋', 'inventory_2': '📦',
 
   // Dispositivos & Hardware
   'computer': '💻', 'desktop_windows': '🖥️', 'smartphone': '📱', 'watch': '⌚',
   'keyboard': '⌨️', 'mouse': '🖱️', 'print': '🖨️', 'battery_full': '🔋',
-  'power': '🔌', 'lightbulb': '💡', 'flashlight_on': '🔦', 'photo_camera': '📷',
-  'videocam': '📹', 'language': '🌐',
+  'power': '🔌', 'power_settings_new': '⏻', 'restart_alt': '🔄', 'lightbulb': '💡',
+  'flashlight_on': '🔦', 'photo_camera': '📷', 'screenshot': '📸', 'videocam': '📹',
+  'videocam_off': '🚫📹', 'brightness_high': '☀️', 'brightness_low': '🔅',
+  'fullscreen': '⛶', 'fullscreen_exit': '🗗', 'language': '🌐',
 
   // Comunicação & Apps
-  'local_fire_department': '🔥', 'chat': '💬', 'smart_toy': '🤖', 'sports_esports': '🎮',
+  'local_fire_department': '🔥', 'chat': '💬', 'smart_toy': '🤖',
+  'sports_esports': '🎮', 'videogame_asset': '🕹️',
   'mail': '📧', 'call': '📞', 'terminal': '💻', 'build': '🔧', 'science': '🧪',
   'radar': '📡', 'calculate': '🧮',
 
@@ -459,8 +466,21 @@ const UI = {
   },
 
   iconFor(item) {
-    const raw = item.icon || '';
+    const raw = (item && item.icon) ? item.icon : '';
     return ICON_MAP[raw] || raw || '⚡';
+  },
+
+  renderTileIconHtml(item, customClass) {
+    const raw = (item && item.icon) ? item.icon : '';
+    const iconClass = customClass || 'shortcut-btn__icon';
+    if (!raw) {
+      return '<span class="' + iconClass + '">⚡</span>';
+    }
+    if (raw.indexOf('data:image/') === 0 || raw.indexOf('http://') === 0 || raw.indexOf('https://') === 0) {
+      return '<img class="shortcut-btn__img" src="' + raw + '" alt="" />';
+    }
+    const mapped = ICON_MAP[raw] || raw;
+    return '<span class="' + iconClass + '">' + UI.escapeHtml(mapped) + '</span>';
   },
 
   applyTheme(theme) {
@@ -537,8 +557,12 @@ const UI = {
       btn.classList.add('shortcut-btn--toggle-a');
     }
 
-    const iconEl = btn.querySelector('.shortcut-btn__icon');
-    if (iconEl) iconEl.textContent = UI.iconFor({ icon: icon });
+    const existingImg = btn.querySelector('.shortcut-btn__img');
+    const existingIcon = btn.querySelector('.shortcut-btn__icon');
+    const iconTarget = existingImg || existingIcon;
+    if (iconTarget) {
+      iconTarget.outerHTML = UI.renderTileIconHtml({ icon: icon });
+    }
     const labelEl = btn.querySelector('.shortcut-btn__label');
     if (labelEl) labelEl.textContent = label || item.id;
     const badgeEl = btn.querySelector('.toggle-state-badge');
@@ -891,7 +915,7 @@ const UI = {
         if (isVertical) {
           card.innerHTML = 
             '<div class="shortcut-slider__header shortcut-slider__header--vertical">' +
-              '<span class="shortcut-slider__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+              UI.renderTileIconHtml(item, 'shortcut-slider__icon') +
               '<output class="shortcut-slider__value" data-slider-value="' + item.id + '">' + val + '%</output>' +
             '</div>' +
             '<div class="shortcut-slider__track-v">' +
@@ -902,7 +926,7 @@ const UI = {
           card.innerHTML = 
             '<div class="shortcut-slider__header">' +
               '<div class="shortcut-slider__title">' +
-                '<span class="shortcut-slider__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+                UI.renderTileIconHtml(item, 'shortcut-slider__icon') +
                 '<span>' + UI.escapeHtml(item.label || item.id) + '</span>' +
               '</div>' +
               '<output class="shortcut-slider__value" data-slider-value="' + item.id + '">' + val + '%</output>' +
@@ -975,7 +999,7 @@ const UI = {
         if (isVertical) {
           card.innerHTML = 
             '<div class="stat-card__header">' +
-              '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+              UI.renderTileIconHtml(item, 'stat-card__icon') +
               '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
             '</div>' +
             '<div class="stat-card__meter-v">' +
@@ -1007,7 +1031,7 @@ const UI = {
           card.innerHTML = 
             '<div class="stat-card__pro-header">' +
               '<div class="stat-card__pro-title">' +
-                '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+                UI.renderTileIconHtml(item, 'stat-card__icon') +
                 '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
               '</div>' +
               '<span class="stat-card__badge">' + UI.escapeHtml(badgeLabel) + '</span>' +
@@ -1020,7 +1044,7 @@ const UI = {
         } else {
           card.innerHTML = 
             '<div class="stat-card__header">' +
-              '<span class="stat-card__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+              UI.renderTileIconHtml(item, 'stat-card__icon') +
               '<span class="stat-card__label">' + UI.escapeHtml(item.label || item.id) + '</span>' +
             '</div>' +
             '<div class="stat-card__value">' + UI.escapeHtml(String(display)) + UI.escapeHtml(item.source.unit || '') + '</div>' +
@@ -1046,7 +1070,7 @@ const UI = {
         btn.disabled = false;
 
         btn.innerHTML = 
-          '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+          UI.renderTileIconHtml(item) +
           '<span>' + UI.escapeHtml(item.label || 'Som') + '</span>' +
           '<span class="sound-wave-badge" aria-hidden="true"><span></span><span></span><span></span></span>';
 
@@ -1087,7 +1111,7 @@ const UI = {
         btn.dataset.toggleState = isB ? 'b' : 'a';
 
         btn.innerHTML = 
-          '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor({ icon: icon })) + '</span>' +
+          UI.renderTileIconHtml({ icon: icon }) +
           '<span class="shortcut-btn__label">' + UI.escapeHtml(label || item.id) + '</span>' +
           '<span class="toggle-state-badge" aria-hidden="true">' + (isB ? 'B' : 'A') + '</span>';
 
@@ -1114,7 +1138,7 @@ const UI = {
         btn.style.gridColumn = gridColumnStyle;
         btn.style.gridRow = gridRowStyle;
         btn.innerHTML = 
-          '<span class="shortcut-btn__icon">' + UI.escapeHtml(UI.iconFor(item)) + '</span>' +
+          UI.renderTileIconHtml(item) +
           '<span>' + UI.escapeHtml(item.label || item.id || 'Sem Nome') + '</span>';
 
         if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);

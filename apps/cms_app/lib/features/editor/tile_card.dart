@@ -1,5 +1,5 @@
 import 'package:agent_core/agent_core.dart';
-import 'package:cms_app/features/editor/emoji_picker.dart';
+import 'package:cms_app/features/editor/widgets/tile_icon_view.dart';
 import 'package:flutter/material.dart';
 
 class TileDragPayload {
@@ -99,20 +99,7 @@ class _TileCardState extends State<TileCard>
   }
 
   Widget _buildTileIcon(String? iconValue, {double size = 32}) {
-    if (iconValue == null || iconValue.isEmpty) {
-      return Icon(Icons.widgets, size: size, color: Colors.white);
-    }
-
-    // Verifica se a string é um nome válido de Material Symbol
-    if (iconMap.containsKey(iconValue)) {
-      return Icon(iconMap[iconValue], size: size, color: Colors.white);
-    }
-
-    // Se não estiver no mapa, é um emoji antigo. Renderiza como texto.
-    return Text(
-      iconValue,
-      style: TextStyle(fontSize: size),
-    );
+    return TileIconView(icon: iconValue, size: size, color: Colors.white);
   }
 
   Widget _buildContent(Color accentColor) {
