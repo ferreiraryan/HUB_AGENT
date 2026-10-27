@@ -3,20 +3,68 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:file_selector/file_selector.dart';
 
-/// Helper para seleção, processamento e conversão de imagens locais para Data URI Base64.
+class ImagePickResult {
+  final String dataUri;
+  final String? staticDataUri;
+  final bool isGif;
+
+  const ImagePickResult({
+    required this.dataUri,
+    this.staticDataUri,
+    this.isGif = false,
+  });
+}
+
+/// Helper para seleção, processamento e conversão de imagens e GIFs locais para Data URI Base64.
 class ImageIconHelper {
   static const acceptedImageGroup = XTypeGroup(
-    label: 'Imagens',
-    extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico'],
+    label: 'Imagens e GIFs',
+    extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico', 'gif'],
   );
 
-  /// Abre o seletor nativo de arquivos do sistema operacional para escolher uma imagem.
-  static Future<String?> pickAndProcessImage({int targetSize = 96}) async {
+  /// Verifica se os bytes correspondem à assinatura de arquivo GIF (GIF87a ou GIF89a).
+  static bool isGifBytes(Uint8List bytes) {
+    if (bytes.length < 3) return false;
+    return bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46; // "GIF"
+  }
+
+  /// Verifica se a string informada é um GIF (Data URI ou extensão).
+  static bool isGif(String? value) {
+    if (value == null) return false;
+    final lower = value.toLowerCase();
+    return lower.startsWith('data:image/gif') || lower.endsWith('.gif');
+  }
+
+  /// Abre o seletor nativo para escolher imagem ou GIF.
+  static Future<ImagePickResult?> pickAndProcessImage({int targetSize = 96}) async {
     final xFile = await openFile(acceptedTypeGroups: [acceptedImageGroup]);
     if (xFile == null) return null;
 
     final bytes = await xFile.readAsBytes();
-    return processImageBytes(bytes, targetSize: targetSize);
+    final isGifFile = isGifBytes(bytes) || xFile.name.toLowerCase().endsWith('.gif');
+
+    if (isGifFile) {
+      final gifDataUri = 'data:image/gif;base64,${base64Encode(bytes)}';
+      String? staticDataUri;
+      try {
+        // Extrai o primeiro frame como PNG estático para os modos on_tap / while_playing
+        staticDataUri = await processImageBytes(bytes, targetSize: targetSize);
+      } catch (_) {
+        staticDataUri = gifDataUri;
+      }
+      return ImagePickResult(
+        dataUri: gifDataUri,
+        staticDataUri: staticDataUri,
+        isGif: true,
+      );
+    }
+
+    final pngDataUri = await processImageBytes(bytes, targetSize: targetSize);
+    return ImagePickResult(
+      dataUri: pngDataUri,
+      staticDataUri: pngDataUri,
+      isGif: false,
+    );
   }
 
   /// Processa bytes crus de imagem, redimensionando via engine gráfica do Flutter e gerando PNG Base64 compacto.
@@ -58,4 +106,3 @@ class ImageIconHelper {
     }
   }
 }
-

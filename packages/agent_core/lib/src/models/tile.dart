@@ -9,6 +9,8 @@ sealed class Tile {
   final int height;
   final int? x;
   final int? y;
+  final String? staticIcon;
+  final String? animationMode;
 
   const Tile({
     required this.id,
@@ -18,6 +20,8 @@ sealed class Tile {
     this.height = 1,
     this.x,
     this.y,
+    this.staticIcon,
+    this.animationMode,
   });
 
   bool get is1x1 => width == 1 && height == 1;
@@ -102,6 +106,9 @@ sealed class Tile {
     final rawY = (json['y'] as num?)?.toInt();
     final x = rawX != null && rawX >= 0 ? rawX : null;
     final y = rawY != null && rawY >= 0 ? rawY : null;
+    final staticIcon = json['static_icon'] as String?;
+    final animationMode = (json['animation_mode'] as String?) ??
+        (json['animationMode'] as String?);
 
     return switch (type) {
       'shortcut' => ShortcutTile(
@@ -112,6 +119,8 @@ sealed class Tile {
           height: height,
           x: x,
           y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
         ),
       'folder' => FolderTile(
           id: id,
@@ -122,6 +131,8 @@ sealed class Tile {
           height: height,
           x: x,
           y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
         ),
       'back' => BackTile(
           id: id,
@@ -131,6 +142,8 @@ sealed class Tile {
           height: height,
           x: x,
           y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
         ),
       'slider' => SliderTile(
           id: id,
@@ -140,6 +153,8 @@ sealed class Tile {
           height: height,
           x: x,
           y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
           source: SliderSource.fromJson(
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'master_volume'}),
@@ -152,6 +167,8 @@ sealed class Tile {
           height: height,
           x: x,
           y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
           source: StatSource.fromJson(
               (json['source'] as Map?)?.cast<String, dynamic>() ??
                   const {'kind': 'cpu', 'field': 'load', 'unit': '%'}),
@@ -165,6 +182,8 @@ sealed class Tile {
           height: height,
           x: x,
           y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
         ),
       'toggle' => ToggleTile(
           id: id,
@@ -183,6 +202,8 @@ sealed class Tile {
           height: height,
           x: x,
           y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
         ),
       _ => throw FormatException('tipo de tile desconhecido: "$type"'),
     };
@@ -198,6 +219,8 @@ final class ShortcutTile extends Tile {
     super.height = 1,
     super.x,
     super.y,
+    super.staticIcon,
+    super.animationMode,
   });
 
   @override
@@ -213,6 +236,9 @@ final class ShortcutTile extends Tile {
         if (height != 1) 'height': height,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
+        if (staticIcon != null && staticIcon!.isNotEmpty) 'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
       };
 
   ShortcutTile copyWith({
@@ -223,7 +249,10 @@ final class ShortcutTile extends Tile {
     int? height,
     int? x,
     int? y,
+    String? staticIcon,
+    String? animationMode,
     bool clearCoords = false,
+    bool clearAnimation = false,
   }) =>
       ShortcutTile(
         id: id ?? this.id,
@@ -233,6 +262,9 @@ final class ShortcutTile extends Tile {
         height: height ?? this.height,
         x: clearCoords ? null : (x ?? this.x),
         y: clearCoords ? null : (y ?? this.y),
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
       );
 
   @override
@@ -244,10 +276,13 @@ final class ShortcutTile extends Tile {
       other.width == width &&
       other.height == height &&
       other.x == x &&
-      other.y == y;
+      other.y == y &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, width, height, x, y);
+  int get hashCode => Object.hash(
+      type, id, icon, label, width, height, x, y, staticIcon, animationMode);
 }
 
 final class FolderTile extends Tile {
@@ -262,6 +297,8 @@ final class FolderTile extends Tile {
     super.height = 1,
     super.x,
     super.y,
+    super.staticIcon,
+    super.animationMode,
   });
 
   @override
@@ -278,6 +315,9 @@ final class FolderTile extends Tile {
         if (height != 1) 'height': height,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
+        if (staticIcon != null && staticIcon!.isNotEmpty) 'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
       };
 
   FolderTile copyWith({
@@ -289,7 +329,10 @@ final class FolderTile extends Tile {
     int? height,
     int? x,
     int? y,
+    String? staticIcon,
+    String? animationMode,
     bool clearCoords = false,
+    bool clearAnimation = false,
   }) =>
       FolderTile(
         id: id ?? this.id,
@@ -300,6 +343,9 @@ final class FolderTile extends Tile {
         height: height ?? this.height,
         x: clearCoords ? null : (x ?? this.x),
         y: clearCoords ? null : (y ?? this.y),
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
       );
 
   @override
@@ -312,11 +358,13 @@ final class FolderTile extends Tile {
       other.width == width &&
       other.height == height &&
       other.x == x &&
-      other.y == y;
+      other.y == y &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
 
   @override
-  int get hashCode =>
-      Object.hash(type, id, icon, label, target, width, height, x, y);
+  int get hashCode => Object.hash(
+      type, id, icon, label, target, width, height, x, y, staticIcon, animationMode);
 }
 
 final class BackTile extends Tile {
@@ -328,6 +376,8 @@ final class BackTile extends Tile {
     super.height = 1,
     super.x,
     super.y,
+    super.staticIcon,
+    super.animationMode,
   });
 
   @override
@@ -343,6 +393,9 @@ final class BackTile extends Tile {
         if (height != 1) 'height': height,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
+        if (staticIcon != null && staticIcon!.isNotEmpty) 'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
       };
 
   BackTile copyWith({
@@ -353,7 +406,10 @@ final class BackTile extends Tile {
     int? height,
     int? x,
     int? y,
+    String? staticIcon,
+    String? animationMode,
     bool clearCoords = false,
+    bool clearAnimation = false,
   }) =>
       BackTile(
         id: id ?? this.id,
@@ -363,6 +419,9 @@ final class BackTile extends Tile {
         height: height ?? this.height,
         x: clearCoords ? null : (x ?? this.x),
         y: clearCoords ? null : (y ?? this.y),
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
       );
 
   @override
@@ -374,10 +433,13 @@ final class BackTile extends Tile {
       other.width == width &&
       other.height == height &&
       other.x == x &&
-      other.y == y;
+      other.y == y &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
 
   @override
-  int get hashCode => Object.hash(type, id, icon, label, width, height, x, y);
+  int get hashCode => Object.hash(
+      type, id, icon, label, width, height, x, y, staticIcon, animationMode);
 }
 
 @immutable
@@ -467,6 +529,8 @@ final class SliderTile extends Tile {
     super.x,
     super.y,
     required this.source,
+    super.staticIcon,
+    super.animationMode,
   });
 
   @override
@@ -483,6 +547,9 @@ final class SliderTile extends Tile {
         if (x != null) 'x': x,
         if (y != null) 'y': y,
         'source': source.toJson(),
+        if (staticIcon != null && staticIcon!.isNotEmpty) 'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
       };
 
   SliderTile copyWith({
@@ -495,6 +562,9 @@ final class SliderTile extends Tile {
     int? y,
     bool clearCoords = false,
     SliderSource? source,
+    String? staticIcon,
+    String? animationMode,
+    bool clearAnimation = false,
   }) =>
       SliderTile(
         id: id ?? this.id,
@@ -505,6 +575,9 @@ final class SliderTile extends Tile {
         x: clearCoords ? null : (x ?? this.x),
         y: clearCoords ? null : (y ?? this.y),
         source: source ?? this.source,
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
       );
 
   @override
@@ -517,11 +590,13 @@ final class SliderTile extends Tile {
       other.height == height &&
       other.x == x &&
       other.y == y &&
-      other.source == source;
+      other.source == source &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
 
   @override
-  int get hashCode =>
-      Object.hash(type, id, icon, label, width, height, x, y, source);
+  int get hashCode => Object.hash(
+      type, id, icon, label, width, height, x, y, source, staticIcon, animationMode);
 }
 
 @immutable
@@ -585,6 +660,8 @@ final class StatTile extends Tile {
     super.x,
     super.y,
     required this.source,
+    super.staticIcon,
+    super.animationMode,
   });
 
   @override
@@ -601,6 +678,9 @@ final class StatTile extends Tile {
         if (x != null) 'x': x,
         if (y != null) 'y': y,
         'source': source.toJson(),
+        if (staticIcon != null && staticIcon!.isNotEmpty) 'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
       };
 
   StatTile copyWith({
@@ -613,6 +693,9 @@ final class StatTile extends Tile {
     int? y,
     bool clearCoords = false,
     StatSource? source,
+    String? staticIcon,
+    String? animationMode,
+    bool clearAnimation = false,
   }) =>
       StatTile(
         id: id ?? this.id,
@@ -623,6 +706,9 @@ final class StatTile extends Tile {
         x: clearCoords ? null : (x ?? this.x),
         y: clearCoords ? null : (y ?? this.y),
         source: source ?? this.source,
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
       );
 
   @override
@@ -635,11 +721,13 @@ final class StatTile extends Tile {
       other.height == height &&
       other.x == x &&
       other.y == y &&
-      other.source == source;
+      other.source == source &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
 
   @override
-  int get hashCode =>
-      Object.hash(type, id, icon, label, width, height, x, y, source);
+  int get hashCode => Object.hash(
+      type, id, icon, label, width, height, x, y, source, staticIcon, animationMode);
 }
 
 final class SoundTile extends Tile {
@@ -654,6 +742,8 @@ final class SoundTile extends Tile {
     super.height = 1,
     super.x,
     super.y,
+    super.staticIcon,
+    super.animationMode,
   });
 
   @override
@@ -670,6 +760,9 @@ final class SoundTile extends Tile {
         if (height != 1) 'height': height,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
+        if (staticIcon != null && staticIcon!.isNotEmpty) 'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
       };
 
   SoundTile copyWith({
@@ -681,7 +774,10 @@ final class SoundTile extends Tile {
     int? height,
     int? x,
     int? y,
+    String? staticIcon,
+    String? animationMode,
     bool clearCoords = false,
+    bool clearAnimation = false,
   }) =>
       SoundTile(
         id: id ?? this.id,
@@ -692,6 +788,9 @@ final class SoundTile extends Tile {
         height: height ?? this.height,
         x: clearCoords ? null : (x ?? this.x),
         y: clearCoords ? null : (y ?? this.y),
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
       );
 
   @override
@@ -704,11 +803,13 @@ final class SoundTile extends Tile {
       other.width == width &&
       other.height == height &&
       other.x == x &&
-      other.y == y;
+      other.y == y &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
 
   @override
-  int get hashCode =>
-      Object.hash(type, id, icon, label, soundId, width, height, x, y);
+  int get hashCode => Object.hash(
+      type, id, icon, label, soundId, width, height, x, y, staticIcon, animationMode);
 }
 
 @immutable
@@ -769,6 +870,8 @@ final class ToggleTile extends Tile {
     super.height = 1,
     super.x,
     super.y,
+    super.staticIcon,
+    super.animationMode,
   });
 
   @override
@@ -791,6 +894,9 @@ final class ToggleTile extends Tile {
         if (height != 1) 'height': height,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
+        if (staticIcon != null && staticIcon!.isNotEmpty) 'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
       };
 
   ToggleTile copyWith({
@@ -802,7 +908,10 @@ final class ToggleTile extends Tile {
     int? height,
     int? x,
     int? y,
+    String? staticIcon,
+    String? animationMode,
     bool clearCoords = false,
+    bool clearAnimation = false,
   }) =>
       ToggleTile(
         id: id ?? this.id,
@@ -813,6 +922,9 @@ final class ToggleTile extends Tile {
         height: height ?? this.height,
         x: clearCoords ? null : (x ?? this.x),
         y: clearCoords ? null : (y ?? this.y),
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
       );
 
   @override
@@ -825,10 +937,12 @@ final class ToggleTile extends Tile {
       other.width == width &&
       other.height == height &&
       other.x == x &&
-      other.y == y;
+      other.y == y &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
 
   @override
   int get hashCode => Object.hash(
-      type, id, stateA, stateB, initialState, width, height, x, y);
+      type, id, stateA, stateB, initialState, width, height, x, y, staticIcon, animationMode);
 }
 

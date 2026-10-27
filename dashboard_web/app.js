@@ -473,7 +473,7 @@ const UI = {
     return ICON_MAP[raw] || raw || '⚡';
   },
 
-  renderTileIconHtml(item, customClass) {
+  renderTileIconHtml(item, customClass, isActive) {
     const raw = (item && item.icon) ? String(item.icon).trim() : '';
     const iconClass = customClass || 'shortcut-btn__icon';
     if (!raw) {
@@ -482,10 +482,42 @@ const UI = {
     if (raw.indexOf('data:image/') === 0 || raw.indexOf('http://') === 0 || raw.indexOf('https://') === 0) {
       var is2x2 = Boolean(item && (item.width === 2 || item.w === 2) && (item.height === 2 || item.h === 2));
       var dim = is2x2 ? 68 : 44;
-      return '<img class="shortcut-btn__img" src="' + raw + '" alt="" width="' + dim + '" height="' + dim + '" style="width:' + dim + 'px;height:' + dim + 'px;max-width:' + dim + 'px;max-height:' + dim + 'px;min-width:' + dim + 'px;min-height:' + dim + 'px;display:block;flex-shrink:0;" />';
+      var animMode = (item && item.animation_mode) ? item.animation_mode : 'always';
+      var staticIcon = (item && item.static_icon) ? String(item.static_icon).trim() : '';
+      var active = Boolean(isActive || (item && item._isActive));
+      var initialSrc = raw;
+      if (animMode === 'on_tap') {
+        initialSrc = staticIcon || raw;
+      } else if (animMode === 'while_playing') {
+        initialSrc = active ? raw : (staticIcon || raw);
+      }
+      var staticAttr = staticIcon ? ' data-static-src="' + staticIcon + '"' : '';
+      return '<img class="shortcut-btn__img" src="' + initialSrc + '" alt="" width="' + dim + '" height="' + dim + '"' +
+        ' data-gif-src="' + raw + '"' +
+        staticAttr +
+        ' data-gif-mode="' + animMode + '"' +
+        ' style="width:' + dim + 'px;height:' + dim + 'px;max-width:' + dim + 'px;max-height:' + dim + 'px;min-width:' + dim + 'px;min-height:' + dim + 'px;display:block;flex-shrink:0;" />';
     }
     const mapped = ICON_MAP[raw] || raw;
     return '<span class="' + iconClass + '">' + UI.escapeHtml(mapped) + '</span>';
+  },
+
+  triggerTapAnimation(container) {
+    if (!container) return;
+    var img = container.querySelector('img[data-gif-mode="on_tap"]');
+    if (!img) return;
+    var gifSrc = img.getAttribute('data-gif-src');
+    var staticSrc = img.getAttribute('data-static-src') || gifSrc;
+    if (!gifSrc) return;
+
+    if (img._gifTimer) {
+      clearTimeout(img._gifTimer);
+    }
+    img.src = gifSrc;
+    img._gifTimer = setTimeout(function() {
+      img.src = staticSrc;
+      img._gifTimer = null;
+    }, 1200);
   },
 
   applyTheme(theme) {
@@ -566,7 +598,11 @@ const UI = {
     const existingIcon = btn.querySelector('.shortcut-btn__icon');
     const iconTarget = existingImg || existingIcon;
     if (iconTarget) {
-      iconTarget.outerHTML = UI.renderTileIconHtml({ icon: icon });
+      iconTarget.outerHTML = UI.renderTileIconHtml({
+        icon: icon,
+        static_icon: item.static_icon,
+        animation_mode: item.animation_mode
+      });
     }
     const labelEl = btn.querySelector('.shortcut-btn__label');
     if (labelEl) labelEl.textContent = label || item.id;
@@ -664,6 +700,15 @@ const UI = {
       const currentlyPlaying = btn.classList.contains('shortcut-btn--playing');
       if (currentlyPlaying !== isThisPlaying) {
         btn.classList.toggle('shortcut-btn--playing', isThisPlaying);
+      }
+      var img = btn.querySelector('img[data-gif-mode="while_playing"]');
+      if (img) {
+        var gifSrc = img.getAttribute('data-gif-src');
+        var staticSrc = img.getAttribute('data-static-src') || gifSrc;
+        var targetSrc = isThisPlaying ? gifSrc : staticSrc;
+        if (img.getAttribute('src') !== targetSrc) {
+          img.src = targetSrc;
+        }
       }
     });
   },
@@ -1075,11 +1120,12 @@ const UI = {
         btn.disabled = false;
 
         btn.innerHTML = 
-          UI.renderTileIconHtml(item) +
+          UI.renderTileIconHtml(item, null, isThisPlaying) +
           '<span>' + UI.escapeHtml(item.label || 'Som') + '</span>' +
           '<span class="sound-wave-badge" aria-hidden="true"><span></span><span></span><span></span></span>';
 
         btn.addEventListener('click', () => {
+          UI.triggerTapAnimation(btn);
           btn.classList.add('shortcut-btn--pulse');
           setTimeout(function() {
             btn.classList.remove('shortcut-btn--pulse');
@@ -1116,11 +1162,12 @@ const UI = {
         btn.dataset.toggleState = isB ? 'b' : 'a';
 
         btn.innerHTML = 
-          UI.renderTileIconHtml({ icon: icon }) +
+          UI.renderTileIconHtml({ icon: icon, static_icon: item.static_icon, animation_mode: item.animation_mode }) +
           '<span class="shortcut-btn__label">' + UI.escapeHtml(label || item.id) + '</span>' +
           '<span class="toggle-state-badge" aria-hidden="true">' + (isB ? 'B' : 'A') + '</span>';
 
         btn.addEventListener('click', function() {
+          UI.triggerTapAnimation(btn);
           const device = state.devices[deviceId];
           if (!device) return;
 
@@ -1149,6 +1196,7 @@ const UI = {
         if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
 
         btn.addEventListener('click', () => {
+          UI.triggerTapAnimation(btn);
           if (item.type === 'folder' && item.target) {
             state.currentPageCache[deviceId] = item.target;
             if (UI.isSearchActive()) {

@@ -99,7 +99,13 @@ class _TileCardState extends State<TileCard>
   }
 
   Widget _buildTileIcon(String? iconValue, {double size = 32}) {
-    return TileIconView(icon: iconValue, size: size, color: Colors.white);
+    return TileIconView(
+      icon: iconValue,
+      staticIcon: widget.tile.staticIcon,
+      animationMode: widget.tile.animationMode,
+      size: size,
+      color: Colors.white,
+    );
   }
 
   Widget _buildContent(Color accentColor) {

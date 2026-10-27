@@ -2,20 +2,38 @@ import 'package:flutter/material.dart';
 import 'helpers/image_icon_helper.dart';
 import 'widgets/tile_icon_view.dart';
 
-Future<String?> showEmojiPicker(
+class EmojiPickerResult {
+  final String icon;
+  final String? staticIcon;
+
+  const EmojiPickerResult({
+    required this.icon,
+    this.staticIcon,
+  });
+}
+
+Future<EmojiPickerResult?> showEmojiPicker(
   BuildContext context, {
   required String current,
+  String? currentStatic,
 }) {
-  return showDialog<String>(
+  return showDialog<EmojiPickerResult>(
     context: context,
-    builder: (context) => _EmojiPickerDialog(initialEmoji: current),
+    builder: (context) => _EmojiPickerDialog(
+      initialEmoji: current,
+      initialStatic: currentStatic,
+    ),
   );
 }
 
 class _EmojiPickerDialog extends StatefulWidget {
   final String initialEmoji;
+  final String? initialStatic;
 
-  const _EmojiPickerDialog({required this.initialEmoji});
+  const _EmojiPickerDialog({
+    required this.initialEmoji,
+    this.initialStatic,
+  });
 
   @override
   State<_EmojiPickerDialog> createState() => _EmojiPickerDialogState();
@@ -23,6 +41,7 @@ class _EmojiPickerDialog extends StatefulWidget {
 
 class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
   late String _selectedEmoji;
+  String? _selectedStatic;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
@@ -30,6 +49,7 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
   void initState() {
     super.initState();
     _selectedEmoji = widget.initialEmoji;
+    _selectedStatic = widget.initialStatic;
   }
 
   @override
@@ -40,10 +60,11 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
 
   Future<void> _handlePickImage() async {
     try {
-      final base64Image = await ImageIconHelper.pickAndProcessImage(targetSize: 96);
-      if (base64Image != null && mounted) {
+      final pickResult = await ImageIconHelper.pickAndProcessImage(targetSize: 96);
+      if (pickResult != null && mounted) {
         setState(() {
-          _selectedEmoji = base64Image;
+          _selectedEmoji = pickResult.dataUri;
+          _selectedStatic = pickResult.staticDataUri;
         });
       }
     } catch (e) {
@@ -105,10 +126,12 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
                   children: [
                     TileIconView(icon: _selectedEmoji, size: 36),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Imagem personalizada selecionada',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        ImageIconHelper.isGif(_selectedEmoji)
+                            ? 'GIF animado selecionado'
+                            : 'Imagem personalizada selecionada',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
                     IconButton(
@@ -117,6 +140,7 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
                       onPressed: () {
                         setState(() {
                           _selectedEmoji = '⚡';
+                          _selectedStatic = null;
                         });
                       },
                     ),
@@ -163,6 +187,7 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
                 onTap: () {
                   setState(() {
                     _selectedEmoji = query;
+                    _selectedStatic = null;
                   });
                 },
                 child: Container(
@@ -255,7 +280,13 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
-                      onPressed: () => Navigator.pop(context, _selectedEmoji),
+                      onPressed: () => Navigator.pop(
+                        context,
+                        EmojiPickerResult(
+                          icon: _selectedEmoji,
+                          staticIcon: _selectedStatic,
+                        ),
+                      ),
                       child: const Text('Selecionar'),
                     ),
                   ],
@@ -298,6 +329,7 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
       onTap: () {
         setState(() {
           _selectedEmoji = iconValue;
+          _selectedStatic = null;
         });
       },
       child: Container(

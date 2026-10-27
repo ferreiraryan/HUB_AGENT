@@ -14,6 +14,7 @@ import 'key_combo_helper.dart';
 import 'process_discovery.dart';
 import 'sound_library_dialog.dart';
 import 'widgets/tile_icon_view.dart';
+import 'helpers/image_icon_helper.dart';
 
 class InspectorPanel extends ConsumerWidget {
   const InspectorPanel({super.key});
@@ -400,14 +401,38 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
     }
   }
 
-  Tile _updateTile({String? id, String? icon, String? label}) {
+  Tile _updateTile({
+    String? id,
+    String? icon,
+    String? staticIcon,
+    String? animationMode,
+    String? label,
+  }) {
     final current = widget.tile;
     if (current is ShortcutTile) {
-      return current.copyWith(id: id, icon: icon, label: label);
+      return current.copyWith(
+        id: id,
+        icon: icon,
+        staticIcon: staticIcon,
+        animationMode: animationMode,
+        label: label,
+      );
     } else if (current is SliderTile) {
-      return current.copyWith(id: id, icon: icon, label: label);
+      return current.copyWith(
+        id: id,
+        icon: icon,
+        staticIcon: staticIcon,
+        animationMode: animationMode,
+        label: label,
+      );
     } else if (current is StatTile) {
-      return current.copyWith(id: id, icon: icon, label: label);
+      return current.copyWith(
+        id: id,
+        icon: icon,
+        staticIcon: staticIcon,
+        animationMode: animationMode,
+        label: label,
+      );
     }
     return current;
   }
@@ -433,9 +458,20 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
         const SizedBox(height: 16),
         _IconField(
           icon: widget.tile.icon,
-          onPicked: (newIcon) {
+          staticIcon: widget.tile.staticIcon,
+          animationMode: widget.tile.animationMode,
+          isSoundOrToggle: false,
+          onPicked: (newIcon, newStatic) {
             notifier.upsertTile(
-                widget.state.currentPage, _updateTile(icon: newIcon));
+              widget.state.currentPage,
+              _updateTile(icon: newIcon, staticIcon: newStatic),
+            );
+          },
+          onAnimationModeChanged: (mode) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              _updateTile(animationMode: mode),
+            );
           },
         ),
         if (!isShortcut || _behavior != _ShortcutBehavior.builtin) ...[
@@ -856,14 +892,21 @@ class _FolderInspector extends ConsumerWidget {
         const SizedBox(height: 16),
         _IconField(
           icon: tile.icon,
-          onPicked: (newIcon) {
+          staticIcon: tile.staticIcon,
+          animationMode: tile.animationMode,
+          onPicked: (newIcon, newStatic) {
             notifier.upsertTile(
               state.currentPage,
-              FolderTile(
-                  id: tile.id,
-                  icon: newIcon,
-                  label: tile.label,
-                  target: tile.target),
+              tile.copyWith(
+                icon: newIcon,
+                staticIcon: newStatic,
+              ),
+            );
+          },
+          onAnimationModeChanged: (mode) {
+            notifier.upsertTile(
+              state.currentPage,
+              tile.copyWith(animationMode: mode),
             );
           },
         ),
@@ -947,10 +990,21 @@ class _BackInspector extends ConsumerWidget {
         const SizedBox(height: 16),
         _IconField(
           icon: tile.icon,
-          onPicked: (newIcon) {
+          staticIcon: tile.staticIcon,
+          animationMode: tile.animationMode,
+          onPicked: (newIcon, newStatic) {
             notifier.upsertTile(
               state.currentPage,
-              BackTile(id: tile.id, icon: newIcon, label: tile.label),
+              tile.copyWith(
+                icon: newIcon,
+                staticIcon: newStatic,
+              ),
+            );
+          },
+          onAnimationModeChanged: (mode) {
+            notifier.upsertTile(
+              state.currentPage,
+              tile.copyWith(animationMode: mode),
             );
           },
         ),
@@ -1164,33 +1218,96 @@ class _IdFieldState extends State<_IdField> {
 
 class _IconField extends StatelessWidget {
   final String icon;
-  final ValueChanged<String>? onPicked;
+  final String? staticIcon;
+  final String? animationMode;
+  final bool isSoundOrToggle;
+  final void Function(String icon, String? staticIcon)? onPicked;
+  final ValueChanged<String>? onAnimationModeChanged;
 
-  const _IconField({required this.icon, this.onPicked});
+  const _IconField({
+    required this.icon,
+    this.staticIcon,
+    this.animationMode,
+    this.isSoundOrToggle = false,
+    this.onPicked,
+    this.onAnimationModeChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Text('Ícone', style: TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(width: 16),
-        InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () async {
-            if (onPicked == null) return;
-            final picked = await showEmojiPicker(context, current: icon);
-            if (picked != null && picked != icon) onPicked!(picked);
-          },
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white24),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: TileIconView(icon: icon, size: 30),
+    final isGif = ImageIconHelper.isGif(icon);
+    final currentMode = animationMode ?? 'always';
 
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('Ícone', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(width: 16),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () async {
+                if (onPicked == null) return;
+                final picked = await showEmojiPicker(
+                  context,
+                  current: icon,
+                  currentStatic: staticIcon,
+                );
+                if (picked != null) {
+                  onPicked!(picked.icon, picked.staticIcon);
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white24),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: TileIconView(
+                  icon: icon,
+                  staticIcon: staticIcon,
+                  animationMode: currentMode,
+                  size: 30,
+                ),
+              ),
+            ),
+          ],
         ),
+        if (isGif && onAnimationModeChanged != null) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: (currentMode == 'while_playing' && !isSoundOrToggle)
+                ? 'always'
+                : currentMode,
+            decoration: const InputDecoration(
+              labelText: 'Comportamento da Animação GIF',
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            items: [
+              const DropdownMenuItem(
+                value: 'always',
+                child: Text('Rodando sempre (Loop contínuo)'),
+              ),
+              const DropdownMenuItem(
+                value: 'on_tap',
+                child: Text('Ao tocar no botão (Feedback)'),
+              ),
+              if (isSoundOrToggle)
+                const DropdownMenuItem(
+                  value: 'while_playing',
+                  child: Text('Enquanto estiver tocando/ativo'),
+                ),
+            ],
+            onChanged: (val) {
+              if (val != null) {
+                onAnimationModeChanged!(val);
+              }
+            },
+          ),
+        ],
       ],
     );
   }
@@ -2427,10 +2544,22 @@ class _SoundInspectorState extends ConsumerState<_SoundInspector> {
         const SizedBox(height: 16),
         _IconField(
           icon: widget.tile.icon,
-          onPicked: (newIcon) {
+          staticIcon: widget.tile.staticIcon,
+          animationMode: widget.tile.animationMode,
+          isSoundOrToggle: true,
+          onPicked: (newIcon, newStatic) {
             notifier.upsertTile(
               widget.state.currentPage,
-              widget.tile.copyWith(icon: newIcon),
+              widget.tile.copyWith(
+                icon: newIcon,
+                staticIcon: newStatic,
+              ),
+            );
+          },
+          onAnimationModeChanged: (mode) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(animationMode: mode),
             );
           },
         ),
@@ -2665,12 +2794,16 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
         const SizedBox(height: 16),
         _IconField(
           icon: currentStateConfig.icon,
-          onPicked: (newIcon) {
+          staticIcon: widget.tile.staticIcon,
+          animationMode: widget.tile.animationMode,
+          isSoundOrToggle: true,
+          onPicked: (newIcon, newStatic) {
             if (isStateA) {
               notifier.upsertTile(
                 widget.state.currentPage,
                 widget.tile.copyWith(
                   stateA: widget.tile.stateA.copyWith(icon: newIcon),
+                  staticIcon: newStatic,
                 ),
               );
             } else {
@@ -2678,9 +2811,16 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
                 widget.state.currentPage,
                 widget.tile.copyWith(
                   stateB: widget.tile.stateB.copyWith(icon: newIcon),
+                  staticIcon: newStatic,
                 ),
               );
             }
+          },
+          onAnimationModeChanged: (mode) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(animationMode: mode),
+            );
           },
         ),
         const SizedBox(height: 12),

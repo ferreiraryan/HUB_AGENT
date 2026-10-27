@@ -4,24 +4,34 @@ import '../helpers/image_icon_helper.dart';
 
 /// Widget universal para renderização de ícone de um Tile no CMS Desktop.
 /// Suporta:
-/// 1. Data URI de imagem Base64 (`data:image/png;base64,...`)
+/// 1. Imagens e GIFs em Data URI Base64 (`data:image/...`)
 /// 2. Nomes de ícones Material Symbols mapeados em [iconMap]
 /// 3. Emojis Unicode e texto arbitrário
+/// 4. Alternância entre staticIcon e animação conforme animationMode
 class TileIconView extends StatelessWidget {
   final String? icon;
+  final String? staticIcon;
+  final String? animationMode;
   final double size;
   final Color? color;
 
   const TileIconView({
     super.key,
     required this.icon,
+    this.staticIcon,
+    this.animationMode,
     this.size = 32,
     this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final raw = icon?.trim();
+    // Se o modo for 'on_tap' e existir staticIcon, exibe o frame estático no canvas
+    final effective = (animationMode == 'on_tap' && staticIcon != null && staticIcon!.isNotEmpty)
+        ? staticIcon
+        : icon;
+    final raw = effective?.trim();
+
     if (raw == null || raw.isEmpty) {
       return Icon(
         Icons.widgets,
@@ -30,7 +40,7 @@ class TileIconView extends StatelessWidget {
       );
     }
 
-    // 1. Imagem personalizada Base64
+    // 1. Imagem personalizada ou GIF Base64
     if (ImageIconHelper.isImageDataUri(raw)) {
       final bytes = ImageIconHelper.extractBytes(raw);
       if (bytes != null) {
@@ -73,4 +83,3 @@ class TileIconView extends StatelessWidget {
     );
   }
 }
-
