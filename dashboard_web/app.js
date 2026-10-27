@@ -480,7 +480,9 @@ const UI = {
       return '<span class="' + iconClass + '">⚡</span>';
     }
     if (raw.indexOf('data:image/') === 0 || raw.indexOf('http://') === 0 || raw.indexOf('https://') === 0) {
-      return '<img class="shortcut-btn__img" src="' + raw + '" alt="" />';
+      var is2x2 = Boolean(item && (item.width === 2 || item.w === 2) && (item.height === 2 || item.h === 2));
+      var dim = is2x2 ? 68 : 44;
+      return '<img class="shortcut-btn__img" src="' + raw + '" alt="" width="' + dim + '" height="' + dim + '" style="width:' + dim + 'px;height:' + dim + 'px;max-width:' + dim + 'px;max-height:' + dim + 'px;min-width:' + dim + 'px;min-height:' + dim + 'px;display:block;flex-shrink:0;" />';
     }
     const mapped = ICON_MAP[raw] || raw;
     return '<span class="' + iconClass + '">' + UI.escapeHtml(mapped) + '</span>';
