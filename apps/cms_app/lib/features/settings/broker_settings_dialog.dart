@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers.dart';
 import '../../system/agent_config.dart';
 import '../../system/autostart_controller.dart';
+import '../../system/voicemeeter_service.dart';
 
 Future<void> showBrokerSettingsDialog(BuildContext context, WidgetRef ref) {
   return showDialog(
@@ -26,9 +29,13 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   late final TextEditingController _hostController;
   late final TextEditingController _portController;
   late final TextEditingController _deviceIdController;
+  late final TextEditingController _voiceMeeterPathController;
+  late final TextEditingController _voiceMeeterConfigXmlController;
 
   bool? _autostartEnabled;
   bool _mirrorNotifications = true;
+  bool _autoStartVoiceMeeter = false;
+  bool _isVoiceMeeterRunning = false;
   List<AudioOutputDevice> _devices = [];
   String? _selectedSoundDevice;
 
@@ -41,14 +48,29 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
     _deviceIdController = TextEditingController(text: config.deviceId);
     _selectedSoundDevice = config.soundOutputDevice;
     _mirrorNotifications = config.mirrorNotifications;
+    _autoStartVoiceMeeter = config.autoStartVoiceMeeter;
+    _voiceMeeterPathController =
+        TextEditingController(text: config.voiceMeeterPath ?? '');
+    _voiceMeeterConfigXmlController =
+        TextEditingController(text: config.voiceMeeterConfigXml ?? '');
 
     _loadAutostart();
     _loadDevices();
+    _loadVoiceMeeter();
+  }
+
+  Future<void> _loadVoiceMeeter() async {
+    if (!Platform.isWindows) return;
+    final running = await VoiceMeeterService.isRunning();
+    if (mounted) {
+      setState(() => _isVoiceMeeterRunning = running);
+    }
   }
 
   Future<void> _loadDevices() async {
     final runtime = ref.read(agentRuntimeProvider);
-    final list = await (runtime.sound?.listDevices() ?? Future.value(<AudioOutputDevice>[]));
+    final list = await (runtime.sound?.listDevices() ??
+        Future.value(<AudioOutputDevice>[]));
     if (mounted) {
       setState(() => _devices = list);
     }
@@ -94,17 +116,27 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
     _hostController.dispose();
     _portController.dispose();
     _deviceIdController.dispose();
+    _voiceMeeterPathController.dispose();
+    _voiceMeeterConfigXmlController.dispose();
     super.dispose();
   }
 
   Future<void> _save({required bool restart}) async {
-    // AgentConfig é imutável: criar um novo com os valores editados.
+    final config = ref.read(agentConfigProvider);
     final updated = AgentConfig(
       host: _hostController.text.trim(),
       port: int.tryParse(_portController.text.trim()) ?? 1883,
       deviceId: _deviceIdController.text.trim(),
       soundOutputDevice: _selectedSoundDevice,
       mirrorNotifications: _mirrorNotifications,
+      soundVolume: config.soundVolume,
+      autoStartVoiceMeeter: _autoStartVoiceMeeter,
+      voiceMeeterPath: _voiceMeeterPathController.text.trim().isEmpty
+          ? null
+          : _voiceMeeterPathController.text.trim(),
+      voiceMeeterConfigXml: _voiceMeeterConfigXmlController.text.trim().isEmpty
+          ? null
+          : _voiceMeeterConfigXmlController.text.trim(),
     );
 
     await updated.save();
@@ -164,7 +196,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
             const SizedBox(height: 8),
             SwitchListTile(
               title: const Text('Espelhar notificações do PC'),
-              subtitle: const Text('Envia notificações do sistema (D-Bus) para o tablet via MQTT'),
+              subtitle: const Text('Envia notificações do sistema para o tablet via MQTT'),
               value: _mirrorNotifications,
               onChanged: (val) => setState(() => _mirrorNotifications = val),
               contentPadding: EdgeInsets.zero,
@@ -178,7 +210,9 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
             DropdownButtonFormField<String>(
               isExpanded: true,
               initialValue: (_selectedSoundDevice != null &&
-                      _devices.any((d) => d.id == _selectedSoundDevice || d.name == _selectedSoundDevice))
+                      _devices.any((d) =>
+                          d.id == _selectedSoundDevice ||
+                          d.name == _selectedSoundDevice))
                   ? _selectedSoundDevice
                   : null,
               decoration: const InputDecoration(
@@ -204,6 +238,87 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                 setState(() => _selectedSoundDevice = val);
               },
             ),
+            if (Platform.isWindows) ...[
+              const Divider(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'VoiceMeeter',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _isVoiceMeeterRunning ? Colors.green : Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isVoiceMeeterRunning ? 'Executando' : 'Parado',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _isVoiceMeeterRunning
+                              ? Colors.green
+                              : Colors.white54,
+                        ),
+                      ),
+                      if (!_isVoiceMeeterRunning) ...[
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            final ok = await VoiceMeeterService.launch(
+                              customPath:
+                                  _voiceMeeterPathController.text.trim().isEmpty
+                                      ? null
+                                      : _voiceMeeterPathController.text.trim(),
+                              configXml: _voiceMeeterConfigXmlController.text
+                                      .trim()
+                                      .isEmpty
+                                  ? null
+                                  : _voiceMeeterConfigXmlController.text.trim(),
+                            );
+                            if (mounted) {
+                              _loadVoiceMeeter();
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(ok
+                                      ? 'VoiceMeeter iniciado!'
+                                      : 'Falha ao iniciar VoiceMeeter.'),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text('Iniciar Agora'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Iniciar VoiceMeeter com o sistema'),
+                subtitle: const Text(
+                    'Abre o VoiceMeeter minimizado na bandeja ao ligar o PC'),
+                value: _autoStartVoiceMeeter,
+                onChanged: (val) => setState(() => _autoStartVoiceMeeter = val),
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _voiceMeeterConfigXmlController,
+                decoration: const InputDecoration(
+                  labelText: 'Preset XML do VoiceMeeter (opcional)',
+                  hintText: r'C:\presets\meu_voicemeeter.xml',
+                ),
+              ),
+            ],
           ],
         ),
       ),

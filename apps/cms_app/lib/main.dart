@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
@@ -11,6 +12,7 @@ import 'features/editor/remote_search_spotlight.dart';
 import 'providers.dart';
 import 'system/agent_config.dart';
 import 'system/tray_controller.dart';
+import 'system/voicemeeter_service.dart';
 import 'system/window_controller.dart';
 
 // ignore: unused_element
@@ -48,6 +50,13 @@ void main(List<String> args) async {
   final soundController = SystemSoundController(
     soundsDir: soundsDir,
     defaultTargetDeviceProvider: () => config.soundOutputDevice,
+    initialVolume: config.soundVolume,
+    onVolumeChanged: (vol) async {
+      try {
+        final currentCfg = await AgentConfig.load();
+        await currentCfg.copyWith(soundVolume: vol).save();
+      } catch (_) {}
+    },
   );
 
   final notifications = config.mirrorNotifications
@@ -62,6 +71,10 @@ void main(List<String> args) async {
   );
 
   await runtime.start(fallbackDeviceName: Platform.localHostname);
+
+  if (Platform.isWindows && config.autoStartVoiceMeeter) {
+    unawaited(VoiceMeeterService.launchIfEnabled(config));
+  }
 
   await WindowController.instance.init(hidden: isHidden);
 

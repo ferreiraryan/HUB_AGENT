@@ -9,6 +9,10 @@ class AgentConfig {
   final String deviceId;
   final String? soundOutputDevice;
   final bool mirrorNotifications;
+  final int soundVolume;
+  final bool autoStartVoiceMeeter;
+  final String? voiceMeeterPath;
+  final String? voiceMeeterConfigXml;
 
   const AgentConfig({
     required this.host,
@@ -16,6 +20,10 @@ class AgentConfig {
     required this.deviceId,
     this.soundOutputDevice,
     this.mirrorNotifications = true,
+    this.soundVolume = 100,
+    this.autoStartVoiceMeeter = false,
+    this.voiceMeeterPath,
+    this.voiceMeeterConfigXml,
   });
 
   factory AgentConfig.fromJson(Map<String, dynamic> json) => AgentConfig(
@@ -24,6 +32,10 @@ class AgentConfig {
         deviceId: json['deviceId'] as String? ?? Platform.localHostname,
         soundOutputDevice: json['soundOutputDevice'] as String?,
         mirrorNotifications: json['mirrorNotifications'] as bool? ?? true,
+        soundVolume: (json['soundVolume'] as num?)?.toInt() ?? 100,
+        autoStartVoiceMeeter: json['autoStartVoiceMeeter'] as bool? ?? false,
+        voiceMeeterPath: json['voiceMeeterPath'] as String?,
+        voiceMeeterConfigXml: json['voiceMeeterConfigXml'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -31,7 +43,12 @@ class AgentConfig {
         'port': port,
         'deviceId': deviceId,
         'mirrorNotifications': mirrorNotifications,
+        'soundVolume': soundVolume,
+        'autoStartVoiceMeeter': autoStartVoiceMeeter,
         if (soundOutputDevice != null) 'soundOutputDevice': soundOutputDevice,
+        if (voiceMeeterPath != null) 'voiceMeeterPath': voiceMeeterPath,
+        if (voiceMeeterConfigXml != null)
+          'voiceMeeterConfigXml': voiceMeeterConfigXml,
       };
 
   AgentConfig copyWith({
@@ -40,16 +57,30 @@ class AgentConfig {
     String? deviceId,
     String? soundOutputDevice,
     bool? mirrorNotifications,
+    int? soundVolume,
+    bool? autoStartVoiceMeeter,
+    String? voiceMeeterPath,
+    String? voiceMeeterConfigXml,
     bool clearSoundOutputDevice = false,
+    bool clearVoiceMeeterPath = false,
+    bool clearVoiceMeeterConfigXml = false,
   }) =>
       AgentConfig(
         host: host ?? this.host,
         port: port ?? this.port,
         deviceId: deviceId ?? this.deviceId,
         mirrorNotifications: mirrorNotifications ?? this.mirrorNotifications,
+        soundVolume: soundVolume ?? this.soundVolume,
+        autoStartVoiceMeeter: autoStartVoiceMeeter ?? this.autoStartVoiceMeeter,
         soundOutputDevice: clearSoundOutputDevice
             ? null
             : (soundOutputDevice ?? this.soundOutputDevice),
+        voiceMeeterPath: clearVoiceMeeterPath
+            ? null
+            : (voiceMeeterPath ?? this.voiceMeeterPath),
+        voiceMeeterConfigXml: clearVoiceMeeterConfigXml
+            ? null
+            : (voiceMeeterConfigXml ?? this.voiceMeeterConfigXml),
       );
 
   static Future<File> _getFile() async {
@@ -75,6 +106,8 @@ class AgentConfig {
       port: 1883,
       deviceId: Platform.localHostname,
       mirrorNotifications: true,
+      soundVolume: 100,
+      autoStartVoiceMeeter: false,
     );
   }
 

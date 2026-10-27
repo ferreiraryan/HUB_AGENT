@@ -22,25 +22,35 @@ class SystemSoundController implements SoundController {
   final Directory soundsDir;
   final String? Function()? defaultTargetDeviceProvider;
   final String? customHelperPath;
+  final void Function(int volume)? onVolumeChanged;
 
   final _stateController = StreamController<SoundPlaybackState>.broadcast();
   SoundPlaybackState _current = SoundPlaybackState.idle;
   Process? _activeProcess;
   String? _activeSoundId;
-  int _volume = 100;
+  int _volume;
+  String? _cachedHelperPath;
+  final Map<String, String> _soundFileCache = {};
 
   SystemSoundController({
     required this.soundsDir,
     this.defaultTargetDeviceProvider,
     this.customHelperPath,
-  });
+    this.onVolumeChanged,
+    int initialVolume = 100,
+  }) : _volume = initialVolume.clamp(0, 100);
 
   @override
   int get volume => _volume;
 
   @override
   Future<void> setVolume(int value) async {
-    _volume = value.clamp(0, 100);
+    final clamped = value.clamp(0, 100);
+    final changed = (_volume != clamped);
+    _volume = clamped;
+    if (changed) {
+      onVolumeChanged?.call(_volume);
+    }
     if (Platform.isWindows && _activeProcess != null) {
       final helper = _resolveHelperPath();
       if (helper != null) {
@@ -55,6 +65,10 @@ class SystemSoundController implements SoundController {
     }
   }
 
+  void invalidateSoundCache() {
+    _soundFileCache.clear();
+  }
+
   @override
   Stream<SoundPlaybackState> get stateChanges => _stateController.stream;
 
@@ -64,11 +78,17 @@ class SystemSoundController implements SoundController {
   String? _findSoundFile(String soundId) {
     if (!soundsDir.existsSync()) return null;
 
+    final cached = _soundFileCache[soundId];
+    if (cached != null && File(cached).existsSync()) {
+      return cached;
+    }
+
     // Tenta primeiro acesso direto pelas extensões mais comuns sem escanear a pasta
     const extensions = ['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'];
     for (final ext in extensions) {
       final direct = File('${soundsDir.path}/$soundId$ext');
       if (direct.existsSync()) {
+        _soundFileCache[soundId] = direct.path;
         return direct.path;
       }
     }
@@ -82,6 +102,7 @@ class SystemSoundController implements SoundController {
           final dotIndex = filename.lastIndexOf('.');
           final base = (dotIndex != -1) ? filename.substring(0, dotIndex) : filename;
           if (base == soundId) {
+            _soundFileCache[soundId] = entity.path;
             return entity.path;
           }
         }
@@ -91,8 +112,12 @@ class SystemSoundController implements SoundController {
   }
 
   String? _resolveHelperPath() {
+    if (_cachedHelperPath != null && File(_cachedHelperPath!).existsSync()) {
+      return _cachedHelperPath;
+    }
     if (customHelperPath != null && File(customHelperPath!).existsSync()) {
-      return customHelperPath;
+      _cachedHelperPath = customHelperPath;
+      return _cachedHelperPath;
     }
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final candidates = [
@@ -109,7 +134,10 @@ class SystemSoundController implements SoundController {
       '../../apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
     ];
     for (final c in candidates) {
-      if (File(c).existsSync()) return c;
+      if (File(c).existsSync()) {
+        _cachedHelperPath = c;
+        return c;
+      }
     }
     return null;
   }

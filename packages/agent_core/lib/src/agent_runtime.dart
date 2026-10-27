@@ -109,11 +109,16 @@ class AgentRuntime {
       ..add(repository.changes.listen((l) {
         mqtt.publishLayout(l);
         _publishBrightness();
+        _publishSoundVolume();
+        _publishAppSliderStates(audio.apps);
         _publishToggleStates();
       }))
       ..add(mqtt.commands.listen(_onCommand))
       ..add(audio.masterChanges.listen(_onLocalVolume))
-      ..add(audio.appsChanges.listen(mqtt.publishApps))
+      ..add(audio.appsChanges.listen((apps) {
+        mqtt.publishApps(apps);
+        _publishAppSliderStates(apps);
+      }))
       ..add(brightness.changes.listen((_) => _publishBrightness()))
       ..add(media.changes.listen(mqtt.publishMedia));
 
@@ -164,6 +169,7 @@ class AgentRuntime {
     }
     _publishBrightness();
     _publishSoundVolume();
+    _publishAppSliderStates(audio.apps);
     _publishToggleStates();
     mqtt.publishMedia(media.current);
     if (sound != null) {
@@ -181,6 +187,31 @@ class AgentRuntime {
         if (tile is SliderTile &&
             tile.source.kind == SliderSource.kindSoundVolume) {
           mqtt.publishSliderState(tile.id, sound!.volume);
+        }
+      }
+    }
+  }
+
+  void _publishAppSliderStates(List<AppVolume> apps) {
+    if (!mqtt.isConnected) return;
+    final layout = repository.isLoaded ? repository.current : null;
+    if (layout == null) return;
+
+    for (final page in layout.pages.values) {
+      for (final tile in page) {
+        if (tile is SliderTile &&
+            tile.source.kind == SliderSource.kindAppVolume &&
+            tile.source.match != null &&
+            tile.source.match!.isNotEmpty) {
+          final target = tile.source.match!.toLowerCase();
+          for (final app in apps) {
+            final appName = app.name.toLowerCase();
+            final appId = app.id.toLowerCase();
+            if (appName.contains(target) || appId.contains(target)) {
+              mqtt.publishSliderState(tile.id, app.volume);
+              break;
+            }
+          }
         }
       }
     }
@@ -230,6 +261,8 @@ class AgentRuntime {
             if (v != null) mqtt.publishSliderState(tile.id, v);
           } else if (tile.source.kind == SliderSource.kindSoundVolume && sound != null) {
             mqtt.publishSliderState(tile.id, sound!.volume);
+          } else if (tile.source.kind == SliderSource.kindAppVolume && cmd.value != null) {
+            mqtt.publishSliderState(tile.id, cmd.value!);
           }
         }
       }

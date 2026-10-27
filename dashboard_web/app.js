@@ -212,6 +212,9 @@ const MqttLayer = {
       if (state.currentDeviceId === device.id && dom.mixerDrawer.classList.contains('mixer-drawer--open')) {
         UI.renderAppMixer(state.appsCache[device.id]);
       }
+      if (state.currentDeviceId === device.id) {
+        UI.updateAppSlidersInPlace(device.id);
+      }
     }
     else if (topicType === 'audio/volume') {
       if (typeof data.value === 'number') {
@@ -713,6 +716,87 @@ const UI = {
     });
   },
 
+  bindFastClick(element, callback) {
+    if (!element || typeof callback !== 'function') return;
+
+    var startX = 0;
+    var startY = 0;
+    var startTime = 0;
+    var isTouch = false;
+
+    element.addEventListener('touchstart', function(e) {
+      if (e.touches && e.touches.length === 1) {
+        isTouch = true;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startTime = Date.now();
+      }
+    }, { passive: true });
+
+    element.addEventListener('touchend', function(e) {
+      if (!isTouch) return;
+      var elapsed = Date.now() - startTime;
+      if (elapsed > 600) {
+        isTouch = false;
+        return;
+      }
+      var endTouch = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+      if (endTouch) {
+        var dx = Math.abs(endTouch.clientX - startX);
+        var dy = Math.abs(endTouch.clientY - startY);
+        if (dx > 10 || dy > 10) {
+          isTouch = false;
+          return;
+        }
+      }
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      isTouch = false;
+      element._lastFastTap = Date.now();
+      callback(e);
+    });
+
+    element.addEventListener('click', function(e) {
+      if (element._lastFastTap && (Date.now() - element._lastFastTap < 500)) {
+        return;
+      }
+      callback(e);
+    });
+  },
+
+  updateAppSlidersInPlace(deviceId) {
+    const apps = state.appsCache[deviceId] || [];
+    if (!apps.length) return;
+    const sliders = dom.shortcutsGrid.querySelectorAll('.shortcut-btn--slider');
+    sliders.forEach(function(card) {
+      const input = card.querySelector('input[data-slider-id]');
+      if (!input) return;
+      const sliderId = input.getAttribute('data-slider-id');
+      const item = UI.findTile(deviceId, sliderId);
+      if (!item || !item.source || item.source.kind !== 'app_volume') return;
+      const targetMatch = (item.source.match || '').toLowerCase().trim();
+      if (!targetMatch) return;
+
+      var foundApp = null;
+      for (var i = 0; i < apps.length; i++) {
+        var app = apps[i];
+        var name = (app.name || '').toLowerCase();
+        var id = (app.id || '').toLowerCase();
+        if (name.indexOf(targetMatch) !== -1 || id.indexOf(targetMatch) !== -1) {
+          foundApp = app;
+          break;
+        }
+      }
+
+      if (foundApp && typeof foundApp.volume === 'number') {
+        if (!state.slidersCache[deviceId]) state.slidersCache[deviceId] = {};
+        state.slidersCache[deviceId][sliderId] = foundApp.volume;
+        UI.updateSliderUI(sliderId, foundApp.volume);
+      }
+    });
+  },
+
   resolveGridPlacements(items, cols) {
     const occupied = [];
     function ensureRows(targetRowExclusive) {
@@ -953,13 +1037,26 @@ const UI = {
         card.style.gridRow = gridRowStyle;
 
         let val = 50;
-        if (item.id === 'master_volume') {
+        const isMaster = (item.id === 'master_volume' || (item.source && item.source.kind === 'master_volume'));
+        if (isMaster) {
           val = typeof state.volumeCache[deviceId] === 'number' ? state.volumeCache[deviceId] : 50;
-        } else {
-          // Remoção segura do operador ?. e ??
-          if (state.slidersCache[deviceId] && state.slidersCache[deviceId][item.id] !== undefined) {
-            val = state.slidersCache[deviceId][item.id];
+        } else if (state.slidersCache[deviceId] && state.slidersCache[deviceId][item.id] !== undefined) {
+          val = state.slidersCache[deviceId][item.id];
+        } else if (item.source && item.source.kind === 'app_volume' && item.source.match) {
+          const apps = state.appsCache[deviceId] || [];
+          const target = item.source.match.toLowerCase().trim();
+          for (var a = 0; a < apps.length; a++) {
+            var aname = (apps[a].name || '').toLowerCase();
+            var aid = (apps[a].id || '').toLowerCase();
+            if (aname.indexOf(target) !== -1 || aid.indexOf(target) !== -1) {
+              if (typeof apps[a].volume === 'number') {
+                val = apps[a].volume;
+                break;
+              }
+            }
           }
+        } else if (item.source && item.source.kind === 'sound_volume') {
+          val = 100;
         }
 
         if (isVertical) {
@@ -1124,7 +1221,7 @@ const UI = {
           '<span>' + UI.escapeHtml(item.label || 'Som') + '</span>' +
           '<span class="sound-wave-badge" aria-hidden="true"><span></span><span></span><span></span></span>';
 
-        btn.addEventListener('click', () => {
+        UI.bindFastClick(btn, () => {
           UI.triggerTapAnimation(btn);
           btn.classList.add('shortcut-btn--pulse');
           setTimeout(function() {
@@ -1166,7 +1263,7 @@ const UI = {
           '<span class="shortcut-btn__label">' + UI.escapeHtml(label || item.id) + '</span>' +
           '<span class="toggle-state-badge" aria-hidden="true">' + (isB ? 'B' : 'A') + '</span>';
 
-        btn.addEventListener('click', function() {
+        UI.bindFastClick(btn, function() {
           UI.triggerTapAnimation(btn);
           const device = state.devices[deviceId];
           if (!device) return;
@@ -1195,7 +1292,7 @@ const UI = {
 
         if (showPageBadge) btn.insertAdjacentHTML('afterbegin', pageBadgeHtml);
 
-        btn.addEventListener('click', () => {
+        UI.bindFastClick(btn, () => {
           UI.triggerTapAnimation(btn);
           if (item.type === 'folder' && item.target) {
             state.currentPageCache[deviceId] = item.target;
