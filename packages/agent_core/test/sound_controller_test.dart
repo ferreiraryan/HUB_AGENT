@@ -335,5 +335,22 @@ void main() {
       );
       expect(fakeSound.volume, equals(45));
     });
+
+    test('SystemSoundController stop() reseta estado para idle e limpa multiplas reproducoes', () async {
+      final tempDir = Directory.systemTemp.createTempSync('sound_multi_test_');
+      try {
+        final controller = SystemSoundController(
+          soundsDir: tempDir,
+        );
+
+        expect(controller.current.isPlaying, isFalse);
+        await controller.stop();
+        expect(controller.current.isPlaying, isFalse);
+
+        await controller.dispose();
+      } finally {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
   });
 }

@@ -26,8 +26,10 @@ class SystemSoundController implements SoundController {
 
   final _stateController = StreamController<SoundPlaybackState>.broadcast();
   SoundPlaybackState _current = SoundPlaybackState.idle;
-  Process? _activeProcess;
-  String? _activeSoundId;
+  final List<Process> _activeProcesses = [];
+  final Map<Process, String> _processToSoundId = {};
+  int _playEpoch = 0;
+  bool _disposed = false;
   int _volume;
   String? _cachedHelperPath;
   final Map<String, String> _soundFileCache = {};
@@ -51,16 +53,19 @@ class SystemSoundController implements SoundController {
     if (changed) {
       onVolumeChanged?.call(_volume);
     }
-    if (Platform.isWindows && _activeProcess != null) {
+    if (Platform.isWindows && _activeProcesses.isNotEmpty) {
       final helper = _resolveHelperPath();
       if (helper != null) {
-        try {
-          await Process.run(
-            helper,
-            ['set-app', '${_activeProcess!.pid}', '$_volume'],
-            runInShell: false,
-          );
-        } catch (_) {}
+        final procs = List<Process>.from(_activeProcesses);
+        for (final p in procs) {
+          try {
+            await Process.run(
+              helper,
+              ['set-app', '${p.pid}', '$_volume'],
+              runInShell: false,
+            );
+          } catch (_) {}
+        }
       }
     }
   }
@@ -186,15 +191,7 @@ class SystemSoundController implements SoundController {
 
   @override
   Future<void> play(String soundId, {String? targetDevice}) async {
-    // Se algum som já estiver tocando (o mesmo ou outro), encerra imediatamente para reiniciar/trocar
-    if (_activeProcess != null) {
-      final prevProc = _activeProcess;
-      _activeProcess = null;
-      _activeSoundId = null;
-      try {
-        prevProc?.kill();
-      } catch (_) {}
-    }
+    if (_disposed) return;
 
     final soundFilePath = _findSoundFile(soundId);
     if (soundFilePath == null) {
@@ -202,6 +199,7 @@ class SystemSoundController implements SoundController {
       return;
     }
 
+    final currentEpoch = _playEpoch;
     final device = targetDevice ?? defaultTargetDeviceProvider?.call();
 
     try {
@@ -232,53 +230,62 @@ class SystemSoundController implements SoundController {
         return;
       }
 
-      _activeProcess = proc;
-      _activeSoundId = soundId;
+      // Se durante o spawn assíncrono o stop() foi chamado ou a instância foi descartada:
+      if (_disposed || currentEpoch != _playEpoch) {
+        try {
+          proc.kill();
+        } catch (_) {}
+        return;
+      }
+
+      _activeProcesses.add(proc);
+      _processToSoundId[proc] = soundId;
       _current = SoundPlaybackState.playing(soundId);
       _stateController.add(_current);
 
-      proc.exitCode.then((_) {
-        // Se ainda for a reprodução deste som, reseta para idle
-        if (_activeSoundId == soundId) {
-          _activeProcess = null;
-          _activeSoundId = null;
-          _current = SoundPlaybackState.idle;
-          if (!_stateController.isClosed) {
-            _stateController.add(_current);
+      void handleExit() {
+        final wasInList = _activeProcesses.remove(proc);
+        _processToSoundId.remove(proc);
+        if (wasInList && !_disposed && !_stateController.isClosed) {
+          if (_activeProcesses.isEmpty) {
+            _current = SoundPlaybackState.idle;
+          } else {
+            final latestSoundId = _processToSoundId.values.isNotEmpty
+                ? _processToSoundId.values.last
+                : null;
+            _current = latestSoundId != null
+                ? SoundPlaybackState.playing(latestSoundId)
+                : SoundPlaybackState.idle;
           }
+          _stateController.add(_current);
         }
-      }).catchError((_) {
-        if (_activeSoundId == soundId) {
-          _activeProcess = null;
-          _activeSoundId = null;
-          _current = SoundPlaybackState.idle;
-          if (!_stateController.isClosed) {
-            _stateController.add(_current);
-          }
-        }
-      });
+      }
+
+      proc.exitCode.then((_) => handleExit()).catchError((_) => handleExit());
     } catch (e) {
       stderr.writeln('SoundPad: erro ao iniciar reprodução do som "$soundId": $e');
-      _activeProcess = null;
-      _activeSoundId = null;
-      _current = SoundPlaybackState.idle;
-      _stateController.add(_current);
+      if (_activeProcesses.isEmpty && !_disposed && !_stateController.isClosed) {
+        _current = SoundPlaybackState.idle;
+        _stateController.add(_current);
+      }
     }
   }
 
   @override
   Future<void> stop() async {
-    final proc = _activeProcess;
-    _activeProcess = null;
-    _activeSoundId = null;
+    _playEpoch++; // Invalida qualquer processo que ainda esteja iniciando
 
-    if (proc != null) {
+    final procs = List<Process>.from(_activeProcesses);
+    _activeProcesses.clear();
+    _processToSoundId.clear();
+
+    for (final proc in procs) {
       try {
         proc.kill();
       } catch (_) {}
     }
 
-    if (_current.isPlaying) {
+    if (_current.isPlaying || procs.isNotEmpty) {
       _current = SoundPlaybackState.idle;
       if (!_stateController.isClosed) {
         _stateController.add(_current);
@@ -288,6 +295,7 @@ class SystemSoundController implements SoundController {
 
   @override
   Future<void> dispose() async {
+    _disposed = true;
     await stop();
     await _stateController.close();
   }
