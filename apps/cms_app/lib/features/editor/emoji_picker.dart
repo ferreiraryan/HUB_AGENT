@@ -1,5 +1,10 @@
+import 'package:agent_core/agent_core.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers.dart';
 import 'helpers/image_icon_helper.dart';
+import 'image_library_dialog.dart';
 import 'widgets/tile_icon_view.dart';
 
 class EmojiPickerResult {
@@ -26,7 +31,7 @@ Future<EmojiPickerResult?> showEmojiPicker(
   );
 }
 
-class _EmojiPickerDialog extends StatefulWidget {
+class _EmojiPickerDialog extends ConsumerStatefulWidget {
   final String initialEmoji;
   final String? initialStatic;
 
@@ -36,42 +41,160 @@ class _EmojiPickerDialog extends StatefulWidget {
   });
 
   @override
-  State<_EmojiPickerDialog> createState() => _EmojiPickerDialogState();
+  ConsumerState<_EmojiPickerDialog> createState() => _EmojiPickerDialogState();
 }
 
-class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
+class _EmojiPickerDialogState extends ConsumerState<_EmojiPickerDialog> {
   late String _selectedEmoji;
   String? _selectedStatic;
+  int _activeTab = 0; // 0: Biblioteca de Imagens, 1: Emojis do Sistema
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+
+  List<ImageItem> _libraryImages = [];
+  bool _isLoadingImages = true;
+  String _imageSearchQuery = '';
+  final TextEditingController _imageSearchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _selectedEmoji = widget.initialEmoji;
     _selectedStatic = widget.initialStatic;
+
+    // Se já tiver uma imagem selecionada, abre direto na aba de imagens
+    if (ImageIconHelper.isImageDataUri(_selectedEmoji)) {
+      _activeTab = 0;
+    } else {
+      _activeTab = 1;
+    }
+
+    _loadLibraryImages();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _imageSearchController.dispose();
     super.dispose();
   }
 
-  Future<void> _handlePickImage() async {
+  Future<void> _loadLibraryImages() async {
+    setState(() => _isLoadingImages = true);
+    final repo = ref.read(imageLibraryRepositoryProvider);
+    final list = await repo.listImages();
+    if (mounted) {
+      setState(() {
+        _libraryImages = list;
+        _isLoadingImages = false;
+      });
+    }
+  }
+
+  Future<void> _handleImportNewImage() async {
     try {
-      final pickResult = await ImageIconHelper.pickAndProcessImage(targetSize: 96);
-      if (pickResult != null && mounted) {
+      final xFile = await openFile(
+        acceptedTypeGroups: [ImageIconHelper.acceptedImageGroup],
+      );
+      if (xFile == null) return;
+
+      final originalBytes = await xFile.readAsBytes();
+      final originalName = xFile.name;
+      final dot = originalName.lastIndexOf('.');
+      final baseName = (dot != -1) ? originalName.substring(0, dot) : originalName;
+      final ext = (dot != -1) ? originalName.substring(dot + 1).toLowerCase() : 'png';
+
+      if (!mounted) return;
+
+      final nameController = TextEditingController(text: baseName);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Salvar na Biblioteca de Imagens'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Digite um nome para identificar este ícone na biblioteca:',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nome da Imagem',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Arquivo: $originalName (${(originalBytes.length / 1024).toStringAsFixed(1)} KB)',
+                style: const TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (nameController.text.trim().isNotEmpty) {
+                  Navigator.of(ctx).pop(true);
+                }
+              },
+              child: const Text('Salvar e Selecionar'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      final chosenName = nameController.text.trim();
+      final isGif = ImageIconHelper.isGifBytes(originalBytes) || ext == 'gif';
+
+      String? staticDataUri;
+      if (isGif) {
+        try {
+          staticDataUri = await ImageIconHelper.processImageBytes(
+            originalBytes,
+            targetSize: 96,
+          );
+        } catch (_) {}
+      }
+
+      final repo = ref.read(imageLibraryRepositoryProvider);
+      final item = await repo.importImage(
+        name: chosenName,
+        rawBytes: originalBytes,
+        extension: ext,
+        staticDataUri: staticDataUri,
+      );
+
+      await _loadLibraryImages();
+
+      if (mounted) {
         setState(() {
-          _selectedEmoji = pickResult.dataUri;
-          _selectedStatic = pickResult.staticDataUri;
+          _selectedEmoji = item.dataUri;
+          _selectedStatic = item.staticDataUri;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Imagem "${item.name}" adicionada e selecionada!'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao carregar imagem: $e'),
+            content: Text('Erro ao importar imagem: $e'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -91,23 +214,36 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
       backgroundColor: const Color(0xFF1E1E2E),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 520,
-        height: 620,
+        width: 580,
+        height: 640,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Abas de navegação
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Escolha um ícone ou imagem',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _handlePickImage,
-                  icon: const Icon(Icons.add_photo_alternate, size: 18),
-                  label: const Text('Carregar Imagem'),
+                Expanded(
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 0,
+                        icon: Icon(Icons.photo_library, size: 16),
+                        label: Text('Biblioteca de Imagens'),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        icon: Icon(Icons.emoji_emotions, size: 16),
+                        label: Text('Emojis do Sistema'),
+                      ),
+                    ],
+                    selected: {_activeTab},
+                    onSelectionChanged: (set) => setState(() => _activeTab = set.first),
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -136,7 +272,7 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
                     ),
                     IconButton(
                       icon: const Icon(Icons.close, size: 18),
-                      tooltip: 'Remover imagem',
+                      tooltip: 'Remover imagem e voltar para emoji',
                       onPressed: () {
                         setState(() {
                           _selectedEmoji = '⚡';
@@ -150,112 +286,16 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
               const SizedBox(height: 12),
             ],
 
-            TextField(
-              controller: _searchController,
-              autofocus: !isSelectedImage,
-              decoration: InputDecoration(
-                hintText: 'Buscar ou colar emoji livremente (Win + .)...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: query.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
-                border: const OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
-                ),
-                isDense: true,
-              ),
-              onChanged: (val) {
-                setState(() {
-                  _searchQuery = val;
-                });
-              },
-            ),
-            const SizedBox(height: 10),
-
-            // Card para permitir usar texto/emoji digitado diretamente (Win + .)
-            if (hasSearch) ...[
-              InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () {
-                  setState(() {
-                    _selectedEmoji = query;
-                    _selectedStatic = null;
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _selectedEmoji == query
-                        ? accent.withValues(alpha: 0.2)
-                        : Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _selectedEmoji == query ? accent : Colors.white24,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      TileIconView(icon: query, size: 28),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Usar exatamente: "$query"',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const Icon(Icons.check, size: 18),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-
+            // Conteúdo conforme a aba ativa
             Expanded(
-              child: hasSearch
-                  ? _buildGrid(results)
-                  : CustomScrollView(
-                      slivers: _categories.entries.expand((entry) {
-                        return [
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 10, bottom: 6),
-                              child: Text(
-                                entry.key,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 48,
-                              mainAxisSpacing: 4,
-                              crossAxisSpacing: 4,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) =>
-                                  _buildEmojiCell(entry.value[index]),
-                              childCount: entry.value.length,
-                            ),
-                          ),
-                        ];
-                      }).toList(),
-                    ),
+              child: _activeTab == 0
+                  ? _buildImageLibraryTab()
+                  : _buildEmojiTab(query, hasSearch, results, accent),
             ),
+
             const SizedBox(height: 16),
+
+            // Barra inferior com seleção e botões de ação
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -287,7 +327,7 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
                           staticIcon: _selectedStatic,
                         ),
                       ),
-                      child: const Text('Selecionar'),
+                      child: const Text('Confirmar'),
                     ),
                   ],
                 ),
@@ -299,7 +339,269 @@ class _EmojiPickerDialogState extends State<_EmojiPickerDialog> {
     );
   }
 
-  Widget _buildGrid(List<String> emojis) {
+  Widget _buildImageLibraryTab() {
+    final query = _imageSearchQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? _libraryImages
+        : _libraryImages.where((i) => i.name.toLowerCase().contains(query)).toList();
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _imageSearchController,
+                decoration: InputDecoration(
+                  hintText: 'Buscar imagem na biblioteca...',
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  suffixIcon: query.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 16),
+                          onPressed: () {
+                            _imageSearchController.clear();
+                            setState(() => _imageSearchQuery = '');
+                          },
+                        )
+                      : null,
+                  border: const OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  ),
+                  isDense: true,
+                ),
+                onChanged: (val) => setState(() => _imageSearchQuery = val),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonalIcon(
+              onPressed: _handleImportNewImage,
+              icon: const Icon(Icons.add_photo_alternate, size: 16),
+              label: const Text('Importar Imagem'),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Gerenciar Biblioteca...',
+              icon: const Icon(Icons.settings, size: 18),
+              onPressed: () async {
+                await showImageLibraryDialog(context: context, ref: ref);
+                await _loadLibraryImages();
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _isLoadingImages
+              ? const Center(child: CircularProgressIndicator())
+              : filtered.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.photo_library_outlined,
+                            size: 48,
+                            color: Colors.white24,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _libraryImages.isEmpty
+                                ? 'Nenhuma imagem na biblioteca ainda.'
+                                : 'Nenhuma imagem encontrada.',
+                            style: const TextStyle(color: Colors.white60),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: _handleImportNewImage,
+                            icon: const Icon(Icons.add_photo_alternate, size: 16),
+                            label: const Text('Importar Imagem do PC'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : GridView.builder(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        childAspectRatio: 1.1,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final item = filtered[index];
+                        final isSelected = _selectedEmoji == item.dataUri;
+                        final accent = Theme.of(context).colorScheme.primary;
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            setState(() {
+                              _selectedEmoji = item.dataUri;
+                              _selectedStatic = item.staticDataUri;
+                            });
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? accent.withValues(alpha: 0.25)
+                                  : const Color(0xFF28283E),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected ? accent : Colors.white12,
+                                width: isSelected ? 2 : 1,
+                              ),
+                            ),
+                            padding: const EdgeInsets.all(8),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Center(
+                                    child: TileIconView(
+                                      icon: item.dataUri,
+                                      staticIcon: item.staticDataUri,
+                                      size: 44,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.name,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmojiTab(
+    String query,
+    bool hasSearch,
+    List<String> results,
+    Color accent,
+  ) {
+    return Column(
+      children: [
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Buscar ou colar emoji livremente (Win + .)...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: query.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {
+                        _searchQuery = '';
+                      });
+                    },
+                  )
+                : null,
+            border: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8)),
+            ),
+            isDense: true,
+          ),
+          onChanged: (val) {
+            setState(() {
+              _searchQuery = val;
+            });
+          },
+        ),
+        const SizedBox(height: 10),
+
+        if (hasSearch) ...[
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              setState(() {
+                _selectedEmoji = query;
+                _selectedStatic = null;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: _selectedEmoji == query
+                    ? accent.withValues(alpha: 0.2)
+                    : Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _selectedEmoji == query ? accent : Colors.white24,
+                ),
+              ),
+              child: Row(
+                children: [
+                  TileIconView(icon: query, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Usar exatamente: "$query"',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.check, size: 18),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        Expanded(
+          child: hasSearch
+              ? _buildGrid(results)
+              : CustomScrollView(
+                  slivers: _categories.entries.expand((entry) {
+                    return [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 10, bottom: 6),
+                          child: Text(
+                            entry.key,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 48,
+                          mainAxisSpacing: 4,
+                          crossAxisSpacing: 4,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) =>
+                              _buildEmojiCell(entry.value[index]),
+                          childCount: entry.value.length,
+                        ),
+                      ),
+                    ];
+                  }).toList(),
+                ),
+        ),
+      ],
+    );
+  }
+
+    Widget _buildGrid(List<String> emojis) {
     if (emojis.isEmpty) {
       return const Center(
         child: Text(

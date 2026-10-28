@@ -13,6 +13,8 @@ export 'src/models/layout.dart';
 export 'src/models/media_state.dart';
 export 'src/models/sound_playback_state.dart';
 export 'src/models/tile.dart';
+export 'src/services/images/image_item.dart';
+export 'src/services/images/image_library_repository.dart';
 export 'src/services/sound/sound_controller.dart';
 export 'src/services/sound/sound_library_repository.dart';
 export 'src/services/audio/audio_controller.dart';

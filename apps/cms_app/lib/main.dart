@@ -1,3 +1,5 @@
+// apps/cms_app/lib/main.dart
+
 import 'dart:async';
 import 'dart:io';
 
@@ -19,7 +21,6 @@ import 'system/window_controller.dart';
 ServerSocket? _instanceLock;
 
 void main(List<String> args) async {
-  
   WidgetsFlutterBinding.ensureInitialized();
 
   final isHidden = args.contains('--hidden');
@@ -46,6 +47,9 @@ void main(List<String> args) async {
   );
   final soundsDir = Directory('${supportDir.path}/sounds');
   final soundLibrary = SoundLibraryRepository(soundsDir: soundsDir);
+
+  final imagesDir = Directory('${supportDir.path}/images');
+  final imageLibrary = ImageLibraryRepository(imagesDir: imagesDir);
 
   final soundController = SystemSoundController(
     soundsDir: soundsDir,
@@ -98,6 +102,7 @@ void main(List<String> args) async {
         agentConfigProvider.overrideWithValue(config),
         agentRuntimeProvider.overrideWithValue(runtime),
         soundLibraryRepositoryProvider.overrideWithValue(soundLibrary),
+        imageLibraryRepositoryProvider.overrideWithValue(imageLibrary),
       ],
       child: const CmsApp(),
     ),

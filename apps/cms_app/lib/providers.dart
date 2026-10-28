@@ -23,6 +23,12 @@ final soundLibraryRepositoryProvider = Provider<SoundLibraryRepository>(
   ),
 );
 
+final imageLibraryRepositoryProvider = Provider<ImageLibraryRepository>(
+  (ref) => throw StateError(
+    'imageLibraryRepositoryProvider não foi sobrescrito no ProviderScope raiz.',
+  ),
+);
+
 final connectionStateProvider = StreamProvider<AgentConnectionState>((ref) {
   final runtime = ref.watch(agentRuntimeProvider);
   return runtime.connectionState;
