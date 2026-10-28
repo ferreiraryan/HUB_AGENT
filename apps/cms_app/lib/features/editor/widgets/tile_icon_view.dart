@@ -26,8 +26,9 @@ class TileIconView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Se o modo for 'on_tap' e existir staticIcon, exibe o frame estático no canvas
-    final effective = (animationMode == 'on_tap' && staticIcon != null && staticIcon!.isNotEmpty)
+    // Se o modo for 'on_tap' ou 'while_playing' e existir staticIcon, exibe o frame estático no canvas
+    final isStaticState = (animationMode == 'on_tap' || animationMode == 'while_playing');
+    final effective = (isStaticState && staticIcon != null && staticIcon!.isNotEmpty)
         ? staticIcon
         : icon;
     final raw = effective?.trim();

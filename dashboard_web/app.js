@@ -506,10 +506,49 @@ const UI = {
         ' data-gif-src="' + raw + '"' +
         staticAttr +
         ' data-gif-mode="' + animMode + '"' +
+        ' onload="UI.initGifFrame(this)"' +
         ' style="width:' + dim + 'px;height:' + dim + 'px;max-width:' + dim + 'px;max-height:' + dim + 'px;min-width:' + dim + 'px;min-height:' + dim + 'px;display:block;flex-shrink:0;" />';
     }
     const mapped = ICON_MAP[raw] || raw;
     return '<span class="' + iconClass + '">' + UI.escapeHtml(mapped) + '</span>';
+  },
+
+  initGifFrame(img) {
+    if (!img) return;
+    var mode = img.getAttribute('data-gif-mode');
+    if (!mode || mode === 'always') return;
+
+    var staticSrc = img.getAttribute('data-static-src');
+    if (staticSrc && staticSrc.length > 0) return;
+    if (img._hasExtractedStatic) return;
+    img._hasExtractedStatic = true;
+
+    try {
+      var canvas = document.createElement('canvas');
+      var w = img.naturalWidth || img.width || 44;
+      var h = img.naturalHeight || img.height || 44;
+      canvas.width = w;
+      canvas.height = h;
+      if (w > 0 && h > 0) {
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        var extractedStatic = canvas.toDataURL('image/png');
+        img.setAttribute('data-static-src', extractedStatic);
+
+        if (mode === 'on_tap') {
+          img.src = extractedStatic;
+        } else if (mode === 'while_playing') {
+          var btn = img.parentElement;
+          while (btn && !btn.classList.contains('shortcut-btn')) {
+            btn = btn.parentElement;
+          }
+          var isPlaying = btn && btn.classList.contains('shortcut-btn--playing');
+          if (!isPlaying) {
+            img.src = extractedStatic;
+          }
+        }
+      }
+    } catch (e) {}
   },
 
   triggerTapAnimation(container) {
@@ -517,17 +556,27 @@ const UI = {
     var img = container.querySelector('img[data-gif-mode="on_tap"]');
     if (!img) return;
     var gifSrc = img.getAttribute('data-gif-src');
-    var staticSrc = img.getAttribute('data-static-src') || gifSrc;
+    var staticSrc = img.getAttribute('data-static-src');
     if (!gifSrc) return;
+
+    if (!staticSrc) {
+      this.initGifFrame(img);
+      staticSrc = img.getAttribute('data-static-src');
+    }
 
     if (img._gifTimer) {
       clearTimeout(img._gifTimer);
-    }
-    img.src = gifSrc;
-    img._gifTimer = setTimeout(function() {
-      img.src = staticSrc;
       img._gifTimer = null;
-    }, 1200);
+    }
+
+    img.src = gifSrc;
+
+    if (staticSrc && staticSrc !== gifSrc) {
+      img._gifTimer = setTimeout(function() {
+        img.src = staticSrc;
+        img._gifTimer = null;
+      }, 1500);
+    }
   },
 
   applyTheme(theme) {
@@ -716,7 +765,11 @@ const UI = {
       var img = btn.querySelector('img[data-gif-mode="while_playing"]');
       if (img) {
         var gifSrc = img.getAttribute('data-gif-src');
-        var staticSrc = img.getAttribute('data-static-src') || gifSrc;
+        var staticSrc = img.getAttribute('data-static-src');
+        if (!staticSrc) {
+          UI.initGifFrame(img);
+          staticSrc = img.getAttribute('data-static-src') || gifSrc;
+        }
         var targetSrc = isThisPlaying ? gifSrc : staticSrc;
         if (!img._currentSrc || img._currentSrc !== targetSrc) {
           img._currentSrc = targetSrc;

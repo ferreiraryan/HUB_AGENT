@@ -483,10 +483,10 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
               _updateTile(icon: newIcon, staticIcon: newStatic),
             );
           },
-          onAnimationModeChanged: (mode) {
+          onAnimationModeChanged: (mode, newStatic) {
             notifier.upsertTile(
               widget.state.currentPage,
-              _updateTile(animationMode: mode),
+              _updateTile(animationMode: mode, staticIcon: newStatic),
             );
           },
         ),
@@ -966,10 +966,10 @@ class _FolderInspector extends ConsumerWidget {
               ),
             );
           },
-          onAnimationModeChanged: (mode) {
+          onAnimationModeChanged: (mode, newStatic) {
             notifier.upsertTile(
               state.currentPage,
-              tile.copyWith(animationMode: mode),
+              tile.copyWith(animationMode: mode, staticIcon: newStatic),
             );
           },
         ),
@@ -1064,10 +1064,10 @@ class _BackInspector extends ConsumerWidget {
               ),
             );
           },
-          onAnimationModeChanged: (mode) {
+          onAnimationModeChanged: (mode, newStatic) {
             notifier.upsertTile(
               state.currentPage,
-              tile.copyWith(animationMode: mode),
+              tile.copyWith(animationMode: mode, staticIcon: newStatic),
             );
           },
         ),
@@ -1285,7 +1285,7 @@ class _IconField extends StatelessWidget {
   final String? animationMode;
   final bool isSoundOrToggle;
   final void Function(String icon, String? staticIcon)? onPicked;
-  final ValueChanged<String>? onAnimationModeChanged;
+  final void Function(String mode, String? staticIcon)? onAnimationModeChanged;
 
   const _IconField({
     required this.icon,
@@ -1364,9 +1364,18 @@ class _IconField extends StatelessWidget {
                   child: Text('Enquanto estiver tocando/ativo'),
                 ),
             ],
-            onChanged: (val) {
+            onChanged: (val) async {
               if (val != null) {
-                onAnimationModeChanged!(val);
+                String? newStatic = staticIcon;
+                if (val != 'always' && (newStatic == null || newStatic.isEmpty)) {
+                  final bytes = ImageIconHelper.extractBytes(icon);
+                  if (bytes != null) {
+                    try {
+                      newStatic = await ImageIconHelper.processImageBytes(bytes, targetSize: 96);
+                    } catch (_) {}
+                  }
+                }
+                onAnimationModeChanged?.call(val, newStatic);
               }
             },
           ),
@@ -2619,10 +2628,10 @@ class _SoundInspectorState extends ConsumerState<_SoundInspector> {
               ),
             );
           },
-          onAnimationModeChanged: (mode) {
+          onAnimationModeChanged: (mode, newStatic) {
             notifier.upsertTile(
               widget.state.currentPage,
-              widget.tile.copyWith(animationMode: mode),
+              widget.tile.copyWith(animationMode: mode, staticIcon: newStatic),
             );
           },
         ),
@@ -2879,10 +2888,10 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
               );
             }
           },
-          onAnimationModeChanged: (mode) {
+          onAnimationModeChanged: (mode, newStatic) {
             notifier.upsertTile(
               widget.state.currentPage,
-              widget.tile.copyWith(animationMode: mode),
+              widget.tile.copyWith(animationMode: mode, staticIcon: newStatic),
             );
           },
         ),
