@@ -42,13 +42,14 @@ class ScreensaverRepository {
     _current = ScreensaverPresets.auroraDesk();
   }
 
-  /// Atualiza em memória imediatamente, notifica ouvintes e agenda gravação em disco.
+  /// Atualiza em memória imediatamente e agrupa gravação em disco + emissão MQTT
+  /// via debounce (evita rajadas de ~60 pacotes/s com Base64 ao arrastar widgets).
   void update(ScreensaverConfig config) {
     _current = config;
-    if (!_ctl.isClosed) _ctl.add(_current);
     _saveTimer?.cancel();
-    _saveTimer = Timer(debounce, () {
-      _writeAtomic(_current);
+    _saveTimer = Timer(debounce, () async {
+      await _writeAtomic(_current);
+      if (!_ctl.isClosed) _ctl.add(_current);
     });
   }
 

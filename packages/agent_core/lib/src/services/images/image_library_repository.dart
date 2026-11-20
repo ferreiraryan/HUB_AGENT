@@ -62,7 +62,9 @@ class ImageLibraryRepository {
     }
 
     // Remove itens cujo arquivo de imagem física não existe mais no disco
+    final beforeCount = itemsMap.length;
     itemsMap.removeWhere((id, item) => !filesOnDisk.containsKey(item.fileName));
+    var indexDirty = itemsMap.length != beforeCount || !_indexFile.existsSync();
 
     // Adiciona arquivos soltos no disco que não estejam indexados no json
     for (final entry in filesOnDisk.entries) {
@@ -71,6 +73,7 @@ class ImageLibraryRepository {
 
       final alreadyIndexed = itemsMap.values.any((i) => i.fileName == fileName);
       if (!alreadyIndexed) {
+        indexDirty = true;
         final dot = fileName.lastIndexOf('.');
         final ext = (dot != -1) ? fileName.substring(dot + 1).toLowerCase() : 'png';
         final base = (dot != -1) ? fileName.substring(0, dot) : fileName;
@@ -108,7 +111,9 @@ class ImageLibraryRepository {
     final result = itemsMap.values.toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-    await _saveIndex(result);
+    if (indexDirty) {
+      await _saveIndex(result);
+    }
     return result;
   }
 

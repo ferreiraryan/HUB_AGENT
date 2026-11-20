@@ -31,6 +31,7 @@ import 'services/todo/todo_service.dart';
 import 'services/weather/weather_service.dart';
 import 'services/window/active_window_monitor.dart';
 import 'services/window/page_rules_repository.dart';
+import 'util/windows_helper_bridge.dart';
 
 class AgentRuntime {
   final LayoutRepository repository;
@@ -188,6 +189,7 @@ class AgentRuntime {
     _subs
       ..add(screensaver.changes.listen((cfg) {
         mqtt.publishScreensaverConfig(cfg);
+        _updateAdaptiveStatsInterval();
         unawaited(weather.configure(
           city: cfg.weatherCity,
           unit: cfg.weatherUnit,
@@ -205,6 +207,8 @@ class AgentRuntime {
           }
         }
         mqtt.publishLayout(l);
+        _updateAdaptiveStatsInterval();
+        _syncBrightnessTimer();
         _publishBrightness();
         _publishSoundVolume();
         _publishAppSliderStates(audio.apps);
@@ -213,8 +217,15 @@ class AgentRuntime {
       ..add(pomodoro.changes.listen(mqtt.publishPomodoroState))
       ..add(todo.changes.listen(mqtt.publishTodoState))
       ..add(battery.changes.listen(mqtt.publishBatteries))
-      ..add(activeWindow.changes.listen(mqtt.publishActiveApp))
-      ..add(pageRules.changes.listen(mqtt.publishPageRules))
+      ..add(activeWindow.changes.listen((info) {
+        if (pageRules.current.isNotEmpty) {
+          mqtt.publishActiveApp(info);
+        }
+      }))
+      ..add(pageRules.changes.listen((rules) {
+        mqtt.publishPageRules(rules);
+        unawaited(activeWindow.setEnabled(rules.isNotEmpty));
+      }))
       ..add(mqtt.commands.listen(_onCommand))
       ..add(audio.masterChanges.listen(_onLocalVolume))
       ..add(audio.appsChanges.listen((apps) {
@@ -236,21 +247,31 @@ class AgentRuntime {
       }));
     }
 
+    var snapshotSentOnConnect = false;
     _subs.add(mqtt.connectionState.listen((s) {
-      if (s == AgentConnectionState.connected) _publishSnapshot();
+      if (s == AgentConnectionState.connected) {
+        snapshotSentOnConnect = true;
+        _publishSnapshot();
+      }
     }));
 
     if (audio case final ExtendedAudioController ext) {
       _subs.add(ext.micChanges.listen(mqtt.publishMicState));
     }
 
+    // No Windows, inicia o daemon único compartilhado antes dos controladores.
+    if (Platform.isWindows) {
+      await WindowsHelperBridge.instance.ensureStarted();
+    }
+
     await mqtt.connect();
     await audio.start();
     await brightness.start();
     await media.start();
+    _updateAdaptiveStatsInterval();
     await stats.start();
     await battery.start();
-    await activeWindow.start();
+    await activeWindow.start(enabled: pageRules.current.isNotEmpty);
     await notifications?.start();
     weather.start(
       city: screensaver.current.weatherCity,
@@ -265,10 +286,57 @@ class AgentRuntime {
       mqtt.publishStatsGpu(s);
     }));
 
-    _brightnessPublishTimer =
-        Timer.periodic(const Duration(seconds: 5), (_) => _publishBrightness());
+    _syncBrightnessTimer();
 
-    _publishSnapshot();
+    if (!snapshotSentOnConnect && mqtt.isConnected) {
+      _publishSnapshot();
+    }
+  }
+
+  bool _hasBrightnessSliders() {
+    if (!repository.isLoaded) return false;
+    for (final page in repository.current.pages.values) {
+      for (final tile in page) {
+        if (tile is SliderTile &&
+            tile.source.kind == SliderSource.kindBrightness) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _hasStatsConsumer() {
+    if (repository.isLoaded) {
+      for (final page in repository.current.pages.values) {
+        for (final tile in page) {
+          if (tile is StatTile) return true;
+        }
+      }
+    }
+    for (final w in screensaver.current.widgets) {
+      if (w.type == 'pc_stats' || w.type == 'network') return true;
+    }
+    return false;
+  }
+
+  void _updateAdaptiveStatsInterval() {
+    final target = _hasStatsConsumer()
+        ? const Duration(seconds: 3)
+        : const Duration(seconds: 15);
+    stats.setInterval(target);
+  }
+
+  void _syncBrightnessTimer() {
+    if (_hasBrightnessSliders() && brightness.isAvailable) {
+      _brightnessPublishTimer ??= Timer.periodic(
+        const Duration(seconds: 20),
+        (_) => _publishBrightness(),
+      );
+    } else {
+      _brightnessPublishTimer?.cancel();
+      _brightnessPublishTimer = null;
+    }
   }
 
   Future<void> _publishAudioOutputs() async {
@@ -304,7 +372,9 @@ class AgentRuntime {
     mqtt.publishPomodoroState(pomodoro.current);
     mqtt.publishTodoState(todo.current);
     mqtt.publishBatteries(battery.current);
-    mqtt.publishActiveApp(activeWindow.current);
+    if (pageRules.current.isNotEmpty) {
+      mqtt.publishActiveApp(activeWindow.current);
+    }
     mqtt.publishPageRules(pageRules.current);
     mqtt.publishScreensaverConfig(screensaver.current);
     final w = weather.current;
@@ -465,6 +535,9 @@ class AgentRuntime {
     await media.dispose();
     await brightness.dispose();
     await audio.dispose();
+    if (Platform.isWindows) {
+      await WindowsHelperBridge.instance.dispose();
+    }
     await mqtt.dispose();
     await repository.dispose();
   }

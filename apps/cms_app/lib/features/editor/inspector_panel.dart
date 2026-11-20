@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
+import '../../system/agent_bridge.dart';
 import 'editor_controller.dart';
 import 'emoji_picker.dart';
 import 'brightness_picker.dart';
@@ -220,8 +221,8 @@ class _InspectorFooter extends ConsumerWidget {
               icon: const Icon(Icons.play_arrow_rounded, size: 17),
               label: const Text('Executar agora no PC'),
               onPressed: () async {
-                final runtime = ref.read(agentRuntimeProvider);
-                await runtime.dispatcher.dispatch(
+                final bridge = ref.read(agentBridgeProvider);
+                await bridge.dispatchCommand(
                   AgentCommand(tile.id, {'action': tile.id}),
                 );
                 if (context.mounted) {
@@ -482,7 +483,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
   @override
   Widget build(BuildContext context) {
     final notifier = ref.read(editorControllerProvider.notifier);
-    final dispatcher = ref.read(agentRuntimeProvider).dispatcher;
+    final bridge = ref.read(agentBridgeProvider);
 
     final isShortcut = widget.tile is ShortcutTile;
     final isStat = widget.tile is StatTile;
@@ -589,7 +590,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
             const SizedBox(height: 12),
             _AppVolumeEditor(
               currentMatch: (widget.tile as SliderTile).source.match,
-              audio: ref.read(agentRuntimeProvider).audio,
+              bridge: bridge,
               onChanged: (val) {
                 final current = widget.tile as SliderTile;
                 notifier.upsertTile(
@@ -904,7 +905,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                 }
               },
               onTest: (combo) async {
-                return dispatcher.keySender.send(combo);
+                return bridge.sendKeyCombo(combo);
               },
             ),
           ] else ...[
@@ -935,7 +936,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
             _CommandsEditor(
               initialCommands:
                   widget.state.layout.bindings[widget.tile.id] ?? const [],
-              dispatcher: dispatcher,
+              bridge: bridge,
               onChanged: (cmds) {
                 notifier.setBinding(widget.tile.id, cmds);
               },
@@ -1830,12 +1831,12 @@ class _PresetChip extends StatelessWidget {
 class _CommandsEditor extends StatefulWidget {
   final List<List<String>> initialCommands;
   final ValueChanged<List<List<String>>?> onChanged;
-  final CommandDispatcher dispatcher;
+  final AgentBridge bridge;
 
   const _CommandsEditor({
     required this.initialCommands,
     required this.onChanged,
-    required this.dispatcher,
+    required this.bridge,
   });
 
   @override
@@ -1915,7 +1916,7 @@ class _CommandsEditorState extends State<_CommandsEditor> {
       ctrl.testResult = null;
     });
 
-    final res = await widget.dispatcher.test(argv);
+    final res = await widget.bridge.testCommand(argv);
 
     if (mounted) {
       setState(() {
@@ -2008,7 +2009,7 @@ class _CommandsEditorState extends State<_CommandsEditor> {
                   ),
                 if (firstArg.isNotEmpty)
                   FutureBuilder<bool>(
-                    future: widget.dispatcher.exists(firstArg),
+                    future: widget.bridge.commandExists(firstArg),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) return const SizedBox.shrink();
                       final exists = snapshot.data!;
@@ -2281,13 +2282,13 @@ class _AppVolumeEditor extends StatefulWidget {
   final String? currentMatch;
   final ValueChanged<String> onChanged;
   final void Function(AppPreset preset)? onApplyPreset;
-  final AudioController? audio;
+  final AgentBridge? bridge;
 
   const _AppVolumeEditor({
     required this.currentMatch,
     required this.onChanged,
     this.onApplyPreset,
-    this.audio,
+    this.bridge,
   });
 
   @override
@@ -2328,8 +2329,8 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
   Future<void> _loadProcesses() async {
     setState(() => _loadingProcesses = true);
     try {
-      if (widget.audio != null) {
-        await widget.audio!.refresh();
+      if (widget.bridge != null) {
+        await widget.bridge!.refreshAudioApps();
       }
       final list = await ProcessDiscovery.getRunningProcesses();
       if (mounted) {
@@ -2354,8 +2355,8 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
       _testMessage = null;
     });
     try {
-      if (widget.audio != null) {
-        await widget.audio!.setAppVolumeByName(match, 50);
+      if (widget.bridge != null) {
+        await widget.bridge!.setAppVolumeByName(match, 50);
         if (mounted) {
           setState(() {
             _testing = false;
@@ -2383,7 +2384,7 @@ class _AppVolumeEditorState extends State<_AppVolumeEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final activeAudioApps = widget.audio?.apps ?? const [];
+    final activeAudioApps = widget.bridge?.audioApps ?? const [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -2617,11 +2618,11 @@ class _SoundInspectorState extends ConsumerState<_SoundInspector> {
   void initState() {
     super.initState();
     _loadSounds();
-    final runtime = ref.read(agentRuntimeProvider);
-    _isPlaying = runtime.sound?.current.soundId == widget.tile.soundId &&
-        (runtime.sound?.current.isPlaying ?? false);
+    final bridge = ref.read(agentBridgeProvider);
+    _isPlaying = bridge.soundState.soundId == widget.tile.soundId &&
+        bridge.soundState.isPlaying;
 
-    _soundSub = runtime.sound?.stateChanges.listen((state) {
+    _soundSub = bridge.soundStateChanges.listen((state) {
       if (mounted) {
         setState(() {
           _isPlaying = state.isPlaying && state.soundId == widget.tile.soundId;
@@ -2635,9 +2636,9 @@ class _SoundInspectorState extends ConsumerState<_SoundInspector> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tile.soundId != widget.tile.soundId) {
       _loadSounds();
-      final runtime = ref.read(agentRuntimeProvider);
-      _isPlaying = runtime.sound?.current.soundId == widget.tile.soundId &&
-          (runtime.sound?.current.isPlaying ?? false);
+      final bridge = ref.read(agentBridgeProvider);
+      _isPlaying = bridge.soundState.soundId == widget.tile.soundId &&
+          bridge.soundState.isPlaying;
     }
   }
 
@@ -2659,11 +2660,11 @@ class _SoundInspectorState extends ConsumerState<_SoundInspector> {
   }
 
   Future<void> _togglePreview() async {
-    final runtime = ref.read(agentRuntimeProvider);
+    final bridge = ref.read(agentBridgeProvider);
     if (_isPlaying) {
-      await runtime.sound?.stop();
+      await bridge.stopSound();
     } else {
-      await runtime.sound?.play(widget.tile.soundId);
+      await bridge.playSound(widget.tile.soundId);
     }
   }
 
@@ -2845,7 +2846,7 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
   @override
   Widget build(BuildContext context) {
     final notifier = ref.read(editorControllerProvider.notifier);
-    final dispatcher = ref.read(agentRuntimeProvider).dispatcher;
+    final bridge = ref.read(agentBridgeProvider);
     final existingIds = widget.state.layout.allTileIds;
 
     final isStateA = _selectedState == 'a';
@@ -3055,7 +3056,7 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
                 ]);
               }
             },
-            onTest: (combo) => dispatcher.keySender.send(combo),
+            onTest: (combo) => bridge.sendKeyCombo(combo),
           )
         else
           _CommandsEditor(
@@ -3063,7 +3064,7 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
             onChanged: (cmds) {
               notifier.setBinding(bindingKey, cmds);
             },
-            dispatcher: dispatcher,
+            bridge: bridge,
           ),
       ],
     );
@@ -3104,12 +3105,12 @@ class _PomodoroInspectorState extends ConsumerState<_PomodoroInspector> {
 
   Future<void> _togglePreview(String? soundId) async {
     if (soundId == null || soundId.isEmpty) return;
-    final runtime = ref.read(agentRuntimeProvider);
+    final bridge = ref.read(agentBridgeProvider);
     if (_playingSoundId == soundId) {
-      await runtime.sound?.stop();
+      await bridge.stopSound();
       if (mounted) setState(() => _playingSoundId = null);
     } else {
-      await runtime.sound?.play(soundId);
+      await bridge.playSound(soundId);
       if (mounted) setState(() => _playingSoundId = soundId);
     }
   }

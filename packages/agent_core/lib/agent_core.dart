@@ -5,6 +5,11 @@
 library agent_core;
 
 export 'src/agent_runtime.dart';
+export 'src/config/agent_config.dart';
+export 'src/config/support_paths.dart';
+export 'src/ipc/daemon_ipc_client.dart';
+export 'src/ipc/daemon_ipc_protocol.dart';
+export 'src/ipc/daemon_ipc_server.dart';
 export 'src/models/agent_event.dart';
 export 'src/models/audio_output_device.dart';
 export 'src/models/audio_state.dart';
@@ -51,6 +56,8 @@ export 'src/services/pomodoro/pomodoro_service.dart';
 export 'src/services/screensaver/screensaver_repository.dart';
 export 'src/services/todo/todo_repository.dart';
 export 'src/services/todo/todo_service.dart';
+export 'src/services/voicemeeter_service.dart';
 export 'src/services/weather/weather_service.dart';
 export 'src/util/hex_color.dart';
 export 'src/util/windows_binaries.dart';
+export 'src/util/windows_helper_bridge.dart';

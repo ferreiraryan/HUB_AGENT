@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../util/windows_binaries.dart';
+import '../util/windows_helper_bridge.dart';
 import 'brightness_controller.dart';
 
 /// Controle de brilho no Windows via `hub_audio_helper.exe` (DDC/CI dxva2.dll).
@@ -79,6 +80,19 @@ class WindowsBrightnessController implements BrightnessController {
 
   @override
   Future<void> start() async {
+    if (await WindowsHelperBridge.instance.ensureStarted()) {
+      final res = await WindowsHelperBridge.instance
+          .request('list_displays', timeout: const Duration(seconds: 4));
+      final data = res?['data'];
+      if (data is List) {
+        _displays
+          ..clear()
+          ..addAll(parseDisplaysJson(jsonEncode(data)));
+        _available = _displays.isNotEmpty;
+        return;
+      }
+    }
+
     _helperPath = WindowsBinaries.resolveHelperPath();
     if (_helperPath == null) {
       _available = false;
@@ -103,8 +117,17 @@ class WindowsBrightnessController implements BrightnessController {
 
   @override
   Future<void> set(int value) async {
-    if (!_available || _helperPath == null) return;
+    if (!_available) return;
     final v = value.clamp(0, 100);
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('set_brightness', args: {'target': 'all', 'value': v});
+      if (res?['ok'] == true) {
+        if (!_changes.isClosed) _changes.add(null);
+        return;
+      }
+    }
+    if (_helperPath == null) return;
     try {
       await Process.run(
         _helperPath!,
@@ -117,9 +140,18 @@ class WindowsBrightnessController implements BrightnessController {
 
   @override
   Future<void> setForDisplay(String match, int value) async {
-    if (!_available || _helperPath == null) return;
+    if (!_available) return;
     final v = value.clamp(0, 100);
     final target = _resolveTarget(match);
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('set_brightness', args: {'target': target, 'value': v});
+      if (res?['ok'] == true) {
+        if (!_changes.isClosed) _changes.add(null);
+        return;
+      }
+    }
+    if (_helperPath == null) return;
     try {
       await Process.run(
         _helperPath!,
@@ -132,8 +164,18 @@ class WindowsBrightnessController implements BrightnessController {
 
   @override
   Future<int?> readForDisplay(String match) async {
-    if (!_available || _helperPath == null) return null;
+    if (!_available) return null;
     final target = _resolveTarget(match);
+    if (WindowsHelperBridge.instance.isRunning) {
+      final disp = target == 'all' ? 0 : (int.tryParse(target) ?? 0);
+      final res = await WindowsHelperBridge.instance
+          .request('get_brightness', args: {'display': disp});
+      final data = res?['data'];
+      if (data is Map && data['value'] is num) {
+        return (data['value'] as num).round().clamp(0, 100);
+      }
+    }
+    if (_helperPath == null) return null;
     final args = target == 'all' ? ['get-brightness'] : ['get-brightness', target];
     try {
       final r = await Process.run(

@@ -112,6 +112,8 @@ class MqttService {
   final _commands = StreamController<AgentCommand>.broadcast();
 
   Layout? _lastLayout;
+  String? _lastLayoutJson;
+  final Map<String, String> _lastRetainedPayloads = {};
   bool _intentional = false;
   bool _disposed = false;
   Timer? _retryTimer;
@@ -246,6 +248,7 @@ class MqttService {
     _port = port;
     _deviceId = deviceId;
     _topics = AgentTopics(deviceId);
+    _lastRetainedPayloads.clear();
     _client = _buildClient();
     await connect();
   }
@@ -255,6 +258,7 @@ class MqttService {
     _retryTimer = null;
     _retryAttempt = 0;
     _lastError = null;
+    _lastRetainedPayloads.clear();
     stateNotifier.value = AgentConnectionState.connected;
     _client.subscribe(_topics.cmd, MqttQos.atLeastOnce);
     publishStatus(online: true);
@@ -263,6 +267,7 @@ class MqttService {
   }
 
   void _onDisconnected() {
+    _lastRetainedPayloads.clear();
     stateNotifier.value = AgentConnectionState.disconnected;
     if (!_intentional) {
       stderr.writeln('MQTT: desconectado; autoReconnect assume');
@@ -293,10 +298,14 @@ class MqttService {
     );
   }
 
-  void publishLayout(Layout layout) {
+  void publishLayout(Layout layout, {bool force = false}) {
+    final payload = identical(layout, _lastLayout) && _lastLayoutJson != null
+        ? _lastLayoutJson!
+        : jsonEncode(layout.toPublishJson());
     _lastLayout = layout;
-    _publish(topics.layout, jsonEncode(layout.toPublishJson()),
-        retain: true, qos: MqttQos.atLeastOnce);
+    _lastLayoutJson = payload;
+    _publish(topics.layout, payload,
+        retain: true, qos: MqttQos.atLeastOnce, force: force);
   }
 
   void publishVolume(MasterVolume v) {
@@ -486,6 +495,7 @@ class MqttService {
   }
 
   void clearRetained() {
+    _lastRetainedPayloads.clear();
     for (final t in [
       topics.status,
       topics.layout,
@@ -499,13 +509,28 @@ class MqttService {
       '${topics.base}/stats/ram',
       '${topics.base}/stats/disk',
     ]) {
-      _publish(t, '', retain: true, qos: MqttQos.atLeastOnce);
+      _publish(t, '', retain: true, qos: MqttQos.atLeastOnce, force: true);
     }
   }
 
+  /// Verifica se um payload retido precisa realmente ser enviado (deduplicação por tópico).
+  bool shouldPublishRetained(String topic, String payload, {bool force = false}) {
+    if (!force && _lastRetainedPayloads[topic] == payload) {
+      return false;
+    }
+    _lastRetainedPayloads[topic] = payload;
+    return true;
+  }
+
+  /// Limpa o cache de deduplicação (útil em testes ou reconexão forçada).
+  void clearPublishCache() => _lastRetainedPayloads.clear();
+
   void _publish(String topic, String payload,
-      {required bool retain, required MqttQos qos}) {
+      {required bool retain, required MqttQos qos, bool force = false}) {
     if (!isConnected) return;
+    if (retain && !shouldPublishRetained(topic, payload, force: force)) {
+      return;
+    }
     final b = MqttClientPayloadBuilder();
     if (payload.isNotEmpty) b.addUTF8String(payload);
     _client.publishMessage(topic, qos, b.payload!, retain: retain);

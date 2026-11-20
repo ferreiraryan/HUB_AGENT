@@ -3,51 +3,55 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../util/windows_binaries.dart';
+import '../../util/windows_helper_bridge.dart';
 import 'stats_provider.dart';
 import 'stats_service.dart';
 
 /// Provider de stats do Windows.
 ///
-/// Usa `hub_audio_helper.exe stats` (Win32 nativo: GetSystemTimes,
-/// GlobalMemoryStatusEx, GetDiskFreeSpaceExW) como fonte primária de baixo
-/// custo, com fallback automático para PowerShell CIM se o helper não estiver
-/// disponível.
+/// Usa `hub_audio_helper.exe daemon` (via [WindowsHelperBridge], stateful e sem
+/// `Sleep(120)` ou spawn por tick) como fonte primária, com fallback automático
+/// para CLI `hub_audio_helper.exe stats` e PowerShell CIM.
 class WindowsStatsProvider implements StatsProvider {
   String? _helperPath;
+
+  static StatsSnapshot? parseHelperMap(Map<String, dynamic> data) {
+    final cpuLoad = ((data['cpu_load'] as num?)?.round() ?? 0).clamp(0, 100);
+    final ramUsedMb = (data['ram_used_mb'] as num?)?.round() ?? 0;
+    final ramTotalMb = (data['ram_total_mb'] as num?)?.round() ?? 0;
+    final ramPercent = ((data['ram_percent'] as num?)?.round() ??
+            (ramTotalMb == 0 ? 0 : (ramUsedMb * 100 ~/ ramTotalMb)))
+        .clamp(0, 100);
+    final diskMount = (data['disk_mount'] as String?) ?? 'C:';
+    final diskUsedGb = (data['disk_used_gb'] as num?)?.round() ?? 0;
+    final diskTotalGb = (data['disk_total_gb'] as num?)?.round() ?? 0;
+    final diskPercent = ((data['disk_percent'] as num?)?.round() ??
+            (diskTotalGb == 0 ? 0 : (diskUsedGb * 100 ~/ diskTotalGb)))
+        .clamp(0, 100);
+    final netRxKbps = (data['net_rx_kbps'] as num?)?.round();
+    final netTxKbps = (data['net_tx_kbps'] as num?)?.round();
+
+    return StatsSnapshot(
+      cpuLoad: cpuLoad,
+      cpuTemp: null,
+      cpuFreqMhz: null,
+      ramUsedMb: ramUsedMb,
+      ramTotalMb: ramTotalMb,
+      ramPercent: ramPercent,
+      diskMount: diskMount,
+      diskUsedGb: diskUsedGb,
+      diskTotalGb: diskTotalGb,
+      diskPercent: diskPercent,
+      netRxKbps: netRxKbps,
+      netTxKbps: netTxKbps,
+    );
+  }
 
   static StatsSnapshot? parseHelperJson(String raw) {
     try {
       final data = jsonDecode(raw);
       if (data is! Map<String, dynamic>) return null;
-      final cpuLoad = ((data['cpu_load'] as num?)?.round() ?? 0).clamp(0, 100);
-      final ramUsedMb = (data['ram_used_mb'] as num?)?.round() ?? 0;
-      final ramTotalMb = (data['ram_total_mb'] as num?)?.round() ?? 0;
-      final ramPercent = ((data['ram_percent'] as num?)?.round() ??
-              (ramTotalMb == 0 ? 0 : (ramUsedMb * 100 ~/ ramTotalMb)))
-          .clamp(0, 100);
-      final diskMount = (data['disk_mount'] as String?) ?? 'C:';
-      final diskUsedGb = (data['disk_used_gb'] as num?)?.round() ?? 0;
-      final diskTotalGb = (data['disk_total_gb'] as num?)?.round() ?? 0;
-      final diskPercent = ((data['disk_percent'] as num?)?.round() ??
-              (diskTotalGb == 0 ? 0 : (diskUsedGb * 100 ~/ diskTotalGb)))
-          .clamp(0, 100);
-      final netRxKbps = (data['net_rx_kbps'] as num?)?.round();
-      final netTxKbps = (data['net_tx_kbps'] as num?)?.round();
-
-      return StatsSnapshot(
-        cpuLoad: cpuLoad,
-        cpuTemp: null,
-        cpuFreqMhz: null,
-        ramUsedMb: ramUsedMb,
-        ramTotalMb: ramTotalMb,
-        ramPercent: ramPercent,
-        diskMount: diskMount,
-        diskUsedGb: diskUsedGb,
-        diskTotalGb: diskTotalGb,
-        diskPercent: diskPercent,
-        netRxKbps: netRxKbps,
-        netTxKbps: netTxKbps,
-      );
+      return parseHelperMap(data);
     } catch (_) {
       return null;
     }
@@ -55,6 +59,14 @@ class WindowsStatsProvider implements StatsProvider {
 
   @override
   Future<bool> probe() async {
+    if (await WindowsHelperBridge.instance.ensureStarted()) {
+      final res = await WindowsHelperBridge.instance.request('stats');
+      final data = res?['data'];
+      if (data is Map && parseHelperMap(data.cast<String, dynamic>()) != null) {
+        return true;
+      }
+    }
+
     _helperPath = WindowsBinaries.resolveHelperPath();
     if (_helperPath != null) {
       try {
@@ -83,6 +95,15 @@ class WindowsStatsProvider implements StatsProvider {
 
   @override
   Future<StatsSnapshot> read() async {
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance.request('stats');
+      final data = res?['data'];
+      if (data is Map) {
+        final parsed = parseHelperMap(data.cast<String, dynamic>());
+        if (parsed != null) return parsed;
+      }
+    }
+
     _helperPath ??= WindowsBinaries.resolveHelperPath();
     if (_helperPath != null) {
       try {

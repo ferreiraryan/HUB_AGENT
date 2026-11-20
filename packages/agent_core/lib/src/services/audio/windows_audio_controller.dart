@@ -4,21 +4,21 @@ import 'dart:io';
 
 import '../../models/audio_state.dart';
 import '../../util/windows_binaries.dart';
+import '../../util/windows_helper_bridge.dart';
 import 'audio_controller.dart';
 
 /// AudioController para Windows via hub_audio_helper.exe (WASAPI nativo)
-/// com fallback gracioso para nircmd.exe.
-///
-/// Utiliza hub_audio_helper.exe para leitura e ajuste em tempo real do volume
-/// master e sessões de áudio por aplicativo (inclusive multi-processos como
-/// Spotify, Discord, navegadores e jogos).
+/// com suporte a daemon persistente (orientado a eventos, 0 spawns/min) e
+/// fallback gracioso para CLI / nircmd.exe.
 class WindowsAudioController implements AudioController, ExtendedAudioController {
   final _masterCtl = StreamController<MasterVolume>.broadcast();
   final _appsCtl = StreamController<List<AppVolume>>.broadcast();
   final _micCtl = StreamController<MicState>.broadcast();
 
   Timer? _pollTimer;
+  StreamSubscription<Map<String, dynamic>>? _bridgeSub;
   bool _available = false;
+  bool _usingDaemon = false;
   MasterVolume _master = const MasterVolume(value: 0);
   MicState _mic = const MicState();
   List<AppVolume> _apps = const [];
@@ -57,18 +57,85 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
 
     _available = true;
 
-    // Leitura inicial
-    await refresh();
+    _usingDaemon = await WindowsHelperBridge.instance.ensureStarted();
+    if (_usingDaemon) {
+      _bridgeSub = WindowsHelperBridge.instance.audioEvents.listen(_applyStatusMap);
+      await refresh();
+      // Com daemon orientado a eventos (WASAPI callback para master/mic), um
+      // refresh leve a cada 4s sem spawn de processo mantém a lista de apps sincronizada.
+      _pollTimer = Timer.periodic(
+        const Duration(seconds: 4),
+        (_) => refresh(),
+      );
+      return;
+    }
 
+    // Fallback CLI legado
+    await refresh();
     _pollTimer = Timer.periodic(
-      const Duration(milliseconds: 1000),
+      const Duration(milliseconds: 1500),
       (_) => refresh(),
     );
+  }
+
+  void _applyStatusMap(Map<String, dynamic> data) {
+    final masterJson = data['master'];
+    if (masterJson is Map) {
+      final newMaster = MasterVolume(
+        value: (masterJson['volume'] as num?)?.toInt() ?? 0,
+        muted: masterJson['muted'] == true,
+      );
+      if (newMaster != _master) {
+        _master = newMaster;
+        if (!_masterCtl.isClosed) _masterCtl.add(newMaster);
+      }
+    }
+
+    final micJson = data['mic'];
+    if (micJson is Map) {
+      final newMic = MicState(
+        available: micJson['available'] == true,
+        muted: micJson['muted'] == true,
+        volume: (micJson['volume'] as num?)?.toInt() ?? 100,
+      );
+      if (newMic != _mic) {
+        _mic = newMic;
+        if (!_micCtl.isClosed) _micCtl.add(newMic);
+      }
+    }
+
+    final appsJson = data['apps'];
+    if (appsJson is List) {
+      final newApps = <AppVolume>[];
+      for (final item in appsJson) {
+        if (item is Map) {
+          final id = (item['id'] ?? '').toString();
+          final name = (item['name'] ?? id).toString();
+          final vol = (item['volume'] as num?)?.toInt() ?? 0;
+          if (id.isNotEmpty) {
+            newApps.add(AppVolume(id: id, name: name, volume: vol));
+          }
+        }
+      }
+      if (!_listEq(_apps, newApps)) {
+        _apps = newApps;
+        if (!_appsCtl.isClosed) _appsCtl.add(List.unmodifiable(_apps));
+      }
+    }
   }
 
   @override
   Future<void> refresh() async {
     if (!_available) return;
+
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance.request('audio_status');
+      final data = res?['data'];
+      if (data is Map) {
+        _applyStatusMap(data.cast<String, dynamic>());
+        return;
+      }
+    }
 
     if (_helperPath != null) {
       try {
@@ -82,50 +149,7 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
           final raw = (r.stdout as String).trim();
           if (raw.isNotEmpty) {
             final data = jsonDecode(raw) as Map<String, dynamic>;
-            final masterJson = data['master'] as Map<String, dynamic>?;
-            if (masterJson != null) {
-              final newMaster = MasterVolume(
-                value: (masterJson['volume'] as num?)?.toInt() ?? 0,
-                muted: masterJson['muted'] == true,
-              );
-              if (newMaster != _master) {
-                _master = newMaster;
-                if (!_masterCtl.isClosed) _masterCtl.add(newMaster);
-              }
-            }
-
-            final micJson = data['mic'] as Map<String, dynamic>?;
-            if (micJson != null) {
-              final newMic = MicState(
-                available: micJson['available'] == true,
-                muted: micJson['muted'] == true,
-                volume: (micJson['volume'] as num?)?.toInt() ?? 100,
-              );
-              if (newMic != _mic) {
-                _mic = newMic;
-                if (!_micCtl.isClosed) _micCtl.add(newMic);
-              }
-            }
-
-            final appsJson = data['apps'] as List?;
-            final newApps = <AppVolume>[];
-            if (appsJson != null) {
-              for (final item in appsJson) {
-                if (item is Map) {
-                  final id = (item['id'] ?? '').toString();
-                  final name = (item['name'] ?? id).toString();
-                  final vol = (item['volume'] as num?)?.toInt() ?? 0;
-                  if (id.isNotEmpty) {
-                    newApps.add(AppVolume(id: id, name: name, volume: vol));
-                  }
-                }
-              }
-            }
-
-            if (!_listEq(_apps, newApps)) {
-              _apps = newApps;
-              if (!_appsCtl.isClosed) _appsCtl.add(List.unmodifiable(_apps));
-            }
+            _applyStatusMap(data);
           }
         }
       } catch (_) {
@@ -145,6 +169,15 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
     if (!_available) return;
     final v = value.clamp(0, 100);
 
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('set_master', args: {'value': v});
+      if (res?['ok'] == true) {
+        await refresh();
+        return;
+      }
+    }
+
     if (_helperPath != null) {
       try {
         await Process.run(_helperPath!, ['set-master', '$v'], runInShell: false);
@@ -161,6 +194,15 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
   @override
   Future<void> setMute(bool muted) async {
     if (!_available) return;
+
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('set_master_mute', args: {'muted': muted});
+      if (res?['ok'] == true) {
+        await refresh();
+        return;
+      }
+    }
 
     if (_helperPath != null) {
       try {
@@ -179,6 +221,15 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
     final clean = id.trim();
     if (clean.isEmpty || !_available) return;
     final v = value.clamp(0, 100);
+
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('set_app', args: {'target': clean, 'value': v});
+      if (res?['ok'] == true) {
+        await refresh();
+        return;
+      }
+    }
 
     if (_helperPath != null) {
       try {
@@ -201,6 +252,15 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
     final clean = name.trim();
     if (clean.isEmpty || !_available) return;
     final v = value.clamp(0, 100);
+
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('set_app', args: {'target': clean, 'value': v});
+      if (res?['ok'] == true) {
+        await refresh();
+        return;
+      }
+    }
 
     if (_helperPath != null) {
       try {
@@ -233,6 +293,14 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
   @override
   Future<void> setMicMute(bool muted) async {
     if (!_available || _helperPath == null) return;
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('set_mic_mute', args: {'muted': muted});
+      if (res?['ok'] == true) {
+        await refresh();
+        return;
+      }
+    }
     try {
       await Process.run(_helperPath!, ['set-mic-mute', muted ? '1' : '0'],
           runInShell: false);
@@ -256,6 +324,7 @@ class WindowsAudioController implements AudioController, ExtendedAudioController
   @override
   Future<void> dispose() async {
     _pollTimer?.cancel();
+    await _bridgeSub?.cancel();
     await _masterCtl.close();
     await _appsCtl.close();
     await _micCtl.close();

@@ -54,17 +54,17 @@ class EditorController extends Notifier<EditorState> {
 
   @override
   EditorState build() {
-    final repository = ref.read(agentRuntimeProvider).repository;
+    final bridge = ref.read(agentBridgeProvider);
 
     Layout initialLayout;
-    if (repository.isLoaded) {
-      initialLayout = repository.current;
+    if (bridge.isLayoutLoaded) {
+      initialLayout = bridge.currentLayout;
     } else {
       final config = ref.read(agentConfigProvider);
       initialLayout = Layout.initial(config.deviceId);
     }
 
-    final sub = repository.changes.listen(_onRepositoryChange);
+    final sub = bridge.layoutChanges.listen(_onRepositoryChange);
 
     ref.onDispose(() {
       _debounceTimer?.cancel();
@@ -89,7 +89,7 @@ class EditorController extends Notifier<EditorState> {
     if (nextLayout == state.layout) return;
 
     final newUndo = List<Layout>.of(state.undoStack)..add(state.layout);
-    if (newUndo.length > 50) {
+    if (newUndo.length > 15) {
       newUndo.removeAt(0);
     }
 
@@ -107,7 +107,7 @@ class EditorController extends Notifier<EditorState> {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 400), () {
       _writeChain = _writeChain.then((_) async {
-        ref.read(agentRuntimeProvider).repository.save(layout);
+        ref.read(agentBridgeProvider).saveLayout(layout);
         if (state.layout == layout && state.dirty) {
           state = state.copyWith(dirty: false);
         }
@@ -389,10 +389,20 @@ class EditorController extends Notifier<EditorState> {
   Future<void> flush() async {
     _debounceTimer?.cancel();
     await _writeChain;
-    final repo = ref.read(agentRuntimeProvider).repository;
-    repo.save(state.layout);
-    await repo.flush();
+    final bridge = ref.read(agentBridgeProvider);
+    bridge.saveLayout(state.layout);
+    await bridge.flushLayout(forcePublish: true);
     state = state.copyWith(dirty: false);
+  }
+
+  /// Libera snapshots antigos de undo/redo ao ocultar o CMS na bandeja.
+  void trimHistory() {
+    if (state.dirty) return;
+    if (state.undoStack.isEmpty && state.redoStack.isEmpty) return;
+    state = state.copyWith(
+      undoStack: const [],
+      redoStack: const [],
+    );
   }
 
   void discardExternal() {

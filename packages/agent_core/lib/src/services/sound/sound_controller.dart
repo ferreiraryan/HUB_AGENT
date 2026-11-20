@@ -5,6 +5,7 @@ import 'dart:io';
 import '../../models/audio_output_device.dart';
 import '../../models/sound_playback_state.dart';
 import '../../util/windows_binaries.dart';
+import '../../util/windows_helper_bridge.dart';
 
 abstract mixin class SoundController {
   Stream<SoundPlaybackState> get stateChanges;
@@ -69,17 +70,24 @@ class SystemSoundController implements SoundController {
       onVolumeChanged?.call(_volume);
     }
     if (Platform.isWindows && _activeProcesses.isNotEmpty) {
-      final helper = _resolveHelperPath();
-      if (helper != null) {
-        final procs = List<Process>.from(_activeProcesses);
+      final procs = List<Process>.from(_activeProcesses);
+      if (WindowsHelperBridge.instance.isRunning) {
         for (final p in procs) {
-          try {
-            await Process.run(
-              helper,
-              ['set-app', '${p.pid}', '$_volume'],
-              runInShell: false,
-            );
-          } catch (_) {}
+          await WindowsHelperBridge.instance
+              .request('set_app', args: {'target': '${p.pid}', 'value': _volume});
+        }
+      } else {
+        final helper = _resolveHelperPath();
+        if (helper != null) {
+          for (final p in procs) {
+            try {
+              await Process.run(
+                helper,
+                ['set-app', '${p.pid}', '$_volume'],
+                runInShell: false,
+              );
+            } catch (_) {}
+          }
         }
       }
     }
@@ -142,6 +150,17 @@ class SystemSoundController implements SoundController {
   @override
   Future<List<AudioOutputDevice>> listDevices() async {
     if (Platform.isWindows) {
+      if (WindowsHelperBridge.instance.isRunning) {
+        final res = await WindowsHelperBridge.instance.request('list_devices');
+        final data = res?['data'];
+        if (data is List) {
+          return data
+              .whereType<Map<dynamic, dynamic>>()
+              .map((item) => AudioOutputDevice.fromJson(item.cast<String, dynamic>()))
+              .toList();
+        }
+      }
+
       final helper = _resolveHelperPath();
       if (helper != null) {
         try {

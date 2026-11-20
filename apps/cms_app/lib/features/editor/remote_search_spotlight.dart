@@ -146,9 +146,9 @@ class _RemoteSearchInputState extends ConsumerState<RemoteSearchInput> {
     final searchState = ref.watch(remoteSearchControllerProvider);
     Layout? layout;
     try {
-      final runtime = ref.watch(agentRuntimeProvider);
-      if (runtime.repository.isLoaded) {
-        layout = runtime.repository.current;
+      final bridge = ref.watch(agentBridgeProvider);
+      if (bridge.isLayoutLoaded) {
+        layout = bridge.currentLayout;
       }
     } catch (_) {
       layout = null;

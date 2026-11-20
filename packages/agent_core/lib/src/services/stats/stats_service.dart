@@ -105,39 +105,57 @@ class StatsSnapshot {
 }
 
 class StatsService {
-  final Duration interval;
+  Duration _interval;
   final StatsProvider provider;
   final _controller = StreamController<StatsSnapshot>.broadcast();
   Timer? _timer;
   bool _available = false;
+  bool _inFlight = false;
+  bool _started = false;
   StatsSnapshot? _last;
 
   StatsService({
-    this.interval = const Duration(seconds: 3),
+    Duration interval = const Duration(seconds: 3),
     StatsProvider? provider,
-  }) : provider = provider ?? _defaultProvider();
+  })  : _interval = interval,
+        provider = provider ?? _defaultProvider();
+
+  Duration get interval => _interval;
 
   static StatsProvider _defaultProvider() {
-      if (Platform.isLinux) return LinuxStatsProvider();
-      if (Platform.isWindows) return WindowsStatsProvider();
-      return UnsupportedStatsProvider();
-    }
+    if (Platform.isLinux) return LinuxStatsProvider();
+    if (Platform.isWindows) return WindowsStatsProvider();
+    return UnsupportedStatsProvider();
+  }
 
   Stream<StatsSnapshot> get changes => _controller.stream;
   StatsSnapshot? get current => _last;
   bool get isAvailable => _available;
 
+  /// Ajusta dinamicamente o intervalo de coleta (ex: 3s ativo vs 15s ocioso).
+  void setInterval(Duration nextInterval) {
+    if (_interval == nextInterval) return;
+    _interval = nextInterval;
+    if (_started && _available) {
+      _timer?.cancel();
+      _timer = Timer.periodic(_interval, (_) => _poll());
+    }
+  }
+
   Future<void> start() async {
+    _started = true;
     _available = await provider.probe();
     if (!_available) {
       stderr.writeln('stats: provider indisponivel');
       return;
     }
     await _poll();
-    _timer = Timer.periodic(interval, (_) => _poll());
+    _timer = Timer.periodic(_interval, (_) => _poll());
   }
 
   Future<void> _poll() async {
+    if (_inFlight) return;
+    _inFlight = true;
     try {
       final next = await provider.read();
       if (next != _last) {
@@ -146,10 +164,13 @@ class StatsService {
       }
     } catch (e) {
       stderr.writeln('stats: leitura falhou: $e');
+    } finally {
+      _inFlight = false;
     }
   }
 
   Future<void> dispose() async {
+    _started = false;
     _timer?.cancel();
     await _controller.close();
   }

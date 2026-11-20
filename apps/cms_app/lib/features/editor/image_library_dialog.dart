@@ -82,6 +82,8 @@ Future<ImageItem?> promptAndImportImage({
     final chosenName = nameController.text.trim();
     final isGif = ImageIconHelper.isGifBytes(originalBytes) || ext == 'gif';
 
+    var bytesToSave = originalBytes;
+    var extToSave = ext;
     String? staticDataUri;
     if (isGif) {
       try {
@@ -90,12 +92,26 @@ Future<ImageItem?> promptAndImportImage({
           targetSize: 96,
         );
       } catch (_) {}
+    } else if (originalBytes.length > 48 * 1024) {
+      // Redimensiona imagens estáticas grandes antes de persistir em Base64,
+      // evitando payloads multi-MB no layout.json, RAM e MQTT.
+      try {
+        final resizedUri = await ImageIconHelper.processBannerImageBytes(
+          originalBytes,
+          maxDimension: 512,
+        );
+        final resizedBytes = ImageIconHelper.extractBytes(resizedUri);
+        if (resizedBytes != null && resizedBytes.length < originalBytes.length) {
+          bytesToSave = resizedBytes;
+          extToSave = 'png';
+        }
+      } catch (_) {}
     }
 
     return await repo.importImage(
       name: chosenName,
-      rawBytes: originalBytes,
-      extension: ext,
+      rawBytes: bytesToSave,
+      extension: extToSave,
       staticDataUri: staticDataUri,
     );
   } catch (e) {

@@ -5,6 +5,7 @@ import 'dart:io';
 import '../../models/agent_event.dart';
 import '../../models/battery_state.dart';
 import '../../util/windows_binaries.dart';
+import '../../util/windows_helper_bridge.dart';
 
 abstract interface class BatteryProvider {
   Future<BatterySnapshot> read();
@@ -36,6 +37,15 @@ class WindowsBatteryProvider implements BatteryProvider {
 
   @override
   Future<BatterySnapshot> read() async {
+    if (WindowsHelperBridge.instance.isRunning) {
+      final res = await WindowsHelperBridge.instance
+          .request('batteries', timeout: const Duration(seconds: 4));
+      final data = res?['data'];
+      if (data is Map) {
+        return parseHelperJson(jsonEncode(data));
+      }
+    }
+
     _helperPath ??= WindowsBinaries.resolveHelperPath();
     if (_helperPath == null) return const BatterySnapshot();
     try {

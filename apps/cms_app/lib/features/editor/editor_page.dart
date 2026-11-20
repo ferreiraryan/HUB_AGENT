@@ -192,7 +192,7 @@ class _TopBar extends ConsumerWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(999),
               onTap: () {
-                ref.read(agentRuntimeProvider).reconnectMqtt();
+                ref.read(agentBridgeProvider).reconnectMqtt();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Reconectando ao broker MQTT...'),

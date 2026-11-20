@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../util/windows_binaries.dart';
+import '../../util/windows_helper_bridge.dart';
 
 /// Ponte de área de transferência (Clipboard) cross-platform (Windows & Linux).
 class ClipboardService {
@@ -9,6 +10,14 @@ class ClipboardService {
 
   Future<String> getText() async {
     if (Platform.isWindows) {
+      if (WindowsHelperBridge.instance.isRunning) {
+        final res = await WindowsHelperBridge.instance.request('get_clipboard');
+        final data = res?['data'];
+        if (data is Map && data['text'] is String) {
+          return data['text'] as String;
+        }
+      }
+
       _helperPath ??= WindowsBinaries.resolveHelperPath();
       if (_helperPath == null) return '';
       try {
@@ -47,6 +56,13 @@ class ClipboardService {
 
   Future<bool> setText(String text) async {
     if (Platform.isWindows) {
+      if (WindowsHelperBridge.instance.isRunning) {
+        final b64 = base64Encode(utf8.encode(text));
+        final res = await WindowsHelperBridge.instance
+            .request('set_clipboard', args: {'base64': b64});
+        if (res?['ok'] == true) return true;
+      }
+
       _helperPath ??= WindowsBinaries.resolveHelperPath();
       if (_helperPath == null) return false;
       try {

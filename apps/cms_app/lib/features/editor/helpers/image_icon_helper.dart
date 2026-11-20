@@ -45,14 +45,23 @@ class ImageIconHelper {
       targetWidth: targetSize,
       targetHeight: targetSize,
     );
-    final frame = await codec.getNextFrame();
-    final byteData =
-        await frame.image.toByteData(format: ui.ImageByteFormat.png);
-    if (byteData == null) {
-      throw Exception('Não foi possível codificar os bytes da imagem para PNG.');
+    try {
+      final frame = await codec.getNextFrame();
+      try {
+        final byteData =
+            await frame.image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) {
+          throw Exception(
+              'Não foi possível codificar os bytes da imagem para PNG.');
+        }
+        final pngBytes = byteData.buffer.asUint8List();
+        return 'data:image/png;base64,${base64Encode(pngBytes)}';
+      } finally {
+        frame.image.dispose();
+      }
+    } finally {
+      codec.dispose();
     }
-    final pngBytes = byteData.buffer.asUint8List();
-    return 'data:image/png;base64,${base64Encode(pngBytes)}';
   }
 
   /// Processa imagem para tela de suspensão / banner preservando a proporção original.
@@ -105,15 +114,20 @@ class ImageIconHelper {
   }
 
   static final Map<String, Uint8List> _bytesCache = {};
-  static const int _maxCacheEntries = 200;
+  static const int _maxCacheEntries = 80;
+  static const int _maxCacheBytes = 8 * 1024 * 1024; // 8 MB
+  static int _currentCacheBytes = 0;
 
-  /// Extrai os bytes de um Data URI Base64 com cache em memória para reaproveitar
-  /// instâncias de Uint8List e maximizar acertos no ImageCache do Flutter.
+  /// Extrai os bytes de um Data URI Base64 com cache LRU limitado em bytes
+  /// para reaproveitar instâncias de Uint8List sem acumular RAM.
   static Uint8List? extractBytes(String? dataUri) {
     if (dataUri == null || !dataUri.startsWith('data:image/')) return null;
 
-    final cached = _bytesCache[dataUri];
-    if (cached != null) return cached;
+    final cached = _bytesCache.remove(dataUri);
+    if (cached != null) {
+      _bytesCache[dataUri] = cached; // promove para mais recente (LRU)
+      return cached;
+    }
 
     try {
       final commaIndex = dataUri.indexOf(',');
@@ -121,10 +135,17 @@ class ImageIconHelper {
           commaIndex != -1 ? dataUri.substring(commaIndex + 1) : dataUri;
       final bytes = base64Decode(base64Str);
 
-      if (_bytesCache.length >= _maxCacheEntries) {
-        _bytesCache.remove(_bytesCache.keys.first);
+      if (bytes.length <= _maxCacheBytes) {
+        while (_bytesCache.isNotEmpty &&
+            (_bytesCache.length >= _maxCacheEntries ||
+                _currentCacheBytes + bytes.length > _maxCacheBytes)) {
+          final oldestKey = _bytesCache.keys.first;
+          final removed = _bytesCache.remove(oldestKey);
+          if (removed != null) _currentCacheBytes -= removed.length;
+        }
+        _bytesCache[dataUri] = bytes;
+        _currentCacheBytes += bytes.length;
       }
-      _bytesCache[dataUri] = bytes;
       return bytes;
     } catch (_) {
       return null;
@@ -132,5 +153,8 @@ class ImageIconHelper {
   }
 
   /// Limpa o cache de bytes decodificados em memória.
-  static void clearCache() => _bytesCache.clear();
+  static void clearCache() {
+    _bytesCache.clear();
+    _currentCacheBytes = 0;
+  }
 }

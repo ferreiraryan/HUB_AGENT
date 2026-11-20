@@ -16,8 +16,9 @@ O **Hub Agent** é um ecossistema de controle e automação local distribuído b
    - Serve os arquivos estáticos de **`dashboard_web/`** em HTTP (porta `8080`) via script `start-tablet.sh`.
    - Navegador kiosk ou WebView no tablet exibe a UI conectada via WebSocket ao Mosquitto local.
 2. **Host (Spoke / Satélite - PC Windows ou Linux):**
-   - Executa o **`apps/cms_app`** (Flutter Desktop) com suporte a inicialização oculta (`--hidden`), minimização para bandeja do sistema (tray) e autostart no boot.
-   - Instancia o **`AgentRuntime`** (provido por **`packages/agent_core`**), que executa comandos do sistema (áudio, mídia, teclas, brilho, estatísticas de hardware, soundpad) e sincroniza estado via MQTT.
+   - Executa o **`hub_agent_daemon`** (binário Dart AOT puro compilado a partir de **`packages/agent_core/bin/hub_agent_daemon.dart`**) 24/7 em segundo plano com consumo mínimo de RAM (sem Flutter, Skia, EGL ou driver GPU).
+   - Mantém ícone nativo leve na bandeja (**`hub_tray_linux`** via `ayatana-appindicator3` no Linux; **`Shell_NotifyIconW`** integrado ao `hub_audio_helper.exe daemon` no Windows).
+   - Lança o **`apps/cms_app`** (Flutter Desktop) **sob demanda** (`--show`, `--spotlight=search`, `--spotlight=todo`) conectado via IPC loopback autenticado (`HTTP + WebSocket` em `127.0.0.1:0` com Bearer token em `daemon.ipc.json`). Ao fechar a janela, o processo Flutter encerra com `exit(0)` liberando 100% da RAM gráfica (suporta também `--standalone` como fallback embarcado).
 
 ```text
 +------------------------------------------------------------------------+
@@ -31,10 +32,12 @@ O **Hub Agent** é um ecossistema de controle e automação local distribuído b
                                ▼
 +------------------------------------------------------------------------+
 | COMPUTADOR HOST (Spoke - Windows / Linux)                              |
-|   - apps/cms_app (Flutter Desktop: UI de edição de layout e tray)      |
-|   - packages/agent_core (Dart puro: AgentRuntime, MqttService)         |
+|   - hub_agent_daemon (Dart AOT 24/7: AgentRuntime, MqttService, IPC)   |
+|   - Tray nativo leve (hub_tray_linux / hub_audio_helper.exe daemon)    |
+|   - apps/cms_app (Flutter UI sob demanda via IPC loopback; exit(0))    |
 |   - Executores locais:                                                 |
-|       * Windows: hub_audio_helper.exe (WASAPI, GSMTC, WinRT), nircmd   |
+|       * Windows: hub_audio_helper.exe (WASAPI, GSMTC, WinRT, Tray),    |
+|                  nircmd                                                |
 |       * Linux: wpctl, pactl, playerctl, wtype (Wayland), xdotool,      |
 |                ydotool, ddcutil, paplay                                |
 +------------------------------------------------------------------------+
@@ -174,10 +177,15 @@ O tablet dispara comandos em formato JSON. Formatos reconhecidos:
 ## 5. Decisões Arquiteturais Inegociáveis
 
 1. **Separação de Camadas**: `packages/agent_core` é agnóstico de UI e independente de Flutter.
-2. **Processos Externos no Windows**: Manter `hub_audio_helper.exe` e `nircmd.exe` isolados como processos externos. FFI/COM direto no processo Dart causou corrupção de memória e use-after-free em finalizers.
+2. **Processos Externos no Windows**: Manter `hub_audio_helper.exe` e `nircmd.exe` isolados como processos externos. FFI/COM direto no processo Dart causou corrupção de memória e use-after-free em finalizers. Para eliminar o churn de ~200 spawns/min no Windows, o `hub_audio_helper.exe` suporta o modo persistente `daemon` (NDJSON via stdin/stdout, via `WindowsHelperBridge`) unificando WASAPI callbacks, eventos GSMTC, `SetWinEventHook`, stats stateful sem `Sleep(120)`, OSD, hotkey global e notificações em um único processo (com fallback automático para os subcomandos CLI legados).
 3. **Segurança de Execução**: Comandos disparados pelo tablet devem ter correspondência prévia e explícita no `layout.json` local. Sliders customizados usam bindings locais indexados pelo ID do slider.
-4. **Debounce de Layout**: Há debounce de 400 ms no editor do CMS e mais 400 ms no `LayoutRepository`.
-5. **Autostart no Windows**: O CMS utiliza `launch_at_startup` com flag `--hidden` para iniciar na bandeja do sistema sem abrir a janela.
+4. **Debounce de Layout e Screensaver**: Há debounce de 400 ms no editor do CMS, 400 ms no `LayoutRepository` e 350 ms na persistência/publicação do `ScreensaverRepository`.
+5. **Economia de Recursos no Host (RAM, CPU e Tráfego MQTT)**:
+   - **Separação Daemon Headless + UI Sob Demanda (Fase 4)**: O serviço permanente em segundo plano é o binário Dart AOT `hub_agent_daemon` (~12–20 MB PSS, zero driver GPU/OpenGL/Flutter) + tray nativo leve (`hub_tray_linux` no Linux ou `Shell_NotifyIconW` dentro do `hub_audio_helper.exe daemon` no Windows). O `cms_app` conecta via IPC loopback autenticado (`DaemonIpcServer`/`DaemonIpcClient` + `DaemonAgentBridge`) e encerra com `exit(0)` ao fechar a janela ou spotlight, mantendo o custo gráfico em background em **0 MB**.
+   - **Hibernação da UI em modo `--standalone`**: Quando executado no modo legado embarcado e minimizado na bandeja, `_AppRoot` desmonta completamente o `EditorPage`, zera o `ImageCache` e o cache Base64 LRU (`ImageIconHelper`), limpa o histórico inativo de undo (limitado a 15 entradas) e chama o MethodChannel nativo `hub_agent/memory` (`SetProcessWorkingSetSizeEx` no Windows / `malloc_trim(0)` no Linux). `TileIconView` decodifica ícones estáticos proporcionalmente via `cacheWidth`/`cacheHeight`.
+   - **Deduplicação e Throttle MQTT**: `MqttService` deduplica payloads retidos idênticos por tópico (limpo em reconexão); `MediaService` e `PomodoroService` emitem imediatamente em transições/comandos/seek e enviam pulsos de calibração periódicos (12s/15s) aproveitando a interpolação local do `dashboard_web`.
+   - **Monitoramento condicional e event-driven**: `ActiveWindowMonitor` usa `SetWinEventHook` (Windows), `.socket2.sock` (Hyprland) ou `xprop -spy` (X11) e só permanece ativo quando há `page_rules`; `MediaService` no Linux usa `playerctl --follow`; brilho só faz polling (20s) quando existem `SliderTile` de brilho; `LinuxStatsProvider` faz cache de `thermal_zone`, lê `scaling_cur_freq` e faz cache de `df` por 60s; `StatsService` adapta intervalo (3s ativo / 15s ocioso).
+6. **Autostart**: O `AutostartController` registra preferencialmente o `hub_agent_daemon` (com fallback automático para `cms_app --hidden` caso o binário do daemon não esteja presente).
 
 ---
 

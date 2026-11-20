@@ -1,5 +1,7 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -25,6 +27,26 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  // MethodChannel para liberar páginas ociosas do working set ao ocultar na bandeja.
+  memory_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "hub_agent/memory",
+          &flutter::StandardMethodCodec::GetInstance());
+  memory_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() == "trim") {
+          ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(),
+                                       static_cast<SIZE_T>(-1),
+                                       static_cast<SIZE_T>(-1), 0);
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   // A visibilidade inicial é controlada pelo window_manager em Dart
@@ -35,6 +57,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  memory_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

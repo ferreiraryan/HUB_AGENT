@@ -4,13 +4,7 @@ import 'dart:io';
 
 import 'package:agent_core/agent_core.dart';
 
-enum GlobalHotkeyStatus {
-  disabled,
-  ready,
-  inUse,
-  invalid,
-  unsupported,
-}
+export 'package:agent_core/agent_core.dart' show GlobalHotkeyStatus;
 
 /// Escuta um atalho global de teclado do sistema operacional para abrir o
 /// Spotlight de busca do Hub Agent de qualquer lugar (mesmo minimizado).
@@ -23,6 +17,8 @@ class GlobalHotkeyService {
 
   Process? _process;
   StreamSubscription<String>? _stdoutSub;
+  StreamSubscription<Map<String, dynamic>>? _bridgeSub;
+  bool _usingBridge = false;
   String _currentCombo = '';
   GlobalHotkeyStatus _status = GlobalHotkeyStatus.disabled;
 
@@ -38,12 +34,45 @@ class GlobalHotkeyService {
 
     if (trimmed.isEmpty) {
       _status = GlobalHotkeyStatus.disabled;
+      if (Platform.isWindows && WindowsHelperBridge.instance.isRunning) {
+        await WindowsHelperBridge.instance.setHotkey('');
+      }
       return _status;
     }
 
     if (!Platform.isWindows) {
       _status = GlobalHotkeyStatus.unsupported;
       return _status;
+    }
+
+    // Reutiliza o processo único `hub_audio_helper.exe daemon` quando disponível.
+    if (await WindowsHelperBridge.instance.ensureStarted()) {
+      final completer = Completer<GlobalHotkeyStatus>();
+      _usingBridge = true;
+      _bridgeSub = WindowsHelperBridge.instance.hotkeyEvents.listen((data) {
+        final st = data['status']?.toString();
+        if (st == 'ready') {
+          _status = GlobalHotkeyStatus.ready;
+          if (!completer.isCompleted) completer.complete(_status);
+        } else if (st == 'triggered') {
+          if (!_triggerCtl.isClosed) _triggerCtl.add(null);
+        } else if (st == 'error') {
+          final msg = data['message']?.toString() ?? '';
+          _status = msg == 'hotkey_in_use'
+              ? GlobalHotkeyStatus.inUse
+              : GlobalHotkeyStatus.invalid;
+          if (!completer.isCompleted) completer.complete(_status);
+        }
+      });
+
+      final sent = await WindowsHelperBridge.instance.setHotkey(trimmed);
+      if (sent) {
+        return await completer.future.timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => _status,
+        );
+      }
+      await stop();
     }
 
     final helperPath = WindowsBinaries.resolveHelperPath();
@@ -107,6 +136,14 @@ class GlobalHotkeyService {
   }
 
   Future<void> stop() async {
+    await _bridgeSub?.cancel();
+    _bridgeSub = null;
+    if (_usingBridge) {
+      _usingBridge = false;
+      if (WindowsHelperBridge.instance.isRunning) {
+        unawaited(WindowsHelperBridge.instance.setHotkey(''));
+      }
+    }
     await _stdoutSub?.cancel();
     _stdoutSub = null;
     try {

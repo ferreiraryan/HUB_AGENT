@@ -69,15 +69,15 @@ class ScreensaverController extends Notifier<ScreensaverEditorState> {
     WeatherState? initialWeather;
 
     try {
-      final runtime = ref.watch(agentRuntimeProvider);
-      initial = runtime.screensaver.current;
-      initialWeather = runtime.weather.current;
+      final bridge = ref.watch(agentBridgeProvider);
+      initial = bridge.currentScreensaver;
+      initialWeather = bridge.currentWeather;
       _weatherSub?.cancel();
-      _weatherSub = runtime.weather.updates.listen((w) {
+      _weatherSub = bridge.weatherUpdates.listen((w) {
         state = state.copyWith(weatherPreview: w, loadingWeather: false);
       });
     } catch (_) {
-      // Testes isolados sem agentRuntimeProvider
+      // Testes isolados sem agentBridgeProvider
     }
 
     ref.onDispose(() {
@@ -93,16 +93,21 @@ class ScreensaverController extends Notifier<ScreensaverEditorState> {
   }
 
   void _commit(ScreensaverConfig next, {bool recordUndo = true}) {
-    final undo = recordUndo
-        ? [...state.undoStack.take(29), state.config]
-        : state.undoStack;
+    List<ScreensaverConfig> undo = state.undoStack;
+    if (recordUndo) {
+      final list = List<ScreensaverConfig>.of(state.undoStack)..add(state.config);
+      if (list.length > 15) {
+        list.removeAt(0);
+      }
+      undo = list;
+    }
     state = state.copyWith(
       config: next,
       undoStack: undo,
       redoStack: recordUndo ? const [] : state.redoStack,
     );
     try {
-      ref.read(agentRuntimeProvider).screensaver.update(next);
+      ref.read(agentBridgeProvider).updateScreensaver(next);
     } catch (_) {}
   }
 
@@ -127,7 +132,7 @@ class ScreensaverController extends Notifier<ScreensaverEditorState> {
       redoStack: nextRedo,
     );
     try {
-      ref.read(agentRuntimeProvider).screensaver.update(prev);
+      ref.read(agentBridgeProvider).updateScreensaver(prev);
     } catch (_) {}
   }
 
@@ -142,7 +147,7 @@ class ScreensaverController extends Notifier<ScreensaverEditorState> {
       redoStack: nextRedo,
     );
     try {
-      ref.read(agentRuntimeProvider).screensaver.update(next);
+      ref.read(agentBridgeProvider).updateScreensaver(next);
     } catch (_) {}
   }
 
@@ -174,9 +179,8 @@ class ScreensaverController extends Notifier<ScreensaverEditorState> {
     state = state.copyWith(loadingWeather: true);
     try {
       final w = await ref
-          .read(agentRuntimeProvider)
-          .weather
-          .configure(city: targetCity, unit: targetUnit);
+          .read(agentBridgeProvider)
+          .configureWeather(city: targetCity, unit: targetUnit);
       state = state.copyWith(weatherPreview: w, loadingWeather: false);
       return w;
     } catch (_) {
@@ -251,15 +255,13 @@ class ScreensaverController extends Notifier<ScreensaverEditorState> {
 
   Future<void> publishAndPreviewOnTablet() async {
     try {
-      final runtime = ref.read(agentRuntimeProvider);
-      await runtime.screensaver.flush();
-      runtime.mqtt.publishScreensaverCommand('open');
+      await ref.read(agentBridgeProvider).previewScreensaverOnTablet();
     } catch (_) {}
   }
 
   Future<void> flush() async {
     try {
-      await ref.read(agentRuntimeProvider).screensaver.flush();
+      await ref.read(agentBridgeProvider).flushScreensaver();
     } catch (_) {}
   }
 

@@ -65,7 +65,7 @@ class _SoundLibraryDialogState extends ConsumerState<_SoundLibraryDialog> {
 
       final repo = ref.read(soundLibraryRepositoryProvider);
       final imported = await repo.importSound(sourceFile: File(xFile.path));
-      ref.read(agentRuntimeProvider).dispatcher.invalidateSoundCache();
+      await ref.read(agentBridgeProvider).invalidateSoundCache();
 
       await _loadSounds();
 
@@ -145,27 +145,27 @@ class _SoundLibraryDialogState extends ConsumerState<_SoundLibraryDialog> {
     );
 
     if (confirm == true) {
-      final runtime = ref.read(agentRuntimeProvider);
+      final bridge = ref.read(agentBridgeProvider);
       if (_currentlyPlayingId == sound.id) {
-        await runtime.sound?.stop();
+        await bridge.stopSound();
         setState(() => _currentlyPlayingId = null);
       }
       await repo.deleteSound(sound.id);
-      runtime.dispatcher.invalidateSoundCache();
+      await bridge.invalidateSoundCache();
       await _loadSounds();
     }
   }
 
   Future<void> _togglePreview(SoundItem sound) async {
-    final runtime = ref.read(agentRuntimeProvider);
+    final bridge = ref.read(agentBridgeProvider);
     if (_currentlyPlayingId == sound.id) {
-      await runtime.sound?.stop();
+      await bridge.stopSound();
       setState(() => _currentlyPlayingId = null);
     } else {
       setState(() => _currentlyPlayingId = sound.id);
-      await runtime.sound?.play(sound.id);
+      await bridge.playSound(sound.id);
       // Fica escutando até o fim da reprodução
-      runtime.sound?.stateChanges.firstWhere((s) => !s.isPlaying).then((_) {
+      bridge.soundStateChanges.firstWhere((s) => !s.isPlaying).then((_) {
         if (mounted && _currentlyPlayingId == sound.id) {
           setState(() => _currentlyPlayingId = null);
         }
@@ -297,7 +297,7 @@ class _SoundLibraryDialogState extends ConsumerState<_SoundLibraryDialog> {
       actions: [
         TextButton(
           onPressed: () {
-            ref.read(agentRuntimeProvider).sound?.stop();
+            ref.read(agentBridgeProvider).stopSound();
             Navigator.pop(context);
           },
           child: const Text('Fechar'),

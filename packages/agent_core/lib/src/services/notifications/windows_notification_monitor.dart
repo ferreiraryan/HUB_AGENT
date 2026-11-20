@@ -6,6 +6,7 @@ import 'dart:io';
 
 import '../../models/agent_event.dart';
 import '../../util/windows_binaries.dart';
+import '../../util/windows_helper_bridge.dart';
 import 'notification_monitor.dart';
 
 /// Tipo de função para execução de processos em testes e runtime.
@@ -103,11 +104,13 @@ class WindowsNotificationParser {
 /// Monitor de notificações para Windows via `hub_audio_helper.exe watch-notifications`.
 class WindowsNotificationMonitor implements NotificationMonitor {
   final _controller = StreamController<AgentEvent>.broadcast();
-  final ProcessStarter _starter;
+  final ProcessStarter? _customStarter;
   final String? _helperPathOverride;
 
   Process? _process;
   StreamSubscription<String>? _stdoutSub;
+  StreamSubscription<Map<String, dynamic>>? _bridgeSub;
+  bool _usingBridge = false;
   bool _isAvailable = false;
   bool _disposed = false;
 
@@ -119,7 +122,7 @@ class WindowsNotificationMonitor implements NotificationMonitor {
     ProcessStarter? starter,
     String? helperPathOverride,
   })  : ignoredApps = ignoredApps ?? {'hub_agent', 'cms_app'},
-        _starter = starter ?? Process.start,
+        _customStarter = starter,
         _helperPathOverride = helperPathOverride;
 
   @override
@@ -130,7 +133,27 @@ class WindowsNotificationMonitor implements NotificationMonitor {
 
   @override
   Future<void> start() async {
-    if (_disposed || _process != null) return;
+    if (_disposed || _process != null || _usingBridge) return;
+
+    // Usa o daemon unificado quando não há starter/path customizado de teste.
+    if (_customStarter == null &&
+        _helperPathOverride == null &&
+        await WindowsHelperBridge.instance.ensureStarted()) {
+      final enabled =
+          await WindowsHelperBridge.instance.setNotificationsEnabled(true);
+      if (enabled) {
+        _usingBridge = true;
+        _isAvailable = true;
+        _bridgeSub = WindowsHelperBridge.instance.notificationEvents.listen((map) {
+          final raw = WindowsNotificationRaw.fromJson(map);
+          final event = raw.toAgentEvent(ignoredApps: ignoredApps);
+          if (event != null && !_controller.isClosed) {
+            _controller.add(event);
+          }
+        });
+        return;
+      }
+    }
 
     final helper = _helperPathOverride ?? WindowsBinaries.resolveHelperPath();
     if (helper == null) {
@@ -139,7 +162,8 @@ class WindowsNotificationMonitor implements NotificationMonitor {
     }
 
     try {
-      final proc = await _starter(
+      final starter = _customStarter ?? Process.start;
+      final proc = await starter(
         helper,
         ['watch-notifications'],
         runInShell: false,
@@ -179,6 +203,12 @@ class WindowsNotificationMonitor implements NotificationMonitor {
   Future<void> dispose() async {
     _disposed = true;
     _isAvailable = false;
+    await _bridgeSub?.cancel();
+    _bridgeSub = null;
+    if (_usingBridge) {
+      _usingBridge = false;
+      unawaited(WindowsHelperBridge.instance.setNotificationsEnabled(false));
+    }
     await _stdoutSub?.cancel();
     _process?.kill();
     _process = null;

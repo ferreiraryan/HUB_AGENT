@@ -6,19 +6,32 @@ import 'dart:io';
 
 import '../models/media_state.dart';
 import '../util/windows_binaries.dart';
+import '../util/windows_helper_bridge.dart';
 import 'media_service.dart';
 
-/// MediaService para Windows via hub_audio_helper.exe com fallback para nircmd.exe.
-///
-/// Consulta metadados (GSMTC) em tempo real (título, artista, status, posição e duração)
-/// e envia comandos de controle (play/pause, next, prev, seek, rewind, fast_forward).
+/// MediaService para Windows via hub_audio_helper.exe (daemon event-driven GSMTC)
+/// com fallback automático para CLI e nircmd.exe.
 class WindowsMediaService extends MediaService {
   String? _helperPath;
   String? _nircmdPath;
   bool _pollingInFlight = false;
+  StreamSubscription<Map<String, dynamic>>? _bridgeSub;
 
-  WindowsMediaService({Duration interval = const Duration(seconds: 1)})
-      : super(interval: interval);
+  WindowsMediaService({
+    super.interval = const Duration(seconds: 2),
+    super.positionSyncInterval = const Duration(seconds: 12),
+  });
+
+  static MediaState _parseMap(Map<String, dynamic> json) => MediaState(
+        status: PlaybackStatus.parse(json['status']?.toString()),
+        title: json['title']?.toString() ?? '',
+        artist: json['artist']?.toString() ?? '',
+        position: json['position'] is num ? (json['position'] as num).round() : null,
+        duration: json['duration'] is num ? (json['duration'] as num).round() : null,
+        playbackRate: json['playback_rate'] is num
+            ? (json['playback_rate'] as num).toDouble()
+            : null,
+      );
 
   @override
   Future<void> start() async {
@@ -31,16 +44,38 @@ class WindowsMediaService extends MediaService {
       return;
     }
 
+    final usingDaemon = await WindowsHelperBridge.instance.ensureStarted();
+    if (usingDaemon) {
+      _bridgeSub = WindowsHelperBridge.instance.mediaEvents.listen((ev) {
+        acceptState(_parseMap(ev));
+      });
+      await _pollWindows(forceEmit: true);
+      // Como o daemon empurra eventos GSMTC (play/pause/track/seek), só precisamos
+      // de uma consulta leve sem spawn a cada 12s para calibração da timeline.
+      timer = Timer.periodic(positionSyncInterval, (_) => _pollWindows());
+      return;
+    }
+
     if (_helperPath != null) {
-      await _pollWindows();
+      await _pollWindows(forceEmit: true);
       timer = Timer.periodic(interval, (_) => _pollWindows());
     }
   }
 
-  Future<void> _pollWindows() async {
-    if (_pollingInFlight || _helperPath == null) return;
+  Future<void> _pollWindows({bool forceEmit = false}) async {
+    if (_pollingInFlight) return;
     _pollingInFlight = true;
     try {
+      if (WindowsHelperBridge.instance.isRunning) {
+        final res = await WindowsHelperBridge.instance.request('media_status');
+        final data = res?['data'];
+        if (data is Map) {
+          acceptState(_parseMap(data.cast<String, dynamic>()), forceEmit: forceEmit);
+          return;
+        }
+      }
+
+      if (_helperPath == null) return;
       final res = await Process.run(
         _helperPath!,
         ['media-status'],
@@ -51,18 +86,7 @@ class WindowsMediaService extends MediaService {
         final out = (res.stdout as String).trim();
         if (out.isNotEmpty && out.startsWith('{')) {
           final json = jsonDecode(out) as Map<String, dynamic>;
-          final parsed = MediaState(
-            status: PlaybackStatus.parse(json['status']?.toString()),
-            title: json['title']?.toString() ?? '',
-            artist: json['artist']?.toString() ?? '',
-            position: json['position'] is num ? (json['position'] as num).round() : null,
-            duration: json['duration'] is num ? (json['duration'] as num).round() : null,
-            playbackRate: json['playback_rate'] is num ? (json['playback_rate'] as num).toDouble() : null,
-          );
-          if (parsed != last) {
-            last = parsed;
-            if (!controller.isClosed) controller.add(parsed);
-          }
+          acceptState(_parseMap(json), forceEmit: forceEmit);
         }
       }
     } catch (_) {
@@ -112,6 +136,20 @@ class WindowsMediaService extends MediaService {
   Future<bool> _controlHelper(String action) => _controlHelperArgs([action]);
 
   Future<bool> _controlHelperArgs(List<String> args) async {
+    if (WindowsHelperBridge.instance.isRunning && args.isNotEmpty) {
+      final res = await WindowsHelperBridge.instance.request(
+        'media_control',
+        args: {
+          'action': args[0],
+          if (args.length > 1) 'arg': args[1],
+        },
+      );
+      if (res?['ok'] == true) {
+        Timer(const Duration(milliseconds: 150), () => _pollWindows(forceEmit: true));
+        return true;
+      }
+    }
+
     if (_helperPath == null) return false;
     try {
       final res = await Process.run(
@@ -119,7 +157,7 @@ class WindowsMediaService extends MediaService {
         ['media-control', ...args],
         runInShell: false,
       );
-      Timer(const Duration(milliseconds: 150), _pollWindows);
+      Timer(const Duration(milliseconds: 150), () => _pollWindows(forceEmit: true));
       return res.exitCode == 0;
     } catch (e) {
       stderr.writeln('media-control $args falhou: $e');
@@ -138,5 +176,11 @@ class WindowsMediaService extends MediaService {
     } catch (e) {
       stderr.writeln('media: nircmd sendkeypress $vkCodeHex falhou: $e');
     }
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _bridgeSub?.cancel();
+    await super.dispose();
   }
 }

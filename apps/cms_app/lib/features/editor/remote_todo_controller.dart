@@ -30,16 +30,22 @@ class RemoteTodoController extends Notifier<RemoteTodoState> {
 
   @override
   RemoteTodoState build() {
-    final runtime = ref.watch(agentRuntimeProvider);
+    final bridge = ref.watch(agentBridgeProvider);
+    final initialSpotlight = ref.watch(initialSpotlightProvider);
 
     _todoSub?.cancel();
-    _todoSub = runtime.remoteTodoPrompts.listen((_) {
+    _todoSub = bridge.remoteTodoPrompts.listen((_) {
       open();
     });
 
     ref.onDispose(() {
       _todoSub?.cancel();
     });
+
+    if (initialSpotlight == 'todo') {
+      WindowController.instance.setSpotlightBlurHandler(close);
+      return const RemoteTodoState(isOpen: true, wasHidden: true);
+    }
 
     return const RemoteTodoState();
   }
@@ -65,7 +71,7 @@ class RemoteTodoController extends Notifier<RemoteTodoState> {
   Future<void> submit(String text) async {
     final trimmed = text.trim();
     if (trimmed.isNotEmpty) {
-      await ref.read(agentRuntimeProvider).todo.addItem(trimmed);
+      await ref.read(agentBridgeProvider).addTodoItem(trimmed);
     }
     await close();
   }

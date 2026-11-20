@@ -3,6 +3,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <shellapi.h>
 #include <objidl.h>
 #include <gdiplus.h>
 #include <iphlpapi.h>
@@ -24,12 +25,14 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <algorithm>
 #include <sstream>
 #include <set>
 #include <thread>
 #include <chrono>
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 #include <cmath>
 #include <winrt/base.h>
@@ -53,6 +56,7 @@
 #pragma comment(lib, "setupapi.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "windowsapp.lib")
 
 using Microsoft::WRL::ComPtr;
@@ -115,31 +119,47 @@ std::wstring GetProcessPath(DWORD pid) {
     return path;
 }
 
+std::mutex g_fileDescMutex;
+std::unordered_map<std::wstring, std::wstring> g_fileDescCache;
+
 std::wstring GetFileDescription(const std::wstring& filePath) {
     if (filePath.empty()) return L"";
+    {
+        std::lock_guard<std::mutex> lock(g_fileDescMutex);
+        auto it = g_fileDescCache.find(filePath);
+        if (it != g_fileDescCache.end()) return it->second;
+    }
+
+    std::wstring result;
     DWORD handle = 0;
     DWORD size = GetFileVersionInfoSizeW(filePath.c_str(), &handle);
-    if (size == 0) return L"";
+    if (size > 0) {
+        std::vector<BYTE> data(size);
+        if (GetFileVersionInfoW(filePath.c_str(), 0, size, data.data())) {
+            struct LANGANDCODEPAGE {
+                WORD wLanguage;
+                WORD wCodePage;
+            } *lpTranslate;
+            UINT cbTranslate = 0;
 
-    std::vector<BYTE> data(size);
-    if (!GetFileVersionInfoW(filePath.c_str(), 0, size, data.data())) return L"";
-
-    struct LANGANDCODEPAGE {
-        WORD wLanguage;
-        WORD wCodePage;
-    } *lpTranslate;
-    UINT cbTranslate = 0;
-
-    if (VerQueryValueW(data.data(), L"\\VarFileInfo\\Translation", (LPVOID*)&lpTranslate, &cbTranslate) && cbTranslate >= sizeof(LANGANDCODEPAGE)) {
-        wchar_t subBlock[100];
-        swprintf_s(subBlock, L"\\StringFileInfo\\%04x%04x\\FileDescription", lpTranslate[0].wLanguage, lpTranslate[0].wCodePage);
-        LPWSTR lpBuffer = NULL;
-        UINT dwBytes = 0;
-        if (VerQueryValueW(data.data(), subBlock, (LPVOID*)&lpBuffer, &dwBytes) && dwBytes > 0 && lpBuffer) {
-            return std::wstring(lpBuffer);
+            if (VerQueryValueW(data.data(), L"\\VarFileInfo\\Translation", (LPVOID*)&lpTranslate, &cbTranslate) && cbTranslate >= sizeof(LANGANDCODEPAGE)) {
+                wchar_t subBlock[100];
+                swprintf_s(subBlock, L"\\StringFileInfo\\%04x%04x\\FileDescription", lpTranslate[0].wLanguage, lpTranslate[0].wCodePage);
+                LPWSTR lpBuffer = NULL;
+                UINT dwBytes = 0;
+                if (VerQueryValueW(data.data(), subBlock, (LPVOID*)&lpBuffer, &dwBytes) && dwBytes > 0 && lpBuffer) {
+                    result = std::wstring(lpBuffer);
+                }
+            }
         }
     }
-    return L"";
+
+    {
+        std::lock_guard<std::mutex> lock(g_fileDescMutex);
+        if (g_fileDescCache.size() >= 256) g_fileDescCache.clear();
+        g_fileDescCache[filePath] = result;
+    }
+    return result;
 }
 
 struct AppInfo {
@@ -1638,6 +1658,20 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     if (st->alpha < 1.0f) {
                         st->alpha = std::min(1.0f, st->alpha + 0.16f);
                         RenderOsdWindow(hwnd, st->payload, static_cast<BYTE>(st->alpha * 255.0f));
+                        if (st->alpha >= 1.0f) {
+                            auto remainMs = std::chrono::duration_cast<std::chrono::milliseconds>(st->hideAt - now).count();
+                            if (remainMs > 20) {
+                                // Troca o timer de 60 FPS por um único despertar no início do fade-out.
+                                SetTimer(hwnd, kOsdAnimTimerId, static_cast<UINT>(remainMs), NULL);
+                            }
+                        }
+                    } else {
+                        auto remainMs = std::chrono::duration_cast<std::chrono::milliseconds>(st->hideAt - now).count();
+                        if (remainMs > 20) {
+                            SetTimer(hwnd, kOsdAnimTimerId, static_cast<UINT>(remainMs), NULL);
+                        } else {
+                            SetTimer(hwnd, kOsdAnimTimerId, 16, NULL);
+                        }
                     }
                 } else {
                     st->alpha = std::max(0.0f, st->alpha - 0.10f);
@@ -1647,6 +1681,7 @@ LRESULT CALLBACK OsdWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         KillTimer(hwnd, kOsdAnimTimerId);
                         ShowWindow(hwnd, SW_HIDE);
                     } else {
+                        SetTimer(hwnd, kOsdAnimTimerId, 16, NULL);
                         RenderOsdWindow(hwnd, st->payload, static_cast<BYTE>(st->alpha * 255.0f));
                     }
                 }
@@ -1831,6 +1866,846 @@ int DoWatchHotkey(const std::string& combo) {
     return 0;
 }
 
+// =========================================================================
+// UNIFIED PERSISTENT DAEMON MODE (NDJSON over stdin/stdout, 0 spawns/min)
+// =========================================================================
+std::mutex g_stdoutMutex;
+
+void EmitJsonLine(const std::string& line) {
+    std::lock_guard<std::mutex> lock(g_stdoutMutex);
+    std::cout << line << "\n" << std::flush;
+}
+
+bool ExtractJsonBool(const std::string& json, const std::string& key, bool def = false) {
+    std::string needle = "\"" + key + "\":";
+    size_t pos = json.find(needle);
+    if (pos == std::string::npos) return def;
+    pos += needle.size();
+    while (pos < json.size() && json[pos] == ' ') pos++;
+    if (json.compare(pos, 4, "true") == 0) return true;
+    if (json.compare(pos, 5, "false") == 0) return false;
+    if (pos < json.size() && json[pos] == '1') return true;
+    if (pos < json.size() && json[pos] == '0') return false;
+    return def;
+}
+
+template <typename Fn>
+std::string CaptureStdoutJson(Fn&& fn) {
+    std::lock_guard<std::mutex> lock(g_stdoutMutex);
+    std::ostringstream oss;
+    std::streambuf* oldBuf = std::cout.rdbuf(oss.rdbuf());
+    fn();
+    std::cout.rdbuf(oldBuf);
+    std::string out = oss.str();
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) {
+        out.pop_back();
+    }
+    return out;
+}
+
+// Stateful stats (sem Sleep(120) bloqueante a cada coleta + cache de disco de 60s)
+struct StatefulStatsState {
+    bool initialized = false;
+    uint64_t prevIdle = 0;
+    uint64_t prevKernel = 0;
+    uint64_t prevUser = 0;
+    uint64_t prevRx = 0;
+    uint64_t prevTx = 0;
+    std::chrono::steady_clock::time_point prevAt;
+    std::chrono::steady_clock::time_point lastDiskAt;
+    bool diskValid = false;
+    std::string diskMount = "C:";
+    int diskUsedGb = 0;
+    int diskTotalGb = 0;
+    int diskPercent = 0;
+};
+
+StatefulStatsState g_statsState;
+std::mutex g_statsMutex;
+
+std::string BuildStatefulStatsJson() {
+    std::lock_guard<std::mutex> lock(g_statsMutex);
+    auto now = std::chrono::steady_clock::now();
+
+    FILETIME idleFt, kernelFt, userFt;
+    bool gotCpu = GetSystemTimes(&idleFt, &kernelFt, &userFt) != FALSE;
+    uint64_t curIdle = gotCpu ? FileTimeToUint64(idleFt) : 0;
+    uint64_t curKernel = gotCpu ? FileTimeToUint64(kernelFt) : 0;
+    uint64_t curUser = gotCpu ? FileTimeToUint64(userFt) : 0;
+    uint64_t curRx = 0, curTx = 0;
+    ReadTotalNetBytes(curRx, curTx);
+
+    int cpuLoad = 0;
+    int rxKbps = 0;
+    int txKbps = 0;
+
+    if (!g_statsState.initialized) {
+        g_statsState.prevIdle = curIdle;
+        g_statsState.prevKernel = curKernel;
+        g_statsState.prevUser = curUser;
+        g_statsState.prevRx = curRx;
+        g_statsState.prevTx = curTx;
+        g_statsState.prevAt = now;
+        g_statsState.initialized = true;
+    } else {
+        double elapsedSec = std::chrono::duration<double>(now - g_statsState.prevAt).count();
+        if (gotCpu) {
+            uint64_t idleDiff = curIdle - g_statsState.prevIdle;
+            uint64_t kernelDiff = curKernel - g_statsState.prevKernel;
+            uint64_t userDiff = curUser - g_statsState.prevUser;
+            uint64_t totalDiff = kernelDiff + userDiff;
+            if (totalDiff > 0 && totalDiff >= idleDiff) {
+                double busy = static_cast<double>(totalDiff - idleDiff) * 100.0 / static_cast<double>(totalDiff);
+                cpuLoad = std::clamp(static_cast<int>(busy + 0.5), 0, 100);
+            }
+        }
+        if (elapsedSec > 0.05) {
+            if (curRx >= g_statsState.prevRx) {
+                rxKbps = static_cast<int>(((curRx - g_statsState.prevRx) / 1024.0) / elapsedSec + 0.5);
+            }
+            if (curTx >= g_statsState.prevTx) {
+                txKbps = static_cast<int>(((curTx - g_statsState.prevTx) / 1024.0) / elapsedSec + 0.5);
+            }
+        }
+        g_statsState.prevIdle = curIdle;
+        g_statsState.prevKernel = curKernel;
+        g_statsState.prevUser = curUser;
+        g_statsState.prevRx = curRx;
+        g_statsState.prevTx = curTx;
+        g_statsState.prevAt = now;
+    }
+
+    int ramUsedMb = 0, ramTotalMb = 0, ramPercent = 0;
+    MEMORYSTATUSEX mem;
+    mem.dwLength = sizeof(mem);
+    if (GlobalMemoryStatusEx(&mem)) {
+        const uint64_t mb = 1024ULL * 1024ULL;
+        ramTotalMb = static_cast<int>(mem.ullTotalPhys / mb);
+        uint64_t usedBytes = (mem.ullTotalPhys >= mem.ullAvailPhys) ? (mem.ullTotalPhys - mem.ullAvailPhys) : 0;
+        ramUsedMb = static_cast<int>(usedBytes / mb);
+        ramPercent = ramTotalMb > 0 ? std::clamp(static_cast<int>((usedBytes * 100ULL) / mem.ullTotalPhys), 0, 100) : 0;
+    }
+
+    // Disco cacheado por 60 segundos (GB raramente muda a cada 3s)
+    if (!g_statsState.diskValid ||
+        std::chrono::duration_cast<std::chrono::seconds>(now - g_statsState.lastDiskAt).count() >= 60) {
+        wchar_t sysDrive[16] = L"C:";
+        DWORD envLen = GetEnvironmentVariableW(L"SystemDrive", sysDrive, 14);
+        if (envLen == 0 || envLen >= 14) wcscpy_s(sysDrive, L"C:");
+        std::wstring mountW(sysDrive);
+        std::wstring rootPath = mountW + L"\\";
+        ULARGE_INTEGER freeBytes, totalBytes, totalFree;
+        if (GetDiskFreeSpaceExW(rootPath.c_str(), &freeBytes, &totalBytes, &totalFree) && totalBytes.QuadPart > 0) {
+            const uint64_t gb = 1024ULL * 1024ULL * 1024ULL;
+            uint64_t used = (totalBytes.QuadPart >= totalFree.QuadPart) ? (totalBytes.QuadPart - totalFree.QuadPart) : 0;
+            g_statsState.diskMount = WideToUtf8(mountW);
+            g_statsState.diskTotalGb = static_cast<int>(totalBytes.QuadPart / gb);
+            g_statsState.diskUsedGb = static_cast<int>(used / gb);
+            g_statsState.diskPercent = std::clamp(static_cast<int>((used * 100ULL) / totalBytes.QuadPart), 0, 100);
+            g_statsState.diskValid = true;
+            g_statsState.lastDiskAt = now;
+        }
+    }
+
+    std::ostringstream oss;
+    oss << "{\"cpu_load\":" << cpuLoad
+        << ",\"ram_used_mb\":" << ramUsedMb
+        << ",\"ram_total_mb\":" << ramTotalMb
+        << ",\"ram_percent\":" << ramPercent
+        << ",\"disk_mount\":\"" << EscapeJsonString(g_statsState.diskMount)
+        << "\",\"disk_used_gb\":" << g_statsState.diskUsedGb
+        << ",\"disk_total_gb\":" << g_statsState.diskTotalGb
+        << ",\"disk_percent\":" << g_statsState.diskPercent
+        << ",\"net_rx_kbps\":" << rxKbps
+        << ",\"net_tx_kbps\":" << txKbps
+        << "}";
+    return oss.str();
+}
+
+std::string BuildMediaStatusJsonFromMgr(
+    const winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager& mgr) {
+    try {
+        if (!mgr) {
+            return "{\"status\":\"Stopped\",\"title\":\"\",\"artist\":\"\",\"position\":0,\"duration\":0,\"playback_rate\":1.0}";
+        }
+        auto session = mgr.GetCurrentSession();
+        if (!session) {
+            return "{\"status\":\"Stopped\",\"title\":\"\",\"artist\":\"\",\"position\":0,\"duration\":0,\"playback_rate\":1.0}";
+        }
+
+        auto info = session.GetPlaybackInfo();
+        std::string statusStr = "Stopped";
+        double playbackRate = 1.0;
+        if (info) {
+            auto playbackStatus = info.PlaybackStatus();
+            if (playbackStatus == winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) statusStr = "Playing";
+            else if (playbackStatus == winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused) statusStr = "Paused";
+            else if (playbackStatus == winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus::Stopped) statusStr = "Stopped";
+
+            try {
+                auto rateRef = info.PlaybackRate();
+                if (rateRef) {
+                    double r = rateRef.Value();
+                    if (r > 0.0) playbackRate = r;
+                }
+            } catch (...) {}
+        }
+
+        std::string title, artist;
+        try {
+            auto mediaProps = session.TryGetMediaPropertiesAsync().get();
+            if (mediaProps) {
+                title = WideToUtf8(mediaProps.Title().c_str());
+                artist = WideToUtf8(mediaProps.Artist().c_str());
+            }
+        } catch (...) {}
+
+        int positionSec = 0;
+        int durationSec = 0;
+        try {
+            auto timeline = session.GetTimelineProperties();
+            if (timeline) {
+                int64_t baseTicks = timeline.Position().count();
+                int64_t endTicks = timeline.EndTime().count();
+                durationSec = (int)(endTicks / 10000000LL);
+
+                if (statusStr == "Playing") {
+                    auto lastUpdatedTicks = timeline.LastUpdatedTime().time_since_epoch().count();
+                    FILETIME ft;
+                    GetSystemTimeAsFileTime(&ft);
+                    ULARGE_INTEGER uli;
+                    uli.LowPart = ft.dwLowDateTime;
+                    uli.HighPart = ft.dwHighDateTime;
+                    int64_t nowTicks = (int64_t)uli.QuadPart;
+                    int64_t elapsedTicks = nowTicks - lastUpdatedTicks;
+                    if (elapsedTicks > 0 && elapsedTicks < (int64_t)7200 * 10000000LL) {
+                        int64_t estimatedTicks = baseTicks + (int64_t)(elapsedTicks * playbackRate);
+                        if (endTicks > 0 && estimatedTicks > endTicks) estimatedTicks = endTicks;
+                        positionSec = (int)(estimatedTicks / 10000000LL);
+                    } else {
+                        positionSec = (int)(baseTicks / 10000000LL);
+                    }
+                } else {
+                    positionSec = (int)(baseTicks / 10000000LL);
+                }
+            }
+        } catch (...) {}
+
+        std::ostringstream oss;
+        oss << "{\"status\":\"" << statusStr
+            << "\",\"title\":\"" << EscapeJsonString(title)
+            << "\",\"artist\":\"" << EscapeJsonString(artist)
+            << "\",\"position\":" << positionSec
+            << ",\"duration\":" << durationSec
+            << ",\"playback_rate\":" << playbackRate
+            << "}";
+        return oss.str();
+    } catch (...) {
+        return "{\"status\":\"Stopped\",\"title\":\"\",\"artist\":\"\",\"position\":0,\"duration\":0,\"playback_rate\":1.0}";
+    }
+}
+
+// Callback WASAPI para mudanças instantâneas de volume/mute master (sem polling!)
+class DaemonVolumeCallback : public IAudioEndpointVolumeCallback {
+    std::atomic<ULONG> m_ref{ 1 };
+    HWND m_hwnd;
+    UINT m_msg;
+public:
+    DaemonVolumeCallback(HWND hwnd, UINT msg) : m_hwnd(hwnd), m_msg(msg) {}
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++m_ref; }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG r = --m_ref;
+        if (r == 0) delete this;
+        return r;
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (!ppv) return E_POINTER;
+        if (riid == IID_IUnknown || riid == __uuidof(IAudioEndpointVolumeCallback)) {
+            *ppv = static_cast<IAudioEndpointVolumeCallback*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+    HRESULT STDMETHODCALLTYPE OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA pNotify) override {
+        if (pNotify && m_hwnd) {
+            int vol = static_cast<int>(pNotify->fMasterVolume * 100.0f + 0.5f);
+            PostMessageW(m_hwnd, m_msg, static_cast<WPARAM>(vol), static_cast<LPARAM>(pNotify->bMuted ? 1 : 0));
+        }
+        return S_OK;
+    }
+};
+
+constexpr UINT WM_DAEMON_SET_HOTKEY = WM_APP + 20;
+constexpr UINT WM_DAEMON_SET_ACTIVE_WIN = WM_APP + 21;
+constexpr UINT WM_DAEMON_AUDIO_NOTIFY = WM_APP + 22;
+constexpr UINT WM_DAEMON_TRAY_CFG = WM_APP + 23;
+constexpr UINT WM_DAEMON_TRAY_ICON = WM_APP + 24;
+constexpr int kDaemonHotkeyId = 77;
+constexpr UINT kTrayIconUid = 101;
+constexpr UINT kTrayCmdOpenCms = 2001;
+constexpr UINT kTrayCmdOpenSearch = 2002;
+constexpr UINT kTrayCmdPublish = 2003;
+constexpr UINT kTrayCmdReconnect = 2004;
+constexpr UINT kTrayCmdPomodoro = 2005;
+constexpr UINT kTrayCmdQuit = 2006;
+
+std::mutex g_daemonCfgMutex;
+std::string g_daemonHotkeyCombo;
+bool g_trayWantEnabled = false;
+std::string g_trayStatus = "disconnected";
+std::wstring g_trayIconPath;
+bool g_trayAdded = false;
+HICON g_trayIconHandle = NULL;
+HWINEVENTHOOK g_foregroundHook = NULL;
+std::string g_lastForegroundProc;
+
+void EmitActiveWindowEvent(HWND hwnd) {
+    if (!hwnd) return;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    std::wstring path = GetProcessPath(pid);
+    std::wstring procName;
+    if (!path.empty()) {
+        size_t slash = path.find_last_of(L"\\/");
+        procName = (slash != std::wstring::npos) ? path.substr(slash + 1) : path;
+        procName = ToLower(procName);
+        if (procName.size() > 4 && procName.substr(procName.size() - 4) == L".exe") {
+            procName = procName.substr(0, procName.size() - 4);
+        }
+    }
+    std::string procUtf8 = WideToUtf8(procName);
+    if (procUtf8 == g_lastForegroundProc) return;
+    g_lastForegroundProc = procUtf8;
+
+    wchar_t titleBuf[512] = { 0 };
+    GetWindowTextW(hwnd, titleBuf, 511);
+
+    std::ostringstream oss;
+    oss << "{\"event\":\"active_window\",\"process\":\"" << EscapeJsonString(procUtf8)
+        << "\",\"title\":\"" << EscapeJsonString(WideToUtf8(std::wstring(titleBuf))) << "\"}";
+    EmitJsonLine(oss.str());
+}
+
+void CALLBACK DaemonWinEventProc(
+    HWINEVENTHOOK, DWORD event, HWND hwnd, LONG idObject, LONG, DWORD, DWORD) {
+    if (event == EVENT_SYSTEM_FOREGROUND && idObject == OBJID_WINDOW && hwnd) {
+        EmitActiveWindowEvent(hwnd);
+    }
+}
+
+LRESULT CALLBACK DaemonWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_DAEMON_SET_HOTKEY: {
+            UnregisterHotKey(hwnd, kDaemonHotkeyId);
+            std::string combo;
+            {
+                std::lock_guard<std::mutex> lock(g_daemonCfgMutex);
+                combo = g_daemonHotkeyCombo;
+            }
+            if (combo.empty()) {
+                EmitJsonLine("{\"event\":\"hotkey\",\"status\":\"disabled\"}");
+                return 0;
+            }
+            UINT mods = 0, vk = 0;
+            if (!ParseHotkeyCombo(combo, mods, vk)) {
+                EmitJsonLine("{\"event\":\"hotkey\",\"status\":\"error\",\"message\":\"invalid_combo\"}");
+                return 0;
+            }
+            if (!RegisterHotKey(hwnd, kDaemonHotkeyId, mods, vk)) {
+                EmitJsonLine("{\"event\":\"hotkey\",\"status\":\"error\",\"message\":\"hotkey_in_use\"}");
+                return 0;
+            }
+            EmitJsonLine("{\"event\":\"hotkey\",\"status\":\"ready\",\"combo\":\"" + EscapeJsonString(combo) + "\"}");
+            return 0;
+        }
+        case WM_HOTKEY: {
+            if (wParam == kDaemonHotkeyId) {
+                std::string combo;
+                {
+                    std::lock_guard<std::mutex> lock(g_daemonCfgMutex);
+                    combo = g_daemonHotkeyCombo;
+                }
+                EmitJsonLine("{\"event\":\"hotkey\",\"status\":\"triggered\",\"combo\":\"" + EscapeJsonString(combo) + "\"}");
+            }
+            return 0;
+        }
+        case WM_DAEMON_SET_ACTIVE_WIN: {
+            bool enable = (wParam != 0);
+            if (enable && !g_foregroundHook) {
+                g_lastForegroundProc.clear();
+                g_foregroundHook = SetWinEventHook(
+                    EVENT_SYSTEM_FOREGROUND,
+                    EVENT_SYSTEM_FOREGROUND,
+                    NULL,
+                    DaemonWinEventProc,
+                    0,
+                    0,
+                    WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
+                );
+                EmitActiveWindowEvent(GetForegroundWindow());
+            } else if (!enable && g_foregroundHook) {
+                UnhookWinEvent(g_foregroundHook);
+                g_foregroundHook = NULL;
+                g_lastForegroundProc.clear();
+            }
+            return 0;
+        }
+        case WM_DAEMON_AUDIO_NOTIFY: {
+            int vol = static_cast<int>(wParam);
+            bool muted = (lParam != 0);
+            std::ostringstream oss;
+            oss << "{\"event\":\"audio\",\"master\":{\"volume\":" << vol
+                << ",\"muted\":" << (muted ? "true" : "false") << "}}";
+            EmitJsonLine(oss.str());
+            return 0;
+        }
+        case WM_DAEMON_TRAY_CFG: {
+            bool wantEnabled = false;
+            std::string status;
+            std::wstring iconPath;
+            {
+                std::lock_guard<std::mutex> lock(g_daemonCfgMutex);
+                wantEnabled = g_trayWantEnabled;
+                status = g_trayStatus;
+                iconPath = g_trayIconPath;
+            }
+            if (!wantEnabled) {
+                if (g_trayAdded) {
+                    NOTIFYICONDATAW nid = {};
+                    nid.cbSize = sizeof(nid);
+                    nid.hWnd = hwnd;
+                    nid.uID = kTrayIconUid;
+                    Shell_NotifyIconW(NIM_DELETE, &nid);
+                    g_trayAdded = false;
+                }
+                return 0;
+            }
+            if (!g_trayIconHandle) {
+                if (!iconPath.empty()) {
+                    g_trayIconHandle = static_cast<HICON>(LoadImageW(
+                        NULL, iconPath.c_str(), IMAGE_ICON, 0, 0,
+                        LR_LOADFROMFILE | LR_DEFAULTSIZE));
+                }
+                if (!g_trayIconHandle) {
+                    g_trayIconHandle = LoadIconW(NULL, IDI_APPLICATION);
+                }
+            }
+            NOTIFYICONDATAW nid = {};
+            nid.cbSize = sizeof(nid);
+            nid.hWnd = hwnd;
+            nid.uID = kTrayIconUid;
+            nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+            nid.uCallbackMessage = WM_DAEMON_TRAY_ICON;
+            nid.hIcon = g_trayIconHandle;
+            std::wstring tip = L"Hub Agent — Desconectado";
+            if (status == "connected") tip = L"Hub Agent — Conectado";
+            else if (status == "connecting") tip = L"Hub Agent — Conectando...";
+            wcsncpy_s(nid.szTip, tip.c_str(), _TRUNCATE);
+            if (!g_trayAdded) {
+                if (Shell_NotifyIconW(NIM_ADD, &nid)) {
+                    g_trayAdded = true;
+                }
+            } else {
+                Shell_NotifyIconW(NIM_MODIFY, &nid);
+            }
+            return 0;
+        }
+        case WM_DAEMON_TRAY_ICON: {
+            if (lParam == WM_LBUTTONUP || lParam == WM_LBUTTONDBLCLK) {
+                EmitJsonLine("{\"event\":\"tray\",\"action\":\"open_cms\"}");
+            } else if (lParam == WM_RBUTTONUP || lParam == WM_CONTEXTMENU) {
+                std::string status;
+                {
+                    std::lock_guard<std::mutex> lock(g_daemonCfgMutex);
+                    status = g_trayStatus;
+                }
+                const wchar_t* statusTxt = L"○ Broker: Desconectado";
+                if (status == "connected") statusTxt = L"● Broker: Conectado";
+                else if (status == "connecting") statusTxt = L"◐ Broker: Conectando...";
+
+                HMENU menu = CreatePopupMenu();
+                if (menu) {
+                    AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, statusTxt);
+                    AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
+                    AppendMenuW(menu, MF_STRING, kTrayCmdOpenCms, L"Abrir CMS");
+                    AppendMenuW(menu, MF_STRING, kTrayCmdOpenSearch, L"Busca Rápida (Spotlight)");
+                    AppendMenuW(menu, MF_STRING, kTrayCmdPublish, L"Publicar layout agora");
+                    AppendMenuW(menu, MF_STRING, kTrayCmdReconnect, L"Reconectar broker");
+                    AppendMenuW(menu, MF_STRING, kTrayCmdPomodoro, L"Pomodoro: Iniciar / Pausar");
+                    AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
+                    AppendMenuW(menu, MF_STRING, kTrayCmdQuit, L"Encerrar agente");
+
+                    POINT pt;
+                    GetCursorPos(&pt);
+                    SetForegroundWindow(hwnd);
+                    UINT cmd = TrackPopupMenuEx(
+                        menu, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                        pt.x, pt.y, hwnd, NULL);
+                    PostMessageW(hwnd, WM_NULL, 0, 0);
+                    DestroyMenu(menu);
+
+                    if (cmd == kTrayCmdOpenCms) EmitJsonLine("{\"event\":\"tray\",\"action\":\"open_cms\"}");
+                    else if (cmd == kTrayCmdOpenSearch) EmitJsonLine("{\"event\":\"tray\",\"action\":\"open_search\"}");
+                    else if (cmd == kTrayCmdPublish) EmitJsonLine("{\"event\":\"tray\",\"action\":\"publish\"}");
+                    else if (cmd == kTrayCmdReconnect) EmitJsonLine("{\"event\":\"tray\",\"action\":\"reconnect\"}");
+                    else if (cmd == kTrayCmdPomodoro) EmitJsonLine("{\"event\":\"tray\",\"action\":\"toggle_pomodoro\"}");
+                    else if (cmd == kTrayCmdQuit) EmitJsonLine("{\"event\":\"tray\",\"action\":\"quit\"}");
+                }
+            }
+            return 0;
+        }
+        case WM_DESTROY: {
+            if (g_trayAdded) {
+                NOTIFYICONDATAW nid = {};
+                nid.cbSize = sizeof(nid);
+                nid.hWnd = hwnd;
+                nid.uID = kTrayIconUid;
+                Shell_NotifyIconW(NIM_DELETE, &nid);
+                g_trayAdded = false;
+            }
+            if (g_trayIconHandle) {
+                DestroyIcon(g_trayIconHandle);
+                g_trayIconHandle = NULL;
+            }
+            UnregisterHotKey(hwnd, kDaemonHotkeyId);
+            if (g_foregroundHook) {
+                UnhookWinEvent(g_foregroundHook);
+                g_foregroundHook = NULL;
+            }
+            PostQuitMessage(0);
+            return 0;
+        }
+    }
+    return OsdWndProc(hwnd, msg, wParam, lParam);
+}
+
+int DoDaemon() {
+    Gdiplus::GdiplusStartupInput gdiInput;
+    ULONG_PTR gdiToken = 0;
+    Gdiplus::GdiplusStartup(&gdiToken, &gdiInput, NULL);
+
+    HINSTANCE hInst = GetModuleHandleW(NULL);
+    const wchar_t* kCls = L"HubAgentUnifiedDaemonClass";
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = DaemonWndProc;
+    wc.hInstance = hInst;
+    wc.lpszClassName = kCls;
+    RegisterClassExW(&wc);
+
+    OsdAnimState animState;
+    HWND hwnd = CreateWindowExW(
+        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+        kCls,
+        L"HubAgentDaemon",
+        WS_POPUP,
+        0, 0, kOsdWidth, kOsdHeight,
+        NULL, NULL, hInst, NULL
+    );
+    if (!hwnd) {
+        Gdiplus::GdiplusShutdown(gdiToken);
+        return 1;
+    }
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(&animState));
+
+    // Registra callback WASAPI de volume master
+    ComPtr<IMMDeviceEnumerator> pVolEnum;
+    ComPtr<IMMDevice> pVolDev;
+    ComPtr<IAudioEndpointVolume> pEndpointVol;
+    DaemonVolumeCallback* pVolCb = nullptr;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pVolEnum))) &&
+        SUCCEEDED(pVolEnum->GetDefaultAudioEndpoint(eRender, eMultimedia, &pVolDev)) &&
+        SUCCEEDED(pVolDev->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, NULL, (void**)&pEndpointVol))) {
+        pVolCb = new DaemonVolumeCallback(hwnd, WM_DAEMON_AUDIO_NOTIFY);
+        pEndpointVol->RegisterControlChangeNotify(pVolCb);
+    }
+
+    // Controle da thread opcional de notificações (0% CPU quando desativada)
+    std::atomic<bool> daemonAlive{ true };
+    std::mutex notifMutex;
+    std::condition_variable notifCv;
+    bool notifEnabled = false;
+
+    std::thread notifThread([&]() {
+        CoInitializeEx(NULL, COINIT_MULTITHREADED);
+        std::set<uint32_t> seenIds;
+        bool initialized = false;
+        while (daemonAlive.load()) {
+            {
+                std::unique_lock<std::mutex> lock(notifMutex);
+                notifCv.wait_for(lock, std::chrono::milliseconds(1500), [&]() {
+                    return !daemonAlive.load() || notifEnabled;
+                });
+                if (!daemonAlive.load()) break;
+                if (!notifEnabled) {
+                    initialized = false;
+                    seenIds.clear();
+                    continue;
+                }
+            }
+            try {
+                auto listener = winrt::Windows::UI::Notifications::Management::UserNotificationListener::Current();
+                if (listener.GetAccessStatus() != winrt::Windows::UI::Notifications::Management::UserNotificationListenerAccessStatus::Allowed) {
+                    std::this_thread::sleep_for(std::chrono::seconds(5));
+                    continue;
+                }
+                auto notifs = listener.GetNotificationsAsync(winrt::Windows::UI::Notifications::NotificationKinds::Toast).get();
+                std::set<uint32_t> activeIds;
+                for (uint32_t i = 0; i < notifs.Size(); i++) {
+                    auto n = notifs.GetAt(i);
+                    uint32_t id = n.Id();
+                    activeIds.insert(id);
+                    if (initialized && seenIds.find(id) == seenIds.end()) {
+                        std::string appName = "Sistema";
+                        try {
+                            if (n.AppInfo() && n.AppInfo().DisplayInfo()) {
+                                appName = WideToUtf8(n.AppInfo().DisplayInfo().DisplayName().c_str());
+                            }
+                        } catch (...) {}
+                        auto binding = n.Notification().Visual().GetBinding(
+                            winrt::Windows::UI::Notifications::KnownNotificationBindings::ToastGeneric());
+                        if (binding) {
+                            auto texts = binding.GetTextElements();
+                            std::string title = texts.Size() > 0 ? WideToUtf8(texts.GetAt(0).Text().c_str()) : "";
+                            std::string body = texts.Size() > 1 ? WideToUtf8(texts.GetAt(1).Text().c_str()) : "";
+                            std::ostringstream oss;
+                            oss << "{\"event\":\"notification\",\"id\":" << id
+                                << ",\"app\":\"" << EscapeJsonString(appName) << "\""
+                                << ",\"title\":\"" << EscapeJsonString(title) << "\""
+                                << ",\"body\":\"" << EscapeJsonString(body) << "\"}";
+                            EmitJsonLine(oss.str());
+                        }
+                    }
+                }
+                // Substitui o conjunto pelos IDs atualmente ativos (evita crescimento infinito)
+                seenIds.swap(activeIds);
+                initialized = true;
+            } catch (...) {}
+            std::unique_lock<std::mutex> lock(notifMutex);
+            notifCv.wait_for(lock, std::chrono::milliseconds(1500), [&]() {
+                return !daemonAlive.load() || !notifEnabled;
+            });
+        }
+        CoUninitialize();
+    });
+
+    // Thread principal de comandos NDJSON (stdin) + GSMTC persistente
+    std::thread cmdThread([&]() {
+        CoInitializeEx(NULL, COINIT_MULTITHREADED);
+
+        winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager mediaMgr{ nullptr };
+        winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSession currentSession{ nullptr };
+        winrt::event_token sessionChangedToken{};
+        winrt::event_token playbackChangedToken{};
+        winrt::event_token propsChangedToken{};
+        std::mutex mediaMutex;
+
+        auto attachSessionEvents = [&]() {
+            if (!mediaMgr) return;
+            try {
+                if (currentSession) {
+                    try { currentSession.PlaybackInfoChanged(playbackChangedToken); } catch (...) {}
+                    try { currentSession.MediaPropertiesChanged(propsChangedToken); } catch (...) {}
+                }
+                currentSession = mediaMgr.GetCurrentSession();
+                if (currentSession) {
+                    playbackChangedToken = currentSession.PlaybackInfoChanged([&](auto&&, auto&&) {
+                        std::lock_guard<std::mutex> lock(mediaMutex);
+                        std::string j = BuildMediaStatusJsonFromMgr(mediaMgr);
+                        if (j.size() > 2) {
+                            EmitJsonLine("{\"event\":\"media\"," + j.substr(1));
+                        }
+                    });
+                    propsChangedToken = currentSession.MediaPropertiesChanged([&](auto&&, auto&&) {
+                        std::lock_guard<std::mutex> lock(mediaMutex);
+                        std::string j = BuildMediaStatusJsonFromMgr(mediaMgr);
+                        if (j.size() > 2) {
+                            EmitJsonLine("{\"event\":\"media\"," + j.substr(1));
+                        }
+                    });
+                }
+            } catch (...) {}
+        };
+
+        try {
+            mediaMgr = winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+            if (mediaMgr) {
+                attachSessionEvents();
+                sessionChangedToken = mediaMgr.CurrentSessionChanged([&](auto&&, auto&&) {
+                    std::lock_guard<std::mutex> lock(mediaMutex);
+                    attachSessionEvents();
+                    std::string j = BuildMediaStatusJsonFromMgr(mediaMgr);
+                    if (j.size() > 2) {
+                        EmitJsonLine("{\"event\":\"media\"," + j.substr(1));
+                    }
+                });
+            }
+        } catch (...) {}
+
+        EmitJsonLine("{\"event\":\"ready\",\"version\":1}");
+
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            if (line.empty()) continue;
+            std::string cmd = ExtractJsonStr(line, "cmd", "");
+            int reqId = ExtractJsonInt(line, "id", 0);
+
+            if (cmd == "quit") {
+                break;
+            } else if (cmd == "osd") {
+                OsdPayload p;
+                p.kind = ExtractJsonStr(line, "kind", "slider");
+                p.icon = ExtractJsonStr(line, "icon", "volume");
+                p.title = Utf8ToWide(ExtractJsonStr(line, "title", "Hub Agent"));
+                p.subtitle = Utf8ToWide(ExtractJsonStr(line, "subtitle", ""));
+                p.value = ExtractJsonInt(line, "value", 0);
+                p.accent = ParseHexColor(ExtractJsonStr(line, "accent", "#cba6f7"), RGB(203, 166, 247));
+                p.position = ExtractJsonStr(line, "position", "bottom_center");
+                p.durationMs = ExtractJsonInt(line, "duration_ms", 1800);
+                {
+                    std::lock_guard<std::mutex> lock(g_osdMutex);
+                    g_osdCurrent = p;
+                }
+                PostMessageW(hwnd, WM_OSD_UPDATE, 0, 0);
+            } else if (cmd == "hotkey") {
+                std::string combo = ExtractJsonStr(line, "combo", "");
+                {
+                    std::lock_guard<std::mutex> lock(g_daemonCfgMutex);
+                    g_daemonHotkeyCombo = combo;
+                }
+                PostMessageW(hwnd, WM_DAEMON_SET_HOTKEY, 0, 0);
+            } else if (cmd == "active_window_watch") {
+                bool en = ExtractJsonBool(line, "enabled", false);
+                PostMessageW(hwnd, WM_DAEMON_SET_ACTIVE_WIN, en ? 1 : 0, 0);
+            } else if (cmd == "notifications") {
+                bool en = ExtractJsonBool(line, "enabled", false);
+                {
+                    std::lock_guard<std::mutex> lock(notifMutex);
+                    notifEnabled = en;
+                }
+                notifCv.notify_all();
+            } else if (cmd == "tray") {
+                bool en = ExtractJsonBool(line, "enabled", true);
+                std::string st = ExtractJsonStr(line, "status", "");
+                std::string icon = ExtractJsonStr(line, "icon", "");
+                {
+                    std::lock_guard<std::mutex> lock(g_daemonCfgMutex);
+                    g_trayWantEnabled = en;
+                    if (!st.empty()) g_trayStatus = st;
+                    if (!icon.empty()) g_trayIconPath = Utf8ToWide(icon);
+                }
+                PostMessageW(hwnd, WM_DAEMON_TRAY_CFG, 0, 0);
+            } else if (cmd == "stats") {
+                std::string data = BuildStatefulStatsJson();
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "audio_status") {
+                std::string data = CaptureStdoutJson(DoStatus);
+                if (data.empty()) data = "{}";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "set_master") {
+                int val = ExtractJsonInt(line, "value", 0);
+                bool ok = (DoSetMaster(val) == 0);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":" + (ok ? "true" : "false") + "}");
+            } else if (cmd == "set_master_mute") {
+                bool muted = ExtractJsonBool(line, "muted", false);
+                bool ok = (DoSetMasterMute(muted) == 0);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":" + (ok ? "true" : "false") + "}");
+            } else if (cmd == "set_app") {
+                std::string target = ExtractJsonStr(line, "target", "");
+                int val = ExtractJsonInt(line, "value", 0);
+                bool ok = (DoSetApp(target, val) == 0);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":" + (ok ? "true" : "false") + "}");
+            } else if (cmd == "set_mic_mute") {
+                bool muted = ExtractJsonBool(line, "muted", false);
+                bool ok = (DoSetMicMute(muted) == 0);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":" + (ok ? "true" : "false") + "}");
+            } else if (cmd == "list_devices") {
+                std::string data = CaptureStdoutJson(DoListDevices);
+                if (data.empty()) data = "[]";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "media_status") {
+                std::lock_guard<std::mutex> lock(mediaMutex);
+                std::string data = BuildMediaStatusJsonFromMgr(mediaMgr);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "media_control") {
+                std::string action = ExtractJsonStr(line, "action", "");
+                std::string arg = ExtractJsonStr(line, "arg", "");
+                std::vector<char*> argvVec;
+                std::string p0 = "hub_audio_helper";
+                std::string p1 = "media-control";
+                argvVec.push_back(p0.data());
+                argvVec.push_back(p1.data());
+                argvVec.push_back(action.data());
+                if (!arg.empty()) argvVec.push_back(arg.data());
+                bool ok = (DoMediaControl(static_cast<int>(argvVec.size()), argvVec.data()) == 0);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":" + (ok ? "true" : "false") + "}");
+            } else if (cmd == "list_displays") {
+                std::string data = CaptureStdoutJson(DoListDisplays);
+                if (data.empty()) data = "[]";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "get_brightness") {
+                int disp = ExtractJsonInt(line, "display", 0);
+                std::string data = CaptureStdoutJson([disp]() { DoGetBrightness(disp); });
+                if (data.empty()) data = "{\"value\":null}";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "set_brightness") {
+                std::string target = ExtractJsonStr(line, "target", "all");
+                int val = ExtractJsonInt(line, "value", 50);
+                bool ok = (DoSetBrightness(target, val) == 0);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":" + (ok ? "true" : "false") + "}");
+            } else if (cmd == "batteries") {
+                std::string data = CaptureStdoutJson(DoBatteries);
+                if (data.empty()) data = "{\"devices\":[]}";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "active_window") {
+                std::string data = CaptureStdoutJson(DoActiveWindow);
+                if (data.empty()) data = "{\"process\":\"\",\"title\":\"\"}";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "toggle_topmost") {
+                std::string data = CaptureStdoutJson(DoToggleTopmost);
+                if (data.empty()) data = "{\"pinned\":false,\"title\":\"\"}";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "get_clipboard") {
+                std::string data = CaptureStdoutJson(DoGetClipboard);
+                if (data.empty()) data = "{\"text\":\"\"}";
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":true,\"data\":" + data + "}");
+            } else if (cmd == "set_clipboard") {
+                std::string b64 = ExtractJsonStr(line, "base64", "");
+                bool ok = (DoSetClipboard(b64) == 0);
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":" + (ok ? "true" : "false") + "}");
+            } else if (reqId > 0) {
+                EmitJsonLine("{\"id\":" + std::to_string(reqId) + ",\"ok\":false,\"error\":\"unknown_cmd\"}");
+            }
+        }
+
+        daemonAlive = false;
+        notifCv.notify_all();
+        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        CoUninitialize();
+    });
+
+    MSG msg;
+    while (GetMessageW(&msg, NULL, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+
+    daemonAlive = false;
+    notifCv.notify_all();
+
+    if (pEndpointVol && pVolCb) {
+        pEndpointVol->UnregisterControlChangeNotify(pVolCb);
+        pVolCb->Release();
+    }
+    if (cmdThread.joinable()) cmdThread.detach();
+    if (notifThread.joinable()) notifThread.join();
+
+    Gdiplus::GdiplusShutdown(gdiToken);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -1889,6 +2764,8 @@ int main(int argc, char* argv[]) {
         res = DoSetClipboard(argv[2]);
     } else if (cmd == "osd-daemon") {
         res = DoOsdDaemon();
+    } else if (cmd == "daemon") {
+        res = DoDaemon();
     } else if (cmd == "watch-hotkey" && argc >= 3) {
         res = DoWatchHotkey(argv[2]);
     } else {

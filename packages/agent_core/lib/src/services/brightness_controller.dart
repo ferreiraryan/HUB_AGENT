@@ -133,7 +133,8 @@ class LinuxBrightnessController implements BrightnessController {
       }
 
       _available = true;
-      _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
+      // O agendamento condicional de polling fica centralizado no AgentRuntime
+      // (só consulta ddcutil quando há SliderTile de brilho no layout).
     } catch (e) {
       stderr.writeln('brightness: Erro ao inicializar - $e');
     }

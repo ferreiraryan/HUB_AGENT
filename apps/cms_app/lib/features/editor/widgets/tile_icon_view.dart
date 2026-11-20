@@ -45,11 +45,18 @@ class TileIconView extends StatelessWidget {
     if (ImageIconHelper.isImageDataUri(raw)) {
       final bytes = ImageIconHelper.extractBytes(raw);
       if (bytes != null) {
+        final isGif = ImageIconHelper.isGif(raw) || ImageIconHelper.isGifBytes(bytes);
+        final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+        final targetPx = isGif ? null : (size * dpr).round().clamp(32, 256);
         return Image.memory(
           bytes,
           width: size,
           height: size,
+          cacheWidth: targetPx,
+          cacheHeight: targetPx,
           fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) => Icon(
             Icons.broken_image,
             size: size,

@@ -18,7 +18,9 @@ class PomodoroService {
 
   late PomodoroState _state;
   final _controller = StreamController<PomodoroState>.broadcast();
+  final int syncIntervalSeconds;
   Timer? _timer;
+  int _ticksSinceSync = 0;
   bool _disposed = false;
 
   PomodoroService({
@@ -30,6 +32,7 @@ class PomodoroService {
     this.cyclesBeforeLongBreak = 4,
     this.startPhaseSoundId,
     this.endPhaseSoundId,
+    this.syncIntervalSeconds = 15,
   }) {
     _state = PomodoroState.initial(
       focusDurationMinutes: focusDurationMinutes,
@@ -39,6 +42,11 @@ class PomodoroService {
 
   PomodoroState get current => _state;
   Stream<PomodoroState> get changes => _controller.stream;
+
+  void _emitImmediate() {
+    _ticksSinceSync = 0;
+    if (!_controller.isClosed) _controller.add(_state);
+  }
 
   void configureFromTile(PomodoroTile tile) {
     focusDurationMinutes = tile.focusDurationMinutes;
@@ -53,7 +61,7 @@ class PomodoroService {
         focusDurationMinutes: focusDurationMinutes,
         totalCycles: cyclesBeforeLongBreak,
       );
-      if (!_controller.isClosed) _controller.add(_state);
+      _emitImmediate();
     }
   }
 
@@ -79,7 +87,7 @@ class PomodoroService {
       _startTimer();
     }
 
-    if (!_controller.isClosed) _controller.add(_state);
+    _emitImmediate();
   }
 
   Future<void> skip() async {
@@ -136,7 +144,7 @@ class PomodoroService {
     }
 
     _startTimer();
-    if (!_controller.isClosed) _controller.add(_state);
+    _emitImmediate();
   }
 
   Future<void> reset() async {
@@ -147,11 +155,12 @@ class PomodoroService {
       focusDurationMinutes: focusDurationMinutes,
       totalCycles: cyclesBeforeLongBreak,
     );
-    if (!_controller.isClosed) _controller.add(_state);
+    _emitImmediate();
   }
 
   void _startTimer() {
     _timer?.cancel();
+    _ticksSinceSync = 0;
     _timer = Timer.periodic(const Duration(seconds: 1), _onTick);
   }
 
@@ -161,7 +170,12 @@ class PomodoroService {
     final nextRemaining = _state.remainingMs - 1000;
     if (nextRemaining > 0) {
       _state = _state.copyWith(remainingMs: nextRemaining);
-      if (!_controller.isClosed) _controller.add(_state);
+      _ticksSinceSync++;
+      // O dashboard_web já interpola 1s localmente; emitimos calibração periódica
+      // para economizar ~93% do tráfego MQTT sem perder precisão.
+      if (syncIntervalSeconds <= 1 || _ticksSinceSync >= syncIntervalSeconds) {
+        _emitImmediate();
+      }
       return;
     }
 
@@ -213,7 +227,7 @@ class PomodoroService {
     }
 
     _startTimer();
-    if (!_controller.isClosed) _controller.add(_state);
+    _emitImmediate();
   }
 
   void _notify(AgentEvent event) {

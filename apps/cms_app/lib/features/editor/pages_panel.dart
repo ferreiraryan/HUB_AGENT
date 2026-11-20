@@ -401,8 +401,8 @@ class PagesPanel extends ConsumerWidget {
     WidgetRef ref,
     String pageId,
   ) async {
-    final runtime = ref.read(agentRuntimeProvider);
-    final currentTriggers = runtime.pageRules.current[pageId] ?? const [];
+    final bridge = ref.read(agentBridgeProvider);
+    final currentTriggers = bridge.pageRules[pageId] ?? const [];
     final ctrl = TextEditingController(text: currentTriggers.join(', '));
 
     final saved = await showDialog<bool>(
@@ -455,7 +455,7 @@ class PagesPanel extends ConsumerWidget {
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
           .toList();
-      await runtime.pageRules.setTriggersForPage(pageId, list);
+      await bridge.setPageTriggers(pageId, list);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

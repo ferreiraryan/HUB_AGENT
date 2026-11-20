@@ -79,22 +79,30 @@ class RemoteSearchController extends Notifier<RemoteSearchState> {
 
   @override
   RemoteSearchState build() {
-    final runtime = ref.watch(agentRuntimeProvider);
+    final bridge = ref.watch(agentBridgeProvider);
+    final initialSpotlight = ref.watch(initialSpotlightProvider);
 
     _searchSub?.cancel();
-    _searchSub = runtime.remoteSearchPrompts.listen((_) {
+    _searchSub = bridge.remoteSearchPrompts.listen((_) {
       open();
     });
 
     _hotkeySub?.cancel();
-    _hotkeySub = GlobalHotkeyService.instance.onTriggered.listen((_) {
-      toggle();
-    });
+    if (!bridge.isDaemonMode) {
+      _hotkeySub = GlobalHotkeyService.instance.onTriggered.listen((_) {
+        toggle();
+      });
+    }
 
     ref.onDispose(() {
       _searchSub?.cancel();
       _hotkeySub?.cancel();
     });
+
+    if (initialSpotlight == 'search') {
+      WindowController.instance.setSpotlightBlurHandler(close);
+      return const RemoteSearchState(isOpen: true, wasHidden: true);
+    }
 
     return const RemoteSearchState();
   }
@@ -129,8 +137,8 @@ class RemoteSearchController extends Notifier<RemoteSearchState> {
     );
   }
 
-  void _publishCurrent({required bool active}) {
-    ref.read(agentRuntimeProvider).publishSearchQuery(
+  Future<void> _publishCurrent({required bool active}) {
+    return ref.read(agentBridgeProvider).publishSearchQuery(
           state.query,
           active: active,
           filter: state.filter,
@@ -140,13 +148,13 @@ class RemoteSearchController extends Notifier<RemoteSearchState> {
 
   void updateQuery(String query) {
     state = state.copyWith(query: query, selectedIndex: 0);
-    _publishCurrent(active: true);
+    unawaited(_publishCurrent(active: true));
   }
 
   void setFilter(String filter) {
     if (state.filter == filter) return;
     state = state.copyWith(filter: filter, selectedIndex: 0);
-    _publishCurrent(active: true);
+    unawaited(_publishCurrent(active: true));
   }
 
   void cycleFilter({bool reverse = false}) {
@@ -161,12 +169,12 @@ class RemoteSearchController extends Notifier<RemoteSearchState> {
   void toggleScope() {
     final nextScope = state.scope == 'all' ? 'page' : 'all';
     state = state.copyWith(scope: nextScope, selectedIndex: 0);
-    _publishCurrent(active: true);
+    unawaited(_publishCurrent(active: true));
   }
 
   void clear() {
     state = state.copyWith(query: '', filter: 'all', selectedIndex: 0);
-    _publishCurrent(active: true);
+    unawaited(_publishCurrent(active: true));
   }
 
   void moveSelection(int delta, int count) {
@@ -181,12 +189,12 @@ class RemoteSearchController extends Notifier<RemoteSearchState> {
   }
 
   Future<void> executeTile(Tile tile, {bool closeAfter = true}) async {
-    final runtime = ref.read(agentRuntimeProvider);
+    final bridge = ref.read(agentBridgeProvider);
     if (tile is SoundTile ||
         tile is ShortcutTile ||
         tile is ToggleTile ||
         tile is PomodoroTile) {
-      await runtime.triggerAction(tile.id);
+      await bridge.triggerAction(tile.id);
     }
     if (closeAfter) {
       await close();
@@ -249,7 +257,7 @@ class RemoteSearchController extends Notifier<RemoteSearchState> {
 
   Future<void> close() async {
     if (!state.isOpen) return;
-    _publishCurrent(active: false);
+    await _publishCurrent(active: false);
     await WindowController.instance.closeSpotlight();
     state = const RemoteSearchState(
       isOpen: false,

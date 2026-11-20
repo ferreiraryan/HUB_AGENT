@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../util/windows_binaries.dart';
+import '../../util/windows_helper_bridge.dart';
 
 /// Serviço de HUD / OSD flutuante no PC (feedback visual ao alterar sliders ou ações).
 abstract interface class OsdService {
@@ -147,6 +148,13 @@ class WindowsOsdService implements OsdService {
 
   Future<void> _sendLine(String jsonLine) async {
     if (!enabled || _disposed) return;
+    if (WindowsHelperBridge.instance.isRunning) {
+      try {
+        final map = jsonDecode(jsonLine) as Map<String, dynamic>;
+        final sent = await WindowsHelperBridge.instance.sendCommand('osd', map);
+        if (sent) return;
+      } catch (_) {}
+    }
     final ok = await _ensureDaemon();
     if (!ok || _daemon == null) return;
     try {

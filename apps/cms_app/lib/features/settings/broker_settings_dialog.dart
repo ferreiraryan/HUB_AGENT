@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers.dart';
 import '../../system/agent_config.dart';
 import '../../system/autostart_controller.dart';
-import '../../system/global_hotkey_service.dart';
 import '../../system/voicemeeter_service.dart';
 import '../editor/key_combo_helper.dart';
 
@@ -130,9 +129,9 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   Future<void> _playTestSound() async {
     if (_isPlayingTest) return;
     setState(() => _isPlayingTest = true);
-    final runtime = ref.read(agentRuntimeProvider);
+    final bridge = ref.read(agentBridgeProvider);
     try {
-      await runtime.sound?.playTestSound(targetDevice: _selectedSoundDevice);
+      await bridge.playTestSound(targetDevice: _selectedSoundDevice);
     } catch (_) {}
     if (mounted) {
       setState(() => _isPlayingTest = false);
@@ -142,7 +141,8 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   @override
   void initState() {
     super.initState();
-    final config = ref.read(agentConfigProvider);
+    final bridge = ref.read(agentBridgeProvider);
+    final config = bridge.currentConfig;
     _hostController = TextEditingController(text: config.host);
     _portController = TextEditingController(text: config.port.toString());
     _deviceIdController = TextEditingController(text: config.deviceId);
@@ -150,8 +150,8 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
     _mirrorNotifications = config.mirrorNotifications;
     _osdEnabled = config.osdEnabled;
     _osdPosition = config.osdPosition;
-    _searchHotkey = GlobalHotkeyService.instance.currentCombo;
-    _hotkeyStatus = GlobalHotkeyService.instance.status;
+    _searchHotkey = bridge.hotkeyCombo;
+    _hotkeyStatus = bridge.hotkeyStatus;
     _autoStartVoiceMeeter = config.autoStartVoiceMeeter;
     _voiceMeeterPathController =
         TextEditingController(text: config.voiceMeeterPath ?? '');
@@ -172,9 +172,8 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
   }
 
   Future<void> _loadDevices() async {
-    final runtime = ref.read(agentRuntimeProvider);
-    final list = await (runtime.sound?.listDevices() ??
-        Future.value(<AudioOutputDevice>[]));
+    final bridge = ref.read(agentBridgeProvider);
+    final list = await bridge.listSoundDevices();
     if (mounted) {
       setState(() => _devices = list);
     }
@@ -232,14 +231,16 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
       _searchHotkey = normalized;
       _isRecordingHotkey = false;
     });
-    final status = await GlobalHotkeyService.instance.updateHotkey(normalized);
+    final status =
+        await ref.read(agentBridgeProvider).updateHotkey(normalized);
     if (mounted) {
       setState(() => _hotkeyStatus = status);
     }
   }
 
   Future<void> _save({required bool reconnectNow}) async {
-    final config = ref.read(agentConfigProvider);
+    final bridge = ref.read(agentBridgeProvider);
+    final config = bridge.currentConfig;
     final newHost = _hostController.text.trim();
     final newPort = int.tryParse(_portController.text.trim()) ?? 1883;
     final newDeviceId = _deviceIdController.text.trim();
@@ -263,27 +264,19 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
       searchHotkey: _searchHotkey,
     );
 
-    await updated.save();
+    final brokerChanged = newHost != bridge.mqttHost ||
+        newPort != bridge.mqttPort ||
+        newDeviceId != bridge.mqttDeviceId;
 
-    final runtime = ref.read(agentRuntimeProvider);
-    runtime.sound?.targetDevice = _selectedSoundDevice;
-    runtime.osd.setConfig(enabled: _osdEnabled, position: _osdPosition);
-    await GlobalHotkeyService.instance.updateHotkey(_searchHotkey);
-
-    final brokerChanged = newHost != runtime.mqtt.host ||
-        newPort != runtime.mqtt.port ||
-        newDeviceId != runtime.mqtt.deviceId;
+    await bridge.saveConfigAndApply(
+      updated,
+      reconnectNow: reconnectNow || brokerChanged,
+    );
 
     if (!mounted) return;
     Navigator.of(context).pop();
 
     if (reconnectNow || brokerChanged) {
-      await runtime.reconfigureMqtt(
-        host: newHost,
-        port: newPort,
-        deviceId: newDeviceId,
-      );
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Configurações salvas e broker reconectado.'),
@@ -416,7 +409,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                   onSelected: (sel) {
                     if (sel) {
                       setState(() => _selectedSoundDevice = null);
-                      ref.read(agentRuntimeProvider).sound?.targetDevice = null;
+                      ref.read(agentBridgeProvider).setSoundTargetDevice(null);
                     }
                   },
                 ),
@@ -431,7 +424,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                       if (sel) {
                         final vm = _getDeviceByKeywords(['voicemeeter input', 'voicemeeter'])!;
                         setState(() => _selectedSoundDevice = vm.name);
-                        ref.read(agentRuntimeProvider).sound?.targetDevice = vm.name;
+                        ref.read(agentBridgeProvider).setSoundTargetDevice(vm.name);
                       }
                     },
                   ),
@@ -445,7 +438,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                       if (sel) {
                         final fone = _getDeviceByKeywords(['fone', 'headphone', 'headset', 'auricular'])!;
                         setState(() => _selectedSoundDevice = fone.name);
-                        ref.read(agentRuntimeProvider).sound?.targetDevice = fone.name;
+                        ref.read(agentBridgeProvider).setSoundTargetDevice(fone.name);
                       }
                     },
                   ),
@@ -459,7 +452,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                       if (sel) {
                         final spk = _getDeviceByKeywords(['alto-falante', 'speaker', 'caixa', 'realtek'])!;
                         setState(() => _selectedSoundDevice = spk.name);
-                        ref.read(agentRuntimeProvider).sound?.targetDevice = spk.name;
+                        ref.read(agentBridgeProvider).setSoundTargetDevice(spk.name);
                       }
                     },
                   ),
@@ -513,7 +506,7 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                     ],
                     onChanged: (val) {
                       setState(() => _selectedSoundDevice = val);
-                      ref.read(agentRuntimeProvider).sound?.targetDevice = val;
+                      ref.read(agentBridgeProvider).setSoundTargetDevice(val);
                     },
                   ),
                 ),
@@ -705,9 +698,8 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                             onChanged: (val) {
                               setState(() => _osdEnabled = val);
                               ref
-                                  .read(agentRuntimeProvider)
-                                  .osd
-                                  .setConfig(enabled: val);
+                                  .read(agentBridgeProvider)
+                                  .setOsdConfig(enabled: val);
                             },
                             contentPadding: EdgeInsets.zero,
                           ),
@@ -739,26 +731,17 @@ class _BrokerSettingsDialogState extends ConsumerState<_BrokerSettingsDialog> {
                                       if (val == null) return;
                                       setState(() => _osdPosition = val);
                                       ref
-                                          .read(agentRuntimeProvider)
-                                          .osd
-                                          .setConfig(position: val);
+                                          .read(agentBridgeProvider)
+                                          .setOsdConfig(position: val);
                                     },
                                   ),
                                 ),
                                 const SizedBox(width: 10),
                                 FilledButton.tonalIcon(
                                   onPressed: () {
-                                    final runtime =
-                                        ref.read(agentRuntimeProvider);
-                                    runtime.osd.setConfig(
-                                      enabled: true,
-                                      position: _osdPosition,
-                                    );
-                                    runtime.osd.showSlider(
-                                      title: 'Hub Agent OSD',
-                                      value: 74,
-                                      icon: 'volume',
-                                    );
+                                    ref
+                                        .read(agentBridgeProvider)
+                                        .testOsd(position: _osdPosition);
                                   },
                                   icon: const Icon(Icons.visibility_outlined,
                                       size: 16),
