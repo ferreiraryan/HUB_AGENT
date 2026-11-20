@@ -103,7 +103,7 @@ const state = {
   ambientTimeoutSec: 0,
   ambientInactivityTimer: null,
   clockTimer: null,
-  sidebarOpen: false,
+  devicePopoverOpen: false,
   batteryDrawerOpen: false,
   clipboardDrawerOpen: false,
   batteriesCache: {},
@@ -136,9 +136,13 @@ const state = {
    ========================================================= */
 const dom = {
   appShell: document.getElementById('app-shell'),
-  sidebarBackdrop: document.getElementById('sidebar-backdrop'),
-  btnToggleSidebar: document.getElementById('btn-toggle-sidebar'),
-  deviceTabs: document.getElementById('device-tabs'),
+  deviceSwitcher: document.getElementById('device-switcher'),
+  btnDeviceSwitcher: document.getElementById('btn-device-switcher'),
+  onlineDevicesBadge: document.getElementById('online-devices-badge'),
+  devicePopoverBackdrop: document.getElementById('device-popover-backdrop'),
+  devicePopover: document.getElementById('device-popover'),
+  onlineDevicesCount: document.getElementById('online-devices-count'),
+  onlineDevicesList: document.getElementById('online-devices-list'),
   brokerStatus: document.getElementById('broker-status'),
   deviceStatusDot: document.getElementById('device-status-dot'),
   deviceTitle: document.getElementById('device-title'),
@@ -339,8 +343,26 @@ const MqttLayer = {
     if (topicType === 'status') {
       const nextOnline = !!data.online;
       const statusChanged = (device.online !== nextOnline);
+      if (data && typeof data.os === 'string' && data.os) {
+        device.os = data.os;
+      }
       device.online = nextOnline;
-      if (statusChanged) UI.renderDeviceTabs();
+
+      if (statusChanged) {
+        UI.renderOnlineDevices();
+        if (nextOnline) {
+          var curDev = state.currentDeviceId ? state.devices[state.currentDeviceId] : null;
+          if (!curDev || !curDev.online) {
+            Navigation.selectDevice(device.id);
+          }
+        } else if (state.currentDeviceId === device.id) {
+          var fallbackOnline = Navigation.findFirstOnlineDeviceId(device.id);
+          if (fallbackOnline) {
+            Navigation.selectDevice(fallbackOnline);
+          }
+        }
+      }
+
       if (state.currentDeviceId === device.id) {
         UI.updateDeviceStatusBadge(device.online);
         UI.setOfflineOverlay(!device.online);
@@ -569,7 +591,7 @@ const MqttLayer = {
       if (state.ambientActive) {
         if (state.currentDeviceId === device.id) AmbientStudio.updateByType('media');
       } else {
-        if (statusChanged) UI.renderDeviceTabs();
+        if (statusChanged) UI.renderOnlineDevices();
         if (state.currentDeviceId === device.id) UI.renderNowPlaying(data);
       }
     }
@@ -578,7 +600,7 @@ const MqttLayer = {
         const nameChanged = (device.name !== data.deviceName);
         device.name = data.deviceName;
         if (nameChanged) {
-          UI.renderDeviceTabs();
+          UI.renderOnlineDevices();
           if (state.currentDeviceId === device.id) dom.deviceTitle.textContent = device.name;
         }
       }
@@ -680,7 +702,8 @@ const UI = {
   },
 
   updateBrokerStatus(connected) {
-    dom.brokerStatus.textContent = connected ? 'Conectado' : 'Desconectado';
+    if (!dom.brokerStatus) return;
+    dom.brokerStatus.innerHTML = '<span class="broker-status__dot"></span> ' + (connected ? 'Broker conectado' : 'Broker desconectado');
     dom.brokerStatus.classList.toggle('broker-status--online', connected);
     dom.brokerStatus.classList.toggle('broker-status--offline', !connected);
   },
@@ -699,44 +722,66 @@ const UI = {
     }
   },
 
-  renderDeviceTabs() {
+  renderOnlineDevices() {
     // Substituindo Object.values para compatibilidade com Chrome antigo
-    const devices = Object.keys(state.devices).map(function(k) { return state.devices[k]; });
+    var allDevices = Object.keys(state.devices).map(function(k) { return state.devices[k]; });
+    var onlineDevices = allDevices.filter(function(d) { return !!d.online; });
 
-    if (dom.appShell) {
-      var isSingle = devices.length <= 1;
-      dom.appShell.classList.toggle('app-shell--single-device', isSingle);
-      if (!isSingle) {
-        state.sidebarOpen = false;
-        dom.appShell.classList.remove('app-shell--sidebar-open');
+    onlineDevices.sort(function(a, b) {
+      if (a.id === state.currentDeviceId) return -1;
+      if (b.id === state.currentDeviceId) return 1;
+      return String(a.name || a.id).localeCompare(String(b.name || b.id));
+    });
+
+    if (dom.onlineDevicesCount) {
+      dom.onlineDevicesCount.textContent = String(onlineDevices.length);
+    }
+    if (dom.onlineDevicesBadge) {
+      if (onlineDevices.length > 1) {
+        dom.onlineDevicesBadge.textContent = String(onlineDevices.length);
+        dom.onlineDevicesBadge.style.display = 'inline-flex';
+      } else {
+        dom.onlineDevicesBadge.style.display = 'none';
       }
     }
 
-    if (devices.length === 0) {
-      dom.deviceTabs.innerHTML = '<p class="device-tabs__empty">Procurando dispositivos&hellip;</p>';
+    if (!dom.onlineDevicesList) return;
+
+    if (onlineDevices.length === 0) {
+      dom.onlineDevicesList.innerHTML = '<p class="device-popover__empty">Nenhum dispositivo online</p>';
       return;
     }
-    dom.deviceTabs.innerHTML = '';
-    devices.forEach((device) => {
-      const media = state.mediaCache[device.id];
-      const isPlaying = media && media.status === 'Playing';
-      const isActive = state.currentDeviceId === device.id;
 
-      const tab = document.createElement('button');
-      tab.type = 'button';
-      tab.className = 'device-tab ' + (device.online ? 'device-tab--online' : 'device-tab--offline') + ' ' + (isActive ? 'device-tab--active' : '');
-      tab.innerHTML = 
-        '<span class="device-tab__dot"></span>' +
-        '<span class="device-tab__name">' + UI.escapeHtml(device.name) + '</span>' +
-        (isPlaying ? '<span class="device-tab__media">&#127925;</span>' : '');
-      
-      tab.addEventListener('click', () => {
-        Navigation.selectDevice(device.id);
-        Navigation.closeSidebar();
-      });
-      dom.deviceTabs.appendChild(tab);
-    });
-    this.parseEmojis(dom.deviceTabs);
+    dom.onlineDevicesList.innerHTML = '';
+    for (var i = 0; i < onlineDevices.length; i++) {
+      (function(device) {
+        var media = state.mediaCache[device.id];
+        var isPlaying = media && media.status === 'Playing';
+        var isActive = state.currentDeviceId === device.id;
+        var osLabel = device.os ? String(device.os) : '';
+
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'device-popover__item' + (isActive ? ' device-popover__item--active' : '');
+        item.setAttribute('role', 'menuitem');
+        item.innerHTML =
+          '<span class="device-popover__dot"></span>' +
+          '<span class="device-popover__name">' + UI.escapeHtml(device.name || device.id) + '</span>' +
+          '<span class="device-popover__meta">' +
+            (osLabel ? '<span class="device-popover__os">' + UI.escapeHtml(osLabel) + '</span>' : '') +
+            (isPlaying ? '<span class="device-popover__media">&#127925;</span>' : '') +
+            (isActive ? '<span class="device-popover__check">&#10003;</span>' : '') +
+          '</span>';
+
+        UI.addFastTapListener(item, function(e) {
+          if (e && e.stopPropagation) e.stopPropagation();
+          Navigation.selectDevice(device.id);
+          Navigation.closeDevicePopover();
+        });
+        dom.onlineDevicesList.appendChild(item);
+      })(onlineDevices[i]);
+    }
+    this.parseEmojis(dom.onlineDevicesList);
   },
 
   setOfflineOverlay(isOffline) {
@@ -2948,7 +2993,7 @@ const Navigation = {
     UI.updateEventsBadge();
     UI.renderShortcuts(deviceId);
     UI.renderNowPlaying(state.mediaCache[deviceId] || null);
-    UI.renderDeviceTabs();
+    UI.renderOnlineDevices();
     UI.updateBatteryPill();
     UI.updateMicButton();
     UI.updateAutoSwitchButton();
@@ -2956,7 +3001,18 @@ const Navigation = {
     UI.renderClipboardPreview();
     Navigation.closeMixerDrawer();
   },
+  findFirstOnlineDeviceId(excludeDeviceId) {
+    var keys = Object.keys(state.devices);
+    for (var i = 0; i < keys.length; i++) {
+      var d = state.devices[keys[i]];
+      if (d && d.online && d.id !== excludeDeviceId) {
+        return d.id;
+      }
+    }
+    return null;
+  },
   openMixerDrawer() {
+    Navigation.closeDevicePopover();
     Navigation.closeEventsDrawer();
     Navigation.closeMediaDrawer();
     Navigation.closeTodoDrawer();
@@ -2972,6 +3028,7 @@ const Navigation = {
 
   openBatteryDrawer() {
     state.batteryDrawerOpen = true;
+    Navigation.closeDevicePopover();
     Navigation.closeMixerDrawer();
     Navigation.closeEventsDrawer();
     Navigation.closeMediaDrawer();
@@ -2987,6 +3044,7 @@ const Navigation = {
 
   openClipboardDrawer() {
     state.clipboardDrawerOpen = true;
+    Navigation.closeDevicePopover();
     Navigation.closeMixerDrawer();
     Navigation.closeEventsDrawer();
     Navigation.closeMediaDrawer();
@@ -3002,6 +3060,7 @@ const Navigation = {
 
   openEventsDrawer() {
     state.eventsDrawerOpen = true;
+    Navigation.closeDevicePopover();
     Navigation.closeMixerDrawer();
     Navigation.closeMediaDrawer();
     Navigation.closeTodoDrawer();
@@ -3028,6 +3087,7 @@ const Navigation = {
 
   openMediaDrawer() {
     state.mediaDrawerOpen = true;
+    Navigation.closeDevicePopover();
     Navigation.closeMixerDrawer();
     Navigation.closeEventsDrawer();
     Navigation.closeTodoDrawer();
@@ -3044,6 +3104,7 @@ const Navigation = {
 
   openTodoDrawer() {
     state.todoDrawerOpen = true;
+    Navigation.closeDevicePopover();
     Navigation.closeMixerDrawer();
     Navigation.closeEventsDrawer();
     Navigation.closeMediaDrawer();
@@ -3090,21 +3151,38 @@ const Navigation = {
     }
   },
 
-  toggleSidebar() {
-    if (!dom.appShell) return;
-    if (!dom.appShell.classList.contains('app-shell--single-device')) return;
-    state.sidebarOpen = !state.sidebarOpen;
-    dom.appShell.classList.toggle('app-shell--sidebar-open', state.sidebarOpen);
+  toggleDevicePopover() {
+    if (state.devicePopoverOpen) {
+      Navigation.closeDevicePopover();
+    } else {
+      Navigation.openDevicePopover();
+    }
   },
 
-  closeSidebar() {
-    if (!dom.appShell) return;
-    state.sidebarOpen = false;
-    dom.appShell.classList.remove('app-shell--sidebar-open');
+  openDevicePopover() {
+    Navigation.closeMixerDrawer();
+    Navigation.closeBatteryDrawer();
+    Navigation.closeClipboardDrawer();
+    Navigation.closeEventsDrawer();
+    Navigation.closeMediaDrawer();
+    Navigation.closeTodoDrawer();
+    state.devicePopoverOpen = true;
+    UI.renderOnlineDevices();
+    if (dom.deviceSwitcher) dom.deviceSwitcher.classList.add('device-switcher--open');
+    if (dom.btnDeviceSwitcher) dom.btnDeviceSwitcher.setAttribute('aria-expanded', 'true');
+    if (dom.devicePopover) dom.devicePopover.setAttribute('aria-hidden', 'false');
+  },
+
+  closeDevicePopover() {
+    state.devicePopoverOpen = false;
+    if (dom.deviceSwitcher) dom.deviceSwitcher.classList.remove('device-switcher--open');
+    if (dom.btnDeviceSwitcher) dom.btnDeviceSwitcher.setAttribute('aria-expanded', 'false');
+    if (dom.devicePopover) dom.devicePopover.setAttribute('aria-hidden', 'true');
   },
 
   openAmbient() {
     if (state.ambientActive) return;
+    Navigation.closeDevicePopover();
     state.ambientActive = true;
     UI.updateAmbientInfo();
     if (dom.appShell) {
@@ -3548,13 +3626,24 @@ function bindEvents() {
     });
   }
 
-  // Sidebar overlay (modo 1 dispositivo)
-  if (dom.btnToggleSidebar) {
-    UI.addFastTapListener(dom.btnToggleSidebar, Navigation.toggleSidebar);
+  // Popover de dispositivos online (canto superior esquerdo)
+  if (dom.btnDeviceSwitcher) {
+    UI.addFastTapListener(dom.btnDeviceSwitcher, function(e) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      Navigation.toggleDevicePopover();
+    });
   }
-  if (dom.sidebarBackdrop) {
-    UI.addFastTapListener(dom.sidebarBackdrop, Navigation.closeSidebar);
+  if (dom.devicePopoverBackdrop) {
+    UI.addFastTapListener(dom.devicePopoverBackdrop, function(e) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      Navigation.closeDevicePopover();
+    });
   }
+  document.addEventListener('keydown', function(e) {
+    if (e && (e.key === 'Escape' || e.keyCode === 27) && state.devicePopoverOpen) {
+      Navigation.closeDevicePopover();
+    }
+  });
 
   // Botão rápido de mídia no header
   if (dom.btnToggleMedia) {
@@ -4541,7 +4630,7 @@ function init() {
     }
   } catch (e) {}
 
-  UI.renderDeviceTabs();
+  UI.renderOnlineDevices();
   UI.startClock();
   UI.initTabletBattery();
   bindEvents();

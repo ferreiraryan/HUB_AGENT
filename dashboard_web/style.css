@@ -79,125 +79,184 @@ button {
 }
 
 /* =========================================================
-   APP SHELL
+   APP SHELL & DEVICE SWITCHER POPOVER
    ========================================================= */
 .app-shell {
-  display: grid;
-  grid-template-columns: 190px 1fr;
-  width: 100%;
-  height: 100%;
-}
-
-.sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--ctp-mantle);
-  border-right: 1px solid var(--glass-border);
-  padding: 20px 14px;
-  min-height: 0;
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 
-.sidebar__brand {
-  display: flex;
+.device-switcher {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 6px 20px 6px;
   flex-shrink: 0;
 }
 
-.sidebar__brand-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent-color);
+.device-popover-backdrop {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 290;
+  display: none;
+  background: transparent;
 }
 
-.sidebar__brand-text {
+.device-switcher--open .device-popover-backdrop {
+  display: block;
+}
+
+.device-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  width: 270px;
+  max-width: 86vw;
+  background: var(--ctp-mantle);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  z-index: 300;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.device-switcher--open .device-popover {
+  display: flex;
+}
+
+.device-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.device-popover__title {
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ctp-subtext0);
+}
+
+.device-popover__count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   color: var(--ctp-subtext1);
 }
 
-.device-tabs {
-  flex: 1;
+.device-popover__list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  padding: 8px;
+  max-height: 240px;
   overflow-y: auto;
-  min-height: 0;
 }
 
-.device-tabs__empty {
+.device-popover__empty {
   color: var(--ctp-overlay0);
   font-size: 0.82rem;
-  padding: 12px 8px;
+  padding: 14px 8px;
   text-align: center;
 }
 
-.device-tab {
+.device-popover__item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 12px;
-  border-radius: var(--radius-md);
+  padding: 10px 10px;
+  border-radius: var(--radius-sm);
   background: transparent;
   border: 1px solid transparent;
   text-align: left;
+  width: 100%;
+  touch-action: manipulation;
 }
 
-.device-tab:active {
+.device-popover__item:active {
   background: var(--ctp-surface0);
 }
 
-.device-tab--active {
+.device-popover__item--active {
   background: var(--glass-bg);
-  border-color: var(--glass-border);
-  box-shadow: inset 3px 0 0 var(--accent-color);
+  border-color: var(--accent-glow);
 }
 
-.device-tab__dot {
-  width: 9px;
-  height: 9px;
+.device-popover__dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--ctp-overlay0);
+  background: var(--ctp-green);
+  box-shadow: 0 0 6px rgba(166, 227, 161, 0.55);
   flex-shrink: 0;
 }
 
-.device-tab--online .device-tab__dot {
-  background: var(--accent-color);
-}
-
-.device-tab--offline {
-  opacity: 0.45;
-}
-
-.device-tab__name {
+.device-popover__name {
   flex: 1;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.device-tab__media {
-  font-size: 0.85rem;
+.device-popover__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex-shrink: 0;
 }
 
-.sidebar__footer {
-  flex-shrink: 0;
-  padding-top: 14px;
+.device-popover__os {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--ctp-subtext0);
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--ctp-surface0);
+}
+
+.device-popover__media {
+  font-size: 0.82rem;
+}
+
+.device-popover__check {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.device-popover__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.14);
 }
 
 .broker-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   color: var(--ctp-subtext0);
-  padding: 8px 10px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -2556,54 +2615,14 @@ button {
 
 
 /* =========================================================
-   16. MINIMALIST REDESIGN (SIDEBAR AUTO-COLLAPSE, HEADER,
-       PAGE PILLS, STOP-SOUND PILL, AMBIENT OLED OVERLAY)
+   16. MINIMALIST REDESIGN (HEADER, PAGE PILLS,
+       STOP-SOUND PILL, AMBIENT OLED OVERLAY)
    ========================================================= */
-.app-shell {
-  position: relative;
-}
-
-.app-shell--single-device {
-  grid-template-columns: 1fr;
-}
-
-.app-shell--single-device .sidebar {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 220px;
-  z-index: 300;
-  transform: translateX(-100%);
-  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 8px 0 32px rgba(0, 0, 0, 0.55);
-}
-
-.app-shell--single-device.app-shell--sidebar-open .sidebar {
-  transform: translateX(0);
-}
-
-.sidebar-backdrop {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 290;
-  display: none;
-}
-
-.app-shell--single-device.app-shell--sidebar-open .sidebar-backdrop {
-  display: block;
-}
-
 .ambient-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
   padding: 6px 10px;
   border-radius: var(--radius-sm);
   background: var(--glass-bg);
