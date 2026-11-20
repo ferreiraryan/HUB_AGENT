@@ -108,6 +108,32 @@ class _TileCardState extends State<TileCard>
     );
   }
 
+  Widget _buildPreviewActionBtn(IconData icon, String tooltip) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white70),
+          const SizedBox(width: 4),
+          Text(
+            tooltip,
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.white70,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildContent(Color accentColor) {
     final tile = widget.tile;
     final is2x2 = tile.is2x2;
@@ -506,6 +532,226 @@ class _TileCardState extends State<TileCard>
                 ),
               ],
             ),
+          ),
+        ),
+      );
+    }
+
+    if (tile is PomodoroTile) {
+      if (is2x2) {
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildTileIcon(tile.icon, size: 26),
+                      const SizedBox(width: 8),
+                      Text(
+                        tile.label,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: Colors.orangeAccent.withOpacity(0.6)),
+                    ),
+                    child: const Text(
+                      'FOCO',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orangeAccent,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${tile.focusDurationMinutes.toString().padLeft(2, '0')}:00',
+                    style: TextStyle(
+                      fontSize: 38,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      color: accentColor,
+                      letterSpacing: 2.0,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      tile.cyclesBeforeLongBreak.clamp(1, 10),
+                      (index) => Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: index == 0 ? accentColor : Colors.white24,
+                          border: Border.all(
+                            color: index == 0
+                                ? accentColor
+                                : Colors.white.withOpacity(0.4),
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ciclo 1 de ${tile.cyclesBeforeLongBreak}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white60,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildPreviewActionBtn(Icons.play_arrow_rounded, 'Iniciar'),
+                  const SizedBox(width: 8),
+                  _buildPreviewActionBtn(Icons.skip_next_rounded, 'Pular'),
+                  const SizedBox(width: 8),
+                  _buildPreviewActionBtn(Icons.refresh_rounded, 'Reset'),
+                ],
+              ),
+            ],
+          ),
+        );
+      }
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Row(
+              mainAxisAlignment: is2x1
+                  ? MainAxisAlignment.spaceBetween
+                  : MainAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTileIcon(tile.icon, size: 20),
+                    if (is2x1) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        tile.label,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                    border:
+                        Border.all(color: Colors.orangeAccent.withOpacity(0.5)),
+                  ),
+                  child: const Text(
+                    'FOCO',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orangeAccent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${tile.focusDurationMinutes.toString().padLeft(2, '0')}:00',
+              style: TextStyle(
+                fontSize: is2x1 ? 22 : 16,
+                fontWeight: FontWeight.bold,
+                color: accentColor,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Ciclo 1 de ${tile.cyclesBeforeLongBreak}',
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.white54,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (tile is TodoTile) {
+      return Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildTileIcon(tile.icon, size: 28),
+              const SizedBox(height: 6),
+              Text(
+                tile.label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.lightGreen.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                      color: Colors.lightGreenAccent.withOpacity(0.4)),
+                ),
+                child: const Text(
+                  '3 pendentes',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.lightGreenAccent,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );

@@ -75,6 +75,25 @@ void main() {
       }));
       expect(json.keys.toList(), equals(['status', 'title', 'artist']));
 
+      const stateWithRate = MediaState(
+        status: PlaybackStatus.playing,
+        title: 'Song Title',
+        artist: 'Artist Name',
+        position: 42,
+        duration: 200,
+        playbackRate: 1.5,
+      );
+      final jsonWithRate = stateWithRate.toJson();
+      expect(jsonWithRate, equals({
+        'status': 'Playing',
+        'title': 'Song Title',
+        'artist': 'Artist Name',
+        'position': 42,
+        'duration': 200,
+        'playback_rate': 1.5,
+      }));
+      expect(jsonWithRate.keys.toList(), equals(['status', 'title', 'artist', 'position', 'duration', 'playback_rate']));
+
       expect(MediaState.idle.status, equals(PlaybackStatus.stopped));
       expect(MediaState.idle.toJson()['status'], equals('Stopped'));
     });

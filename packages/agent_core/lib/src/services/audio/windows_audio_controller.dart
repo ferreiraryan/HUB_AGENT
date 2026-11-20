@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../models/audio_state.dart';
+import '../../util/windows_binaries.dart';
 import 'audio_controller.dart';
 
 /// AudioController para Windows via hub_audio_helper.exe (WASAPI nativo)
@@ -11,13 +12,15 @@ import 'audio_controller.dart';
 /// Utiliza hub_audio_helper.exe para leitura e ajuste em tempo real do volume
 /// master e sessões de áudio por aplicativo (inclusive multi-processos como
 /// Spotify, Discord, navegadores e jogos).
-class WindowsAudioController implements AudioController {
+class WindowsAudioController implements AudioController, ExtendedAudioController {
   final _masterCtl = StreamController<MasterVolume>.broadcast();
   final _appsCtl = StreamController<List<AppVolume>>.broadcast();
+  final _micCtl = StreamController<MicState>.broadcast();
 
   Timer? _pollTimer;
   bool _available = false;
   MasterVolume _master = const MasterVolume(value: 0);
+  MicState _mic = const MicState();
   List<AppVolume> _apps = const [];
 
   /// Caminho do helper nativo WASAPI (hub_audio_helper.exe).
@@ -31,7 +34,11 @@ class WindowsAudioController implements AudioController {
   @override
   Stream<List<AppVolume>> get appsChanges => _appsCtl.stream;
   @override
+  Stream<MicState> get micChanges => _micCtl.stream;
+  @override
   MasterVolume get master => _master;
+  @override
+  MicState get mic => _mic;
   @override
   List<AppVolume> get apps => List.unmodifiable(_apps);
   @override
@@ -39,10 +46,8 @@ class WindowsAudioController implements AudioController {
 
   @override
   Future<void> start() async {
-    _helperPath = await _resolveBinaryPath('hub_audio_helper.exe');
-    if (_helperPath == null) {
-      _nircmdPath = await _resolveBinaryPath('nircmd.exe');
-    }
+    _helperPath = WindowsBinaries.resolveHelperPath();
+    _nircmdPath = WindowsBinaries.resolveNircmdPath();
 
     if (_helperPath == null && _nircmdPath == null) {
       _available = false;
@@ -59,38 +64,6 @@ class WindowsAudioController implements AudioController {
       const Duration(milliseconds: 1000),
       (_) => refresh(),
     );
-  }
-
-  /// Procura um executável nos locais previsíveis do bundle e repositório.
-  Future<String?> _resolveBinaryPath(String binaryName) async {
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    final candidates = <String>[
-      '$exeDir${Platform.pathSeparator}$binaryName',
-      '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}$binaryName',
-      '$exeDir${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
-      // Fallbacks para ambiente de desenvolvimento/testes
-      '${Directory.current.path}${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
-      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
-      '${Directory.current.path}${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
-      '${Directory.current.path}${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
-      '${Directory.current.path}${Platform.pathSeparator}..${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
-      '${Directory.current.path}${Platform.pathSeparator}..${Platform.pathSeparator}..${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}windows${Platform.pathSeparator}runner${Platform.pathSeparator}resources${Platform.pathSeparator}$binaryName',
-      '${Directory.current.path}${Platform.pathSeparator}..${Platform.pathSeparator}..${Platform.pathSeparator}apps${Platform.pathSeparator}cms_app${Platform.pathSeparator}build${Platform.pathSeparator}windows${Platform.pathSeparator}x64${Platform.pathSeparator}runner${Platform.pathSeparator}Debug${Platform.pathSeparator}$binaryName',
-    ];
-    for (final c in candidates) {
-      if (await File(c).exists()) return c;
-    }
-
-    // PATH do sistema
-    try {
-      final r = await Process.run('where', [binaryName]);
-      if (r.exitCode == 0) {
-        final first = (r.stdout as String).trim().split('\n').first.trim();
-        if (first.isNotEmpty) return first;
-      }
-    } catch (_) {}
-
-    return null;
   }
 
   @override
@@ -118,6 +91,19 @@ class WindowsAudioController implements AudioController {
               if (newMaster != _master) {
                 _master = newMaster;
                 if (!_masterCtl.isClosed) _masterCtl.add(newMaster);
+              }
+            }
+
+            final micJson = data['mic'] as Map<String, dynamic>?;
+            if (micJson != null) {
+              final newMic = MicState(
+                available: micJson['available'] == true,
+                muted: micJson['muted'] == true,
+                volume: (micJson['volume'] as num?)?.toInt() ?? 100,
+              );
+              if (newMic != _mic) {
+                _mic = newMic;
+                if (!_micCtl.isClosed) _micCtl.add(newMic);
               }
             }
 
@@ -245,9 +231,33 @@ class WindowsAudioController implements AudioController {
   }
 
   @override
+  Future<void> setMicMute(bool muted) async {
+    if (!_available || _helperPath == null) return;
+    try {
+      await Process.run(_helperPath!, ['set-mic-mute', muted ? '1' : '0'],
+          runInShell: false);
+      await refresh();
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setDefaultOutput(String deviceNameOrId) async {
+    final clean = deviceNameOrId.trim();
+    if (clean.isEmpty) return;
+    _nircmdPath ??= WindowsBinaries.resolveNircmdPath();
+    if (_nircmdPath != null) {
+      // Define como dispositivo padrão de multimídia (1) e comunicação (2)
+      await _runNircmd(['setdefaultsounddevice', clean, '1']);
+      await _runNircmd(['setdefaultsounddevice', clean, '2']);
+      await refresh();
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     _pollTimer?.cancel();
     await _masterCtl.close();
     await _appsCtl.close();
+    await _micCtl.close();
   }
 }

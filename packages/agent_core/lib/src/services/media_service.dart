@@ -61,7 +61,7 @@ class MediaService {
       final r = await Process.run(executable, [
         'metadata',
         '--format',
-        '{{status}}|{{title}}|{{artist}}',
+        '{{status}}|{{title}}|{{artist}}|{{position}}|{{mpris:length}}|{{rate}}',
       ]).timeout(const Duration(seconds: 3));
 
       if (r.exitCode != 0) return MediaState.idle;
@@ -69,14 +69,31 @@ class MediaService {
       final line = (r.stdout as String).trim();
       if (line.isEmpty) return MediaState.idle;
 
-      final first = line.indexOf('|');
-      final second = first < 0 ? -1 : line.indexOf('|', first + 1);
-      if (first < 0 || second < 0) return MediaState.idle;
+      final parts = line.split('|');
+      if (parts.length < 3) return MediaState.idle;
+
+      int? pos;
+      int? dur;
+      double? rate;
+      if (parts.length >= 4) {
+        final posMicro = int.tryParse(parts[3].trim());
+        if (posMicro != null) pos = (posMicro / 1000000).round();
+      }
+      if (parts.length >= 5) {
+        final lenMicro = int.tryParse(parts[4].trim());
+        if (lenMicro != null) dur = (lenMicro / 1000000).round();
+      }
+      if (parts.length >= 6) {
+        rate = double.tryParse(parts[5].trim());
+      }
 
       return MediaState(
-        status: PlaybackStatus.parse(line.substring(0, first)),
-        title: line.substring(first + 1, second).trim(),
-        artist: line.substring(second + 1).trim(),
+        status: PlaybackStatus.parse(parts[0]),
+        title: parts[1].trim(),
+        artist: parts[2].trim(),
+        position: pos,
+        duration: dur,
+        playbackRate: rate,
       );
     } catch (_) {
       return MediaState.idle;
@@ -86,14 +103,20 @@ class MediaService {
   Future<void> playPause() => _control('play-pause');
   Future<void> next() => _control('next');
   Future<void> previous() => _control('previous');
+  Future<void> seek(int seconds) => _controlArgs(['position', '$seconds']);
+  Future<void> rewind(int seconds) => _controlArgs(['position', '${seconds}-']);
+  Future<void> fastForward(int seconds) => _controlArgs(['position', '${seconds}+']);
+  Future<void> setPlaybackRate(double rate) => _controlArgs(['rate', rate.toString()]);
 
-  Future<void> _control(String verb) async {
+  Future<void> _control(String verb) => _controlArgs([verb]);
+
+  Future<void> _controlArgs(List<String> args) async {
     if (!available) return;
     try {
-      await Process.run(executable, [verb]);
+      await Process.run(executable, args);
       Timer(const Duration(milliseconds: 120), _poll);
     } catch (e) {
-      stderr.writeln('playerctl $verb falhou:$e');
+      stderr.writeln('playerctl $args falhou:$e');
     }
   }
 

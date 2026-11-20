@@ -13,6 +13,9 @@ class AgentConfig {
   final bool autoStartVoiceMeeter;
   final String? voiceMeeterPath;
   final String? voiceMeeterConfigXml;
+  final bool osdEnabled;
+  final String osdPosition;
+  final String searchHotkey;
 
   const AgentConfig({
     required this.host,
@@ -24,6 +27,9 @@ class AgentConfig {
     this.autoStartVoiceMeeter = false,
     this.voiceMeeterPath,
     this.voiceMeeterConfigXml,
+    this.osdEnabled = true,
+    this.osdPosition = 'bottom_center',
+    this.searchHotkey = 'alt+space',
   });
 
   factory AgentConfig.fromJson(Map<String, dynamic> json) => AgentConfig(
@@ -36,6 +42,9 @@ class AgentConfig {
         autoStartVoiceMeeter: json['autoStartVoiceMeeter'] as bool? ?? false,
         voiceMeeterPath: json['voiceMeeterPath'] as String?,
         voiceMeeterConfigXml: json['voiceMeeterConfigXml'] as String?,
+        osdEnabled: json['osdEnabled'] as bool? ?? true,
+        osdPosition: json['osdPosition'] as String? ?? 'bottom_center',
+        searchHotkey: json['searchHotkey'] as String? ?? 'alt+space',
       );
 
   Map<String, dynamic> toJson() => {
@@ -45,6 +54,9 @@ class AgentConfig {
         'mirrorNotifications': mirrorNotifications,
         'soundVolume': soundVolume,
         'autoStartVoiceMeeter': autoStartVoiceMeeter,
+        'osdEnabled': osdEnabled,
+        'osdPosition': osdPosition,
+        'searchHotkey': searchHotkey,
         if (soundOutputDevice != null) 'soundOutputDevice': soundOutputDevice,
         if (voiceMeeterPath != null) 'voiceMeeterPath': voiceMeeterPath,
         if (voiceMeeterConfigXml != null)
@@ -61,6 +73,9 @@ class AgentConfig {
     bool? autoStartVoiceMeeter,
     String? voiceMeeterPath,
     String? voiceMeeterConfigXml,
+    bool? osdEnabled,
+    String? osdPosition,
+    String? searchHotkey,
     bool clearSoundOutputDevice = false,
     bool clearVoiceMeeterPath = false,
     bool clearVoiceMeeterConfigXml = false,
@@ -72,6 +87,9 @@ class AgentConfig {
         mirrorNotifications: mirrorNotifications ?? this.mirrorNotifications,
         soundVolume: soundVolume ?? this.soundVolume,
         autoStartVoiceMeeter: autoStartVoiceMeeter ?? this.autoStartVoiceMeeter,
+        osdEnabled: osdEnabled ?? this.osdEnabled,
+        osdPosition: osdPosition ?? this.osdPosition,
+        searchHotkey: searchHotkey ?? this.searchHotkey,
         soundOutputDevice: clearSoundOutputDevice
             ? null
             : (soundOutputDevice ?? this.soundOutputDevice),

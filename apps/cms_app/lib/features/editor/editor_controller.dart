@@ -108,6 +108,9 @@ class EditorController extends Notifier<EditorState> {
     _debounceTimer = Timer(const Duration(milliseconds: 400), () {
       _writeChain = _writeChain.then((_) async {
         ref.read(agentRuntimeProvider).repository.save(layout);
+        if (state.layout == layout && state.dirty) {
+          state = state.copyWith(dirty: false);
+        }
       });
     });
   }
@@ -118,8 +121,7 @@ class EditorController extends Notifier<EditorState> {
     if (preserveBindings) {
       final bindingsMesclados = <String, List<List<String>>>{};
 
-      final idsNoNovo =
-          novo.pages.values.expand((l) => l).map((t) => t.id).toSet();
+      final idsNoNovo = novo.allTileIds;
 
       for (final id in idsNoNovo) {
         final antigo = state.layout.bindingFor(id);
@@ -258,7 +260,84 @@ class EditorController extends Notifier<EditorState> {
 
   void addPage(String pageId) => _mutate((l) => l.addPage(pageId));
 
-  void removePage(String pageId) => _mutate((l) => l.removePage(pageId));
+  void removePage(String pageId) {
+    if (pageId == Layout.homePage) return;
+    _mutate((l) => l.removePage(pageId));
+    if (state.currentPage == pageId) {
+      selectPage(Layout.homePage);
+      selectTile(null);
+    }
+  }
+
+  void renamePage(String oldId, String newId) {
+    final cleanNew = newId.trim();
+    if (oldId == Layout.homePage || cleanNew.isEmpty || oldId == cleanNew) {
+      return;
+    }
+    _mutate((l) => l.renamePage(oldId, cleanNew));
+    if (state.currentPage == oldId && state.layout.pages.containsKey(cleanNew)) {
+      selectPage(cleanNew);
+    }
+  }
+
+  void duplicatePage(String sourceId, String newId) {
+    final cleanNew = newId.trim();
+    if (cleanNew.isEmpty) return;
+    _mutate((l) => l.duplicatePage(sourceId, cleanNew));
+    if (state.layout.pages.containsKey(cleanNew)) {
+      selectPage(cleanNew);
+      selectTile(null);
+    }
+  }
+
+  void updateDeviceName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty || trimmed == state.layout.deviceName) return;
+    _mutate((l) => l.copyWith(deviceName: trimmed));
+  }
+
+  void duplicateSelectedTile() {
+    final tileId = state.selectedTileId;
+    if (tileId == null) return;
+    Tile? target;
+    for (final t in state.layout.tilesOf(state.currentPage)) {
+      if (t.id == tileId) {
+        target = t;
+        break;
+      }
+    }
+    if (target == null) return;
+
+    final allIds = state.layout.allTileIds;
+    var newId = '${target.id}_copy';
+    var counter = 2;
+    while (allIds.contains(newId)) {
+      newId = '${target.id}_copy_$counter';
+      counter++;
+    }
+
+    final cloned =
+        target.copyWithPosition(clearCoords: true).copyWithCommon(id: newId);
+    upsertTile(state.currentPage, cloned);
+
+    final oldBinding = state.layout.bindingFor(target.id);
+    if (oldBinding != null && oldBinding.isNotEmpty) {
+      setBinding(newId, [
+        for (final argv in oldBinding) List<String>.of(argv),
+      ]);
+    }
+    if (target is ToggleTile) {
+      for (final suffix in const [':a', ':b']) {
+        final b = state.layout.bindingFor('${target.id}$suffix');
+        if (b != null && b.isNotEmpty) {
+          setBinding('$newId$suffix', [
+            for (final argv in b) List<String>.of(argv),
+          ]);
+        }
+      }
+    }
+    selectTile(newId);
+  }
 
   void setBinding(String id, List<List<String>>? cmds) =>
       _mutate((l) => l.setBinding(id, cmds));

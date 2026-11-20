@@ -2,6 +2,42 @@ import 'dart:async';
 
 import '../../models/audio_state.dart';
 
+class MicState {
+  final bool available;
+  final bool muted;
+  final int volume;
+
+  const MicState({
+    this.available = false,
+    this.muted = false,
+    this.volume = 100,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'available': available,
+        'muted': muted,
+        'volume': volume,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is MicState &&
+      other.available == available &&
+      other.muted == muted &&
+      other.volume == volume;
+
+  @override
+  int get hashCode => Object.hash(available, muted, volume);
+}
+
+/// Extensão opcional de [AudioController] para controle de microfone e troca de saída padrão.
+abstract interface class ExtendedAudioController {
+  Stream<MicState> get micChanges;
+  MicState get mic;
+  Future<void> setMicMute(bool muted);
+  Future<void> setDefaultOutput(String deviceNameOrId);
+}
+
 /// Contrato de audio. Abstrato de proposito: o nucleo e Dart puro e cada SO
 /// implementa do seu jeito (wpctl/pactl no Linux, COM no Windows).
 abstract interface class AudioController {

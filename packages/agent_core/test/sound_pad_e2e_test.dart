@@ -49,6 +49,17 @@ class E2ETrackingSoundController implements SoundController {
   int get volume => _volume;
 
   @override
+  String? targetDevice;
+
+  @override
+  Future<void> playTestSound({String? targetDevice}) async {
+    playHistory.add('__test_sound__');
+  }
+
+  @override
+  void invalidateSoundCache() {}
+
+  @override
   Future<void> setVolume(int value) async {
     _volume = value.clamp(0, 100);
   }

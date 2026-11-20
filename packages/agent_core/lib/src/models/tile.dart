@@ -32,6 +32,148 @@ sealed class Tile {
   String get type;
   Map<String, dynamic> toJson();
 
+  /// Campos comuns a todos os tipos de tile para serialização JSON canônica.
+  Map<String, dynamic> baseJson() {
+    final map = <String, dynamic>{
+      'type': type,
+      'id': id,
+      'label': label,
+      'icon': icon,
+      'width': width,
+      'height': height,
+    };
+    if (x != null) map['x'] = x;
+    if (y != null) map['y'] = y;
+    if (staticIcon != null) map['static_icon'] = staticIcon;
+    if (animationMode != null) map['animation_mode'] = animationMode;
+    return map;
+  }
+
+  /// Permite atualizar propriedades comuns preservando dimensões e posições.
+  Tile copyWithCommon({
+    String? id,
+    String? icon,
+    String? label,
+    int? width,
+    int? height,
+    int? x,
+    int? y,
+    String? staticIcon,
+    String? animationMode,
+    bool clearCoords = false,
+  }) =>
+      switch (this) {
+        final ShortcutTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final FolderTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final BackTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final SliderTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final StatTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final SoundTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final ToggleTile t => t.copyWith(
+            id: id,
+            stateA: (icon != null || label != null)
+                ? t.stateA.copyWith(icon: icon, label: label)
+                : null,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final PomodoroTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+        final TodoTile t => t.copyWith(
+            id: id,
+            icon: icon,
+            label: label,
+            width: width,
+            height: height,
+            x: x,
+            y: y,
+            staticIcon: staticIcon,
+            animationMode: animationMode,
+            clearCoords: clearCoords,
+          ),
+      };
+
   Tile copyWithPosition({
     int? width,
     int? height,
@@ -39,57 +181,13 @@ sealed class Tile {
     int? y,
     bool clearCoords = false,
   }) =>
-      switch (this) {
-        final ShortcutTile t => t.copyWith(
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            clearCoords: clearCoords,
-          ),
-        final FolderTile t => t.copyWith(
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            clearCoords: clearCoords,
-          ),
-        final BackTile t => t.copyWith(
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            clearCoords: clearCoords,
-          ),
-        final SliderTile t => t.copyWith(
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            clearCoords: clearCoords,
-          ),
-        final StatTile t => t.copyWith(
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            clearCoords: clearCoords,
-          ),
-        final SoundTile t => t.copyWith(
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            clearCoords: clearCoords,
-          ),
-        final ToggleTile t => t.copyWith(
-            width: width,
-            height: height,
-            x: x,
-            y: y,
-            clearCoords: clearCoords,
-          ),
-      };
+      copyWithCommon(
+        width: width,
+        height: height,
+        x: x,
+        y: y,
+        clearCoords: clearCoords,
+      );
 
   factory Tile.fromJson(Map<String, dynamic> json) {
     final id = json['id'] as String;
@@ -99,7 +197,7 @@ sealed class Tile {
 
     final rawW = (json['width'] as num?)?.toInt() ?? (json['cols'] as num?)?.toInt();
     final rawH = (json['height'] as num?)?.toInt() ?? (json['rows'] as num?)?.toInt();
-    final defaultW = (type == 'slider' || type == 'stat') ? 2 : 1;
+    final defaultW = (type == 'slider' || type == 'stat' || type == 'pomodoro') ? 2 : 1;
     final width = (rawW ?? defaultW).clamp(1, 2);
     final height = (rawH ?? 1).clamp(1, 2);
     final rawX = (json['x'] as num?)?.toInt();
@@ -198,6 +296,37 @@ sealed class Tile {
           initialState: (json['initial_state'] as String?) ??
               (json['initialState'] as String?) ??
               'a',
+          width: width,
+          height: height,
+          x: x,
+          y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
+        ),
+      'pomodoro' => PomodoroTile(
+          id: id,
+          icon: icon.isEmpty ? 'timer' : icon,
+          label: label.isEmpty ? 'Pomodoro' : label,
+          focusDurationMinutes: (json['focus_duration_minutes'] as num?)?.toInt() ?? 25,
+          shortBreakDurationMinutes:
+              (json['short_break_duration_minutes'] as num?)?.toInt() ?? 5,
+          longBreakDurationMinutes:
+              (json['long_break_duration_minutes'] as num?)?.toInt() ?? 15,
+          cyclesBeforeLongBreak:
+              (json['cycles_before_long_break'] as num?)?.toInt() ?? 4,
+          startPhaseSoundId: json['start_phase_sound_id'] as String?,
+          endPhaseSoundId: json['end_phase_sound_id'] as String?,
+          width: width,
+          height: height,
+          x: x,
+          y: y,
+          staticIcon: staticIcon,
+          animationMode: animationMode,
+        ),
+      'todo' => TodoTile(
+          id: id,
+          icon: icon.isEmpty ? 'content_paste' : icon,
+          label: label.isEmpty ? 'Tarefas' : label,
           width: width,
           height: height,
           x: x,
@@ -944,5 +1073,235 @@ final class ToggleTile extends Tile {
   @override
   int get hashCode => Object.hash(
       type, id, stateA, stateB, initialState, width, height, x, y, staticIcon, animationMode);
+}
+
+final class PomodoroTile extends Tile {
+  final int focusDurationMinutes;
+  final int shortBreakDurationMinutes;
+  final int longBreakDurationMinutes;
+  final int cyclesBeforeLongBreak;
+  final String? startPhaseSoundId;
+  final String? endPhaseSoundId;
+
+  const PomodoroTile({
+    required super.id,
+    super.icon = 'timer',
+    super.label = 'Pomodoro',
+    this.focusDurationMinutes = 25,
+    this.shortBreakDurationMinutes = 5,
+    this.longBreakDurationMinutes = 15,
+    this.cyclesBeforeLongBreak = 4,
+    this.startPhaseSoundId,
+    this.endPhaseSoundId,
+    super.width = 2,
+    super.height = 1,
+    super.x,
+    super.y,
+    super.staticIcon,
+    super.animationMode,
+  });
+
+  @override
+  String get type => 'pomodoro';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'pomodoro',
+        'id': id,
+        'icon': icon,
+        'label': label,
+        if (width != 2) 'width': width,
+        if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
+        if (focusDurationMinutes != 25)
+          'focus_duration_minutes': focusDurationMinutes,
+        if (shortBreakDurationMinutes != 5)
+          'short_break_duration_minutes': shortBreakDurationMinutes,
+        if (longBreakDurationMinutes != 15)
+          'long_break_duration_minutes': longBreakDurationMinutes,
+        if (cyclesBeforeLongBreak != 4)
+          'cycles_before_long_break': cyclesBeforeLongBreak,
+        if (startPhaseSoundId != null && startPhaseSoundId!.isNotEmpty)
+          'start_phase_sound_id': startPhaseSoundId,
+        if (endPhaseSoundId != null && endPhaseSoundId!.isNotEmpty)
+          'end_phase_sound_id': endPhaseSoundId,
+        if (staticIcon != null && staticIcon!.isNotEmpty)
+          'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
+      };
+
+  PomodoroTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    int? focusDurationMinutes,
+    int? shortBreakDurationMinutes,
+    int? longBreakDurationMinutes,
+    int? cyclesBeforeLongBreak,
+    String? startPhaseSoundId,
+    String? endPhaseSoundId,
+    bool clearStartPhaseSound = false,
+    bool clearEndPhaseSound = false,
+    int? width,
+    int? height,
+    int? x,
+    int? y,
+    String? staticIcon,
+    String? animationMode,
+    bool clearCoords = false,
+    bool clearAnimation = false,
+  }) =>
+      PomodoroTile(
+        id: id ?? this.id,
+        icon: icon ?? this.icon,
+        label: label ?? this.label,
+        focusDurationMinutes: focusDurationMinutes ?? this.focusDurationMinutes,
+        shortBreakDurationMinutes:
+            shortBreakDurationMinutes ?? this.shortBreakDurationMinutes,
+        longBreakDurationMinutes:
+            longBreakDurationMinutes ?? this.longBreakDurationMinutes,
+        cyclesBeforeLongBreak:
+            cyclesBeforeLongBreak ?? this.cyclesBeforeLongBreak,
+        startPhaseSoundId: clearStartPhaseSound
+            ? null
+            : (startPhaseSoundId ?? this.startPhaseSoundId),
+        endPhaseSoundId: clearEndPhaseSound
+            ? null
+            : (endPhaseSoundId ?? this.endPhaseSoundId),
+        width: width ?? this.width,
+        height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is PomodoroTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label &&
+      other.focusDurationMinutes == focusDurationMinutes &&
+      other.shortBreakDurationMinutes == shortBreakDurationMinutes &&
+      other.longBreakDurationMinutes == longBreakDurationMinutes &&
+      other.cyclesBeforeLongBreak == cyclesBeforeLongBreak &&
+      other.startPhaseSoundId == startPhaseSoundId &&
+      other.endPhaseSoundId == endPhaseSoundId &&
+      other.width == width &&
+      other.height == height &&
+      other.x == x &&
+      other.y == y &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
+
+  @override
+  int get hashCode => Object.hash(
+        type,
+        id,
+        icon,
+        label,
+        focusDurationMinutes,
+        shortBreakDurationMinutes,
+        longBreakDurationMinutes,
+        cyclesBeforeLongBreak,
+        startPhaseSoundId,
+        endPhaseSoundId,
+        width,
+        height,
+        x,
+        y,
+        staticIcon,
+        animationMode,
+      );
+}
+
+final class TodoTile extends Tile {
+  const TodoTile({
+    required super.id,
+    super.icon = 'content_paste',
+    super.label = 'Tarefas',
+    super.width = 1,
+    super.height = 1,
+    super.x,
+    super.y,
+    super.staticIcon,
+    super.animationMode,
+  });
+
+  @override
+  String get type => 'todo';
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'todo',
+        'id': id,
+        'icon': icon,
+        'label': label,
+        if (width != 1) 'width': width,
+        if (height != 1) 'height': height,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
+        if (staticIcon != null && staticIcon!.isNotEmpty)
+          'static_icon': staticIcon,
+        if (animationMode != null && animationMode != 'always')
+          'animation_mode': animationMode,
+      };
+
+  TodoTile copyWith({
+    String? id,
+    String? icon,
+    String? label,
+    int? width,
+    int? height,
+    int? x,
+    int? y,
+    String? staticIcon,
+    String? animationMode,
+    bool clearCoords = false,
+    bool clearAnimation = false,
+  }) =>
+      TodoTile(
+        id: id ?? this.id,
+        icon: icon ?? this.icon,
+        label: label ?? this.label,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        x: clearCoords ? null : (x ?? this.x),
+        y: clearCoords ? null : (y ?? this.y),
+        staticIcon: clearAnimation ? null : (staticIcon ?? this.staticIcon),
+        animationMode:
+            clearAnimation ? null : (animationMode ?? this.animationMode),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is TodoTile &&
+      other.id == id &&
+      other.icon == icon &&
+      other.label == label &&
+      other.width == width &&
+      other.height == height &&
+      other.x == x &&
+      other.y == y &&
+      other.staticIcon == staticIcon &&
+      other.animationMode == animationMode;
+
+  @override
+  int get hashCode => Object.hash(
+        type,
+        id,
+        icon,
+        label,
+        width,
+        height,
+        x,
+        y,
+        staticIcon,
+        animationMode,
+      );
 }
 

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../models/agent_event.dart';
+import '../../util/windows_binaries.dart';
 import 'notification_monitor.dart';
 
 /// Tipo de função para execução de processos em testes e runtime.
@@ -131,7 +132,7 @@ class WindowsNotificationMonitor implements NotificationMonitor {
   Future<void> start() async {
     if (_disposed || _process != null) return;
 
-    final helper = _helperPathOverride ?? await _resolveHelperPath();
+    final helper = _helperPathOverride ?? WindowsBinaries.resolveHelperPath();
     if (helper == null) {
       stderr.writeln('windows_notification_monitor: hub_audio_helper.exe não encontrado');
       return;
@@ -172,27 +173,6 @@ class WindowsNotificationMonitor implements NotificationMonitor {
       stderr.writeln('windows_notification_monitor failed to start helper: $e');
       _isAvailable = false;
     }
-  }
-
-  Future<String?> _resolveHelperPath() async {
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    final candidates = <String>[
-      '$exeDir${Platform.pathSeparator}hub_audio_helper.exe',
-      '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}hub_audio_helper.exe',
-      '$exeDir${Platform.pathSeparator}resources${Platform.pathSeparator}hub_audio_helper.exe',
-      'windows/runner/resources/hub_audio_helper.exe',
-      'build/windows/x64/runner/Debug/hub_audio_helper.exe',
-      'apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
-      '../apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
-      '../../apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
-      'apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
-      '../apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
-      '../../apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
-    ];
-    for (final c in candidates) {
-      if (await File(c).exists()) return c;
-    }
-    return null;
   }
 
   @override

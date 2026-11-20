@@ -43,5 +43,21 @@ void main() {
       final updated = config.copyWith(mirrorNotifications: false);
       expect(updated.mirrorNotifications, isFalse);
     });
+
+    test('searchHotkey defaults to alt+space and round-trips in JSON', () {
+      const config = AgentConfig(
+        host: 'localhost',
+        port: 1883,
+        deviceId: 'pc',
+      );
+      expect(config.searchHotkey, 'alt+space');
+
+      final updated = config.copyWith(searchHotkey: 'ctrl+shift+k');
+      final json = updated.toJson();
+      expect(json['searchHotkey'], 'ctrl+shift+k');
+
+      final parsed = AgentConfig.fromJson(json);
+      expect(parsed.searchHotkey, 'ctrl+shift+k');
+    });
   });
 }

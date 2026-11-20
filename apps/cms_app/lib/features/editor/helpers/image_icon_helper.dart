@@ -35,38 +35,6 @@ class ImageIconHelper {
     return lower.startsWith('data:image/gif') || lower.endsWith('.gif');
   }
 
-  /// Abre o seletor nativo para escolher imagem ou GIF.
-  static Future<ImagePickResult?> pickAndProcessImage({int targetSize = 96}) async {
-    final xFile = await openFile(acceptedTypeGroups: [acceptedImageGroup]);
-    if (xFile == null) return null;
-
-    final bytes = await xFile.readAsBytes();
-    final isGifFile = isGifBytes(bytes) || xFile.name.toLowerCase().endsWith('.gif');
-
-    if (isGifFile) {
-      final gifDataUri = 'data:image/gif;base64,${base64Encode(bytes)}';
-      String? staticDataUri;
-      try {
-        // Extrai o primeiro frame como PNG estático para os modos on_tap / while_playing
-        staticDataUri = await processImageBytes(bytes, targetSize: targetSize);
-      } catch (_) {
-        staticDataUri = gifDataUri;
-      }
-      return ImagePickResult(
-        dataUri: gifDataUri,
-        staticDataUri: staticDataUri,
-        isGif: true,
-      );
-    }
-
-    final pngDataUri = await processImageBytes(bytes, targetSize: targetSize);
-    return ImagePickResult(
-      dataUri: pngDataUri,
-      staticDataUri: pngDataUri,
-      isGif: false,
-    );
-  }
-
   /// Processa bytes crus de imagem, redimensionando via engine gráfica do Flutter e gerando PNG Base64 compacto.
   static Future<String> processImageBytes(
     Uint8List rawBytes, {
@@ -87,22 +55,82 @@ class ImageIconHelper {
     return 'data:image/png;base64,${base64Encode(pngBytes)}';
   }
 
+  /// Processa imagem para tela de suspensão / banner preservando a proporção original.
+  /// Se for GIF animado, mantém os bytes originais intactos para preservar a animação.
+  static Future<String> processBannerImageBytes(
+    Uint8List rawBytes, {
+    int maxDimension = 800,
+  }) async {
+    if (isGifBytes(rawBytes)) {
+      return 'data:image/gif;base64,${base64Encode(rawBytes)}';
+    }
+    final probe = await ui.instantiateImageCodec(rawBytes);
+    final first = await probe.getNextFrame();
+    final origW = first.image.width;
+    final origH = first.image.height;
+    first.image.dispose();
+    probe.dispose();
+
+    int? targetW;
+    int? targetH;
+    if (origW > maxDimension || origH > maxDimension) {
+      if (origW >= origH) {
+        targetW = maxDimension;
+      } else {
+        targetH = maxDimension;
+      }
+    }
+
+    final codec = await ui.instantiateImageCodec(
+      rawBytes,
+      targetWidth: targetW,
+      targetHeight: targetH,
+    );
+    final frame = await codec.getNextFrame();
+    final byteData =
+        await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    frame.image.dispose();
+    codec.dispose();
+    if (byteData == null) {
+      throw Exception('Não foi possível codificar a imagem para PNG.');
+    }
+    final pngBytes = byteData.buffer.asUint8List();
+    return 'data:image/png;base64,${base64Encode(pngBytes)}';
+  }
+
   /// Verifica se a string informada é um Data URI de imagem Base64.
   static bool isImageDataUri(String? value) {
     if (value == null) return false;
     return value.startsWith('data:image/');
   }
 
-  /// Extrai os bytes de um Data URI Base64. Retorna null se for inválido.
+  static final Map<String, Uint8List> _bytesCache = {};
+  static const int _maxCacheEntries = 200;
+
+  /// Extrai os bytes de um Data URI Base64 com cache em memória para reaproveitar
+  /// instâncias de Uint8List e maximizar acertos no ImageCache do Flutter.
   static Uint8List? extractBytes(String? dataUri) {
     if (dataUri == null || !dataUri.startsWith('data:image/')) return null;
+
+    final cached = _bytesCache[dataUri];
+    if (cached != null) return cached;
+
     try {
       final commaIndex = dataUri.indexOf(',');
       final base64Str =
           commaIndex != -1 ? dataUri.substring(commaIndex + 1) : dataUri;
-      return base64Decode(base64Str);
+      final bytes = base64Decode(base64Str);
+
+      if (_bytesCache.length >= _maxCacheEntries) {
+        _bytesCache.remove(_bytesCache.keys.first);
+      }
+      _bytesCache[dataUri] = bytes;
+      return bytes;
     } catch (_) {
       return null;
     }
   }
+
+  /// Limpa o cache de bytes decodificados em memória.
+  static void clearCache() => _bytesCache.clear();
 }

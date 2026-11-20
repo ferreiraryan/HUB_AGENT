@@ -14,12 +14,23 @@ import 'services/stats/stats_service.dart';
 import 'services/audio/audio_controller.dart';
 import 'services/audio/audio_factory_stub.dart'
     if (dart.library.io) 'services/audio/audio_factory_io.dart';
+import 'services/battery/battery_service.dart';
 import 'services/brightness_controller.dart';
+import 'services/brightness_windows.dart';
+import 'services/clipboard/clipboard_service.dart';
 import 'services/command_dispatcher.dart';
 import 'services/key_sender_stub.dart'
     if (dart.library.io) 'services/key_sender_factory_io.dart';
 import 'services/notifications/notification_monitor.dart';
+import 'services/osd/osd_service.dart';
+import 'services/pomodoro/pomodoro_service.dart';
+import 'services/screensaver/screensaver_repository.dart';
 import 'services/sound/sound_controller.dart';
+import 'services/todo/todo_repository.dart';
+import 'services/todo/todo_service.dart';
+import 'services/weather/weather_service.dart';
+import 'services/window/active_window_monitor.dart';
+import 'services/window/page_rules_repository.dart';
 
 class AgentRuntime {
   final LayoutRepository repository;
@@ -31,6 +42,15 @@ class AgentRuntime {
   final StatsService stats;
   final SoundController? sound;
   final NotificationMonitor? notifications;
+  final PomodoroService pomodoro;
+  final TodoService todo;
+  final OsdService osd;
+  final BatteryService battery;
+  final ActiveWindowMonitor activeWindow;
+  final PageRulesRepository pageRules;
+  final ClipboardService clipboard;
+  final ScreensaverRepository screensaver;
+  final WeatherService weather;
   late final CommandDispatcher dispatcher;
 
   final Duration echoGuard;
@@ -38,8 +58,14 @@ class AgentRuntime {
   final _remoteSearchPromptCtl = StreamController<void>.broadcast();
   Stream<void> get remoteSearchPrompts => _remoteSearchPromptCtl.stream;
 
+  final _remoteTodoPromptCtl = StreamController<void>.broadcast();
+  Stream<void> get remoteTodoPrompts => _remoteTodoPromptCtl.stream;
+
+  final void Function()? onOpenCms;
+
   final _subs = <StreamSubscription<dynamic>>[];
   final _toggleStates = <String, String>{};
+  final _lastPublishedAppVolumes = <String, int>{};
   Timer? _brightnessPublishTimer;
   DateTime _suppressUntil = DateTime.fromMillisecondsSinceEpoch(0);
   bool _started = false;
@@ -53,7 +79,17 @@ class AgentRuntime {
     KeySender? keySender,
     StatsService? stats,
     SoundController? sound,
+    PomodoroService? pomodoro,
+    TodoService? todo,
+    OsdService? osd,
+    BatteryService? battery,
+    ActiveWindowMonitor? activeWindow,
+    PageRulesRepository? pageRules,
+    ClipboardService? clipboard,
+    ScreensaverRepository? screensaver,
+    WeatherService? weather,
     this.notifications,
+    this.onOpenCms,
     Set<String> allowedBinaries = const {},
     this.echoGuard = const Duration(milliseconds: 200),
   })  : audio = audio ?? createDefaultAudioController(),
@@ -64,17 +100,51 @@ class AgentRuntime {
         sound = sound ??
             SystemSoundController(
               soundsDir: Directory('${repository.file.parent.path}/sounds'),
-            ) {
+            ),
+        pomodoro = pomodoro ??
+            PomodoroService(
+              sound: sound,
+              onNotification: mqtt.publishEvent,
+            ),
+        todo = todo ??
+            TodoService(
+              repository: TodoRepository(
+                file: File('${repository.file.parent.path}/todos.json'),
+              ),
+            ),
+        osd = osd ?? createDefaultOsdService(),
+        battery = battery ??
+            BatteryService(
+              onLowBatteryEvent: mqtt.publishEvent,
+            ),
+        activeWindow = activeWindow ?? ActiveWindowMonitor(),
+        pageRules = pageRules ??
+            PageRulesRepository(
+              file: File('${repository.file.parent.path}/page_rules.json'),
+            ),
+        clipboard = clipboard ?? ClipboardService(),
+        screensaver = screensaver ??
+            ScreensaverRepository(
+              file: File('${repository.file.parent.path}/screensaver.json'),
+            ),
+        weather = weather ?? WeatherService() {
     dispatcher = CommandDispatcher(
       audio: this.audio,
       brightness: this.brightness,
       media: this.media,
       keySender: this.keySender,
       sound: this.sound,
+      pomodoro: this.pomodoro,
+      todo: this.todo,
+      osd: this.osd,
+      activeWindow: this.activeWindow,
+      clipboard: this.clipboard,
       layoutProvider: () => repository.current,
       allowedBinaries: allowedBinaries,
       onLocalVolumeChange: _armEchoGuard,
       onEvent: mqtt.publishEvent,
+      onPublishClipboard: mqtt.publishClipboard,
+      onAudioOutputsRefresh: _publishAudioOutputs,
       onToggle: (id, newState) {
         _toggleStates[id] = newState;
         mqtt.publishToggleState(id, newState);
@@ -85,12 +155,20 @@ class AgentRuntime {
           _remoteSearchPromptCtl.add(null);
         }
       },
+      onRemoteTodoPrompt: () {
+        if (!_remoteTodoPromptCtl.isClosed) {
+          _remoteTodoPromptCtl.add(null);
+        }
+      },
+      onOpenCms: onOpenCms,
     );
   }
 
-  static BrightnessController _defaultBrightness() => Platform.isLinux
-      ? LinuxBrightnessController()
-      : UnsupportedBrightnessController();
+  static BrightnessController _defaultBrightness() {
+    if (Platform.isLinux) return LinuxBrightnessController();
+    if (Platform.isWindows) return WindowsBrightnessController();
+    return UnsupportedBrightnessController();
+  }
 
   Stream<AgentConnectionState> get connectionState => mqtt.connectionState;
   Stream<Layout> get layoutChanges => repository.changes;
@@ -102,17 +180,41 @@ class AgentRuntime {
     if (_started) return;
     _started = true;
 
-    final layout =
-        await repository.load(fallbackDeviceName: fallbackDeviceName);
+    await repository.load(fallbackDeviceName: fallbackDeviceName);
+    await todo.init();
+    await pageRules.load();
+    await screensaver.load();
 
     _subs
+      ..add(screensaver.changes.listen((cfg) {
+        mqtt.publishScreensaverConfig(cfg);
+        unawaited(weather.configure(
+          city: cfg.weatherCity,
+          unit: cfg.weatherUnit,
+        ));
+      }))
+      ..add(weather.updates.listen(mqtt.publishWeather))
       ..add(repository.changes.listen((l) {
+        _lastPublishedAppVolumes.clear();
+        for (final page in l.pages.values) {
+          for (final tile in page) {
+            if (tile is PomodoroTile) {
+              pomodoro.configureFromTile(tile);
+              break;
+            }
+          }
+        }
         mqtt.publishLayout(l);
         _publishBrightness();
         _publishSoundVolume();
         _publishAppSliderStates(audio.apps);
         _publishToggleStates();
       }))
+      ..add(pomodoro.changes.listen(mqtt.publishPomodoroState))
+      ..add(todo.changes.listen(mqtt.publishTodoState))
+      ..add(battery.changes.listen(mqtt.publishBatteries))
+      ..add(activeWindow.changes.listen(mqtt.publishActiveApp))
+      ..add(pageRules.changes.listen(mqtt.publishPageRules))
       ..add(mqtt.commands.listen(_onCommand))
       ..add(audio.masterChanges.listen(_onLocalVolume))
       ..add(audio.appsChanges.listen((apps) {
@@ -138,25 +240,45 @@ class AgentRuntime {
       if (s == AgentConnectionState.connected) _publishSnapshot();
     }));
 
+    if (audio case final ExtendedAudioController ext) {
+      _subs.add(ext.micChanges.listen(mqtt.publishMicState));
+    }
+
     await mqtt.connect();
     await audio.start();
     await brightness.start();
     await media.start();
     await stats.start();
+    await battery.start();
+    await activeWindow.start();
     await notifications?.start();
+    weather.start(
+      city: screensaver.current.weatherCity,
+      unit: screensaver.current.weatherUnit,
+    );
 
     _subs.add(stats.changes.listen((s) {
       mqtt.publishStatsCpu(s);
       mqtt.publishStatsRam(s);
       mqtt.publishStatsDisk(s);
+      mqtt.publishStatsNet(s);
+      mqtt.publishStatsGpu(s);
     }));
 
     _brightnessPublishTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _publishBrightness());
 
     _publishSnapshot();
-    await _publishBrightness();
-    if (mqtt.isConnected) mqtt.publishLayout(layout);
+  }
+
+  Future<void> _publishAudioOutputs() async {
+    if (!mqtt.isConnected || sound == null) return;
+    try {
+      final list = await sound!.listDevices();
+      if (list.isNotEmpty) {
+        mqtt.publishAudioOutputs(list);
+      }
+    } catch (_) {}
   }
 
   void _publishSnapshot() {
@@ -166,7 +288,11 @@ class AgentRuntime {
     if (audio.isAvailable) {
       mqtt.publishVolume(audio.master);
       mqtt.publishApps(audio.apps);
+      if (audio case final ExtendedAudioController ext) {
+        mqtt.publishMicState(ext.mic);
+      }
     }
+    unawaited(_publishAudioOutputs());
     _publishBrightness();
     _publishSoundVolume();
     _publishAppSliderStates(audio.apps);
@@ -175,6 +301,14 @@ class AgentRuntime {
     if (sound != null) {
       mqtt.publishSoundState(sound!.current);
     }
+    mqtt.publishPomodoroState(pomodoro.current);
+    mqtt.publishTodoState(todo.current);
+    mqtt.publishBatteries(battery.current);
+    mqtt.publishActiveApp(activeWindow.current);
+    mqtt.publishPageRules(pageRules.current);
+    mqtt.publishScreensaverConfig(screensaver.current);
+    final w = weather.current;
+    if (w != null) mqtt.publishWeather(w);
   }
 
   void _publishSoundVolume() {
@@ -203,29 +337,13 @@ class AgentRuntime {
             tile.source.kind == SliderSource.kindAppVolume &&
             tile.source.match != null &&
             tile.source.match!.isNotEmpty) {
-          final rawTarget = tile.source.match!.trim().toLowerCase();
-          final cleanTarget = rawTarget.endsWith('.exe')
-              ? rawTarget.substring(0, rawTarget.length - 4).trim()
-              : rawTarget;
-          if (cleanTarget.isEmpty) continue;
-
+          final target = tile.source.match!;
           for (final app in apps) {
-            final rawName = app.name.trim().toLowerCase();
-            final cleanName = rawName.endsWith('.exe')
-                ? rawName.substring(0, rawName.length - 4).trim()
-                : rawName;
-            final rawId = app.id.trim().toLowerCase();
-            final cleanId = rawId.endsWith('.exe')
-                ? rawId.substring(0, rawId.length - 4).trim()
-                : rawId;
-
-            final matched = (cleanName.isNotEmpty &&
-                    (cleanName.contains(cleanTarget) || cleanTarget.contains(cleanName))) ||
-                (cleanId.isNotEmpty &&
-                    (cleanId.contains(cleanTarget) || cleanTarget.contains(cleanId)));
-
-            if (matched) {
-              mqtt.publishSliderState(tile.id, app.volume);
+            if (app.matchesTarget(target)) {
+              if (_lastPublishedAppVolumes[tile.id] != app.volume) {
+                _lastPublishedAppVolumes[tile.id] = app.volume;
+                mqtt.publishSliderState(tile.id, app.volume);
+              }
               break;
             }
           }
@@ -295,9 +413,34 @@ class AgentRuntime {
     mqtt.publishVolume(v);
   }
 
-  void publishSearchQuery(String query, {bool active = true}) {
-    mqtt.publishSearchQuery(query, active: active);
+  void publishSearchQuery(
+    String query, {
+    bool active = true,
+    String filter = 'all',
+    String scope = 'all',
+  }) {
+    mqtt.publishSearchQuery(
+      query,
+      active: active,
+      filter: filter,
+      scope: scope,
+    );
   }
+
+  /// Dispara uma ação de tile/comando localmente a partir da UI do PC (ex: Spotlight).
+  Future<void> triggerAction(String action) =>
+      _onCommand(AgentCommand(action, {'action': action}));
+
+  /// Força reconexão imediata do broker MQTT.
+  Future<void> reconnectMqtt() => mqtt.reconnect();
+
+  /// Reconfigura host/porta/deviceId do broker em tempo real sem reiniciar o app.
+  Future<void> reconfigureMqtt({
+    required String host,
+    required int port,
+    required String deviceId,
+  }) =>
+      mqtt.reconfigure(host: host, port: port, deviceId: deviceId);
 
   Future<void> dispose() async {
     for (final s in _subs) {
@@ -306,8 +449,17 @@ class AgentRuntime {
     _subs.clear();
     _brightnessPublishTimer?.cancel();
     await _remoteSearchPromptCtl.close();
+    await _remoteTodoPromptCtl.close();
     await notifications?.dispose();
     await sound?.dispose();
+    await pomodoro.dispose();
+    await todo.dispose();
+    await osd.dispose();
+    await battery.dispose();
+    await activeWindow.dispose();
+    await pageRules.dispose();
+    await screensaver.dispose();
+    await weather.dispose();
     await keySender.dispose();
     await stats.dispose();
     await media.dispose();

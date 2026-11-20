@@ -12,9 +12,10 @@ import 'audio_controller.dart';
 ///  - apps:   `pactl -f json list sink-inputs` (JSON nativo, sem parse de
 ///            texto localizado — pactl >= 16)
 ///  - eventos: `pactl subscribe` em stdout, sem polling
-class LinuxAudioController implements AudioController {
+class LinuxAudioController implements AudioController, ExtendedAudioController {
   final _masterCtl = StreamController<MasterVolume>.broadcast();
   final _appsCtl = StreamController<List<AppVolume>>.broadcast();
+  final _micCtl = StreamController<MicState>.broadcast();
 
   Process? _subscription;
   Timer? _debounce;
@@ -22,6 +23,7 @@ class LinuxAudioController implements AudioController {
   bool _reading = false;
 
   MasterVolume _master = const MasterVolume(value: 0);
+  MicState _mic = const MicState();
   List<AppVolume> _apps = const [];
 
   @override
@@ -29,7 +31,11 @@ class LinuxAudioController implements AudioController {
   @override
   Stream<List<AppVolume>> get appsChanges => _appsCtl.stream;
   @override
+  Stream<MicState> get micChanges => _micCtl.stream;
+  @override
   MasterVolume get master => _master;
+  @override
+  MicState get mic => _mic;
   @override
   List<AppVolume> get apps => List.unmodifiable(_apps);
   @override
@@ -47,7 +53,7 @@ class LinuxAudioController implements AudioController {
     _subscription!.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
-        .where((l) => l.contains('sink') || l.contains('server'))
+        .where((l) => l.contains('sink') || l.contains('source') || l.contains('server'))
         .listen((_) {
       // Debounce: mexer no slider gera rajada de eventos.
       _debounce?.cancel();
@@ -243,10 +249,45 @@ class LinuxAudioController implements AudioController {
   }
 
   @override
+  Future<void> setMicMute(bool muted) async {
+    if (!_available) return;
+    await _run('wpctl', ['set-mute', '@DEFAULT_AUDIO_SOURCE@', muted ? '1' : '0']);
+    await _refreshMic();
+  }
+
+  Future<void> _refreshMic() async {
+    try {
+      final r = await Process.run('wpctl', ['get-volume', '@DEFAULT_AUDIO_SOURCE@'])
+          .timeout(const Duration(seconds: 2));
+      if (r.exitCode == 0) {
+        final out = (r.stdout as String).trim();
+        final m = RegExp(r'Volume:\s*([\d.]+)').firstMatch(out);
+        final vol = m != null ? ((double.tryParse(m.group(1)!) ?? 1.0) * 100).round().clamp(0, 100) : 100;
+        final muted = out.contains('[MUTED]');
+        final next = MicState(available: true, muted: muted, volume: vol);
+        if (next != _mic) {
+          _mic = next;
+          if (!_micCtl.isClosed) _micCtl.add(next);
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setDefaultOutput(String deviceNameOrId) async {
+    if (!_available) return;
+    final clean = deviceNameOrId.trim();
+    if (clean.isEmpty) return;
+    await _run('pactl', ['set-default-sink', clean]);
+    await refresh();
+  }
+
+  @override
   Future<void> dispose() async {
     _debounce?.cancel();
     _subscription?.kill();
     await _masterCtl.close();
     await _appsCtl.close();
+    await _micCtl.close();
   }
 }

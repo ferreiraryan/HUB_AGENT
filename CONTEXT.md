@@ -1,7 +1,7 @@
 # CONTEXT.md — Hub Agent
 
 Documento de contexto arquitetural e operacional para modelos de IA e desenvolvedores.
-Atualizado e conferido contra o código real do repositório em 19/10/2026.
+Atualizado e conferido contra o código real do repositório em 28/10/2026.
 Leia também [AGENT.md](./AGENT.md) e [AGENTS.md](./AGENTS.md).
 
 ---
@@ -34,8 +34,9 @@ O **Hub Agent** é um ecossistema de controle e automação local distribuído b
 |   - apps/cms_app (Flutter Desktop: UI de edição de layout e tray)      |
 |   - packages/agent_core (Dart puro: AgentRuntime, MqttService)         |
 |   - Executores locais:                                                 |
-|       * Windows: hub_audio_helper.exe (WASAPI), nircmd.exe, powershell |
-|       * Linux: wpctl, pactl, playerctl, wtype (Wayland), xdotool, ydotool, ddcutil, paplay |
+|       * Windows: hub_audio_helper.exe (WASAPI, GSMTC, WinRT), nircmd   |
+|       * Linux: wpctl, pactl, playerctl, wtype (Wayland), xdotool,      |
+|                ydotool, ddcutil, paplay                                |
 +------------------------------------------------------------------------+
 ```
 
@@ -45,21 +46,35 @@ O **Hub Agent** é um ecossistema de controle e automação local distribuído b
 
 - **`packages/agent_core`**:
   - Pacote Dart puro (**proibido importar Flutter**).
-  - Gerencia o modelo de domínio (`Layout`, `Tile`, `HubTheme`, `AudioState`, `MediaState`, `SoundPlaybackState`, `StatsSnapshot`).
+  - Gerencia o modelo de domínio (`Layout`, `Tile`, `HubTheme`, `AudioState`, `MediaState`, `SoundPlaybackState`, `PomodoroState`, `TodoState`, `StatsSnapshot`).
+  - `MediaState`: contrato canônico com `status`, `title`, `artist`, `position`, `duration` e `playbackRate`.
+  - `PomodoroService`: temporizador de alta precisão no host PC com transição automática entre Foco, Pausa Curta e Pausa Longa, feedback sonoro e notificação efêmera.
+  - `TodoService` / `TodoRepository`: gerenciador de tarefas com persistência atômica e isolada em `<appSupport>/todos.json` (sem disparar debounce do `layout.json`).
   - `LayoutRepository`: lê e salva `layout.json` no disco local com debounce de 400 ms e sincronização em stream.
   - `MqttService`: comunicação com o broker Mosquitto; publica todas as telemetrias com flag `retain: true`.
   - `CommandDispatcher`: recebe comandos do MQTT e despacha para serviços locais protegidos por validação em memória.
-  - Provedores de serviços: áudio, mídia, teclas (`KeySender`), brilho, mesa de sons (`SoundController`) e estatísticas de hardware.
+  - `SoundController`: mesa de sons com suporte a seleção de endpoint dinâmico (`targetDevice`), roteamento para VoiceMeeter, fallback de som de sistema e in-memory device switching.
+  - Provedores de serviços: áudio, mídia, teclas (`KeySender`), brilho, mesa de sons, estatísticas de hardware, pomodoro e lista de afazeres (todos).
 - **`apps/cms_app`**:
   - Aplicação Flutter desktop (Windows e Linux).
-  - Editor visual WYSIWYG de telas, botões, sliders, cards de estatística, temas e atalhos.
+  - Editor visual WYSIWYG de telas, botões, sliders, cards de estatística, temas, pomodoro, tarefas e atalhos.
   - Gerenciamento de autostart e configurações do broker (`broker_settings_dialog.dart`).
-  - Biblioteca gerenciada de sons (`SoundLibraryRepository`) em `<appSupport>/sounds`.
+  - Seletor avançado de saída de áudio para VoiceMeeter com ChoiceChips pré-configurados (Padrão, VoiceMeeter VAIO, Fone, Caixa) e botão `[ ▶ Testar ]` sonoro ao vivo.
+  - Inspetores dedicados para `PomodoroTile` (configuração de tempos, tamanhos 1x1 a 2x2 com layout expandido e sons da biblioteca) e `TodoTile`.
+  - Prompts nativos de entrada rápida no PC (`RemoteSearchSpotlight` e `RemoteTodoSpotlight`) com janela flutuante e foco automático para digitação via teclado físico.
+  - Bibliotecas gerenciadas de sons (`SoundLibraryRepository` em `<appSupport>/sounds`) e imagens (`ImageLibraryRepository` em `<appSupport>/images`).
   - Recursos empacotados no runner Windows: `hub_audio_helper.exe` e `nircmd.exe` em `windows/runner/resources/`.
 - **`dashboard_web`**:
   - Frontend SPA vanilla (HTML5, CSS3, JavaScript puro) leve e resiliente para o tablet Android.
   - Conecta diretamente ao Mosquitto via WebSocket usando `mqtt.min.js`.
   - Otimizado e compatível com WebViews legadas (Android 5/6 Lollipop/Marshmallow).
+  - **PomodoroTile & Interpolação**: Card no grid com mostrador de minutos/segundos em tempo real, badges de fase, indicadores de ciclo, dots luminosos de progresso e suporte a modo expandido 2x2 com timer gigante e botões de ação maiores.
+  - **TodoTile & Todo Drawer**: Card com contador dinâmico de pendentes e gaveta deslizante (`#todo-drawer`) para tarefas. Abertura do drawer ou botão `+` sem texto acionam diretamente a digitação no teclado do PC (`remote_todo_prompt`), mantendo o teclado virtual do tablet opcional por toque no campo.
+  - **Busca Rápida Remota**: O botão de busca aciona o teclado físico do PC (`remote_search_prompt`) automaticamente, abrindo a barra de busca no tablet sem invadir a tela com o teclado virtual (opcional por toque no input).
+  - **Now Playing & Media Drawer**: Barra compacta com mini equalizador e vinil giratório animado, expansível para Drawer completo com seek bar interativa, contadores de tempo, controles de navegação (-10s, ⏮, ▶/⏸, ⏭, +10s), seletor de velocidade (`0.5x` a `2x`) e slider de volume.
+  - **Interpolação de Timeline**: `mediaTimelineTimer` local que incrementa suavemente a posição segundo a segundo durante `Playing` e calibra com pacotes MQTT do host.
+  - **Suporte a GIFs Animados**: Tag `<img>` nativa única para máxima compatibilidade com Chromium 37-53 (modos: `always`, `on_tap`, `while_playing`), com rotina `wakeGifsInContainer` para acordar decodificação após troca de página.
+  - **Prevenção de Ghost Click**: Interceptação em fase de captura para impedir que toques de troca de página vazem acidentalmente para botões na tela seguinte.
 
 ---
 
@@ -78,8 +93,10 @@ nodes/{deviceId}/
 | `layout` | `{"deviceName": "...", "theme": {...}, "pages": [...]}` | Retained / QoS 1 | Estrutura de telas, temas e botões para o tablet. |
 | `audio/volume` | `{"value": 0..100}` | Retained / QoS 0 | Volume master do sistema. |
 | `audio/apps` | `[{"id": "...", "name": "...", "volume": 0..100}]` | Retained / QoS 0 | Mixer de apps (Linux e Windows). |
-| `media` | `{"status": "Playing"\|"Paused"\|"Stopped", "title": "...", "artist": "..."}` | Retained / QoS 0 | Faixa em reprodução (status capitalizado). |
+| `media` | `{"status": "Playing"\|"Paused"\|"Stopped", "title": "...", "artist": "...", "position": int?, "duration": int?, "playback_rate": double?}` | Retained / QoS 0 | Faixa e vídeo em reprodução com timeline e velocidade. |
 | `sound/state` | `{"current_sound_id": "id"\|null, "is_playing": bool, "playing": "id"\|null, "status": "playing"\|"idle"}` | Retained / QoS 0 | Estado em tempo real do Sound Pad. |
+| `state/pomodoro` | `{"phase": "focus"\|"short_break"\|"long_break"\|"idle", "remaining_ms": int, "cycle": int, "total_cycles": int, "is_running": bool}` | Retained / QoS 0 | Estado do temporizador Pomodoro (PC Host). |
+| `state/todos` | `{"pending": int, "total": int, "items": [{"id": "...", "text": "...", "done": bool}]}` | Retained / QoS 0 | Lista de afazeres/tarefas ativa. |
 | `state/{sliderId}` | `{"value": int}` | Retained / QoS 0 | Estado atual de um slider (publicado para brilho). |
 | `stats/cpu` | `{"load": int, "temp": int?, "freq_mhz": int?}` | Retained / QoS 0 | Estatísticas de CPU do PC. |
 | `stats/ram` | `{"used_mb": int, "total_mb": int, "percent": int}` | Retained / QoS 0 | Uso de memória RAM. |
@@ -93,16 +110,29 @@ O tablet dispara comandos em formato JSON. Formatos reconhecidos:
 {"action": "play_pause"}
 {"action": "next"}
 {"action": "prev"}
+{"action": "seek", "value": 120}
+{"action": "rewind", "value": 10}
+{"action": "fast_forward", "value": 10}
+{"action": "set_playback_rate", "rate": 1.5}
 {"action": "set_volume", "value": 75}
 {"action": "set_app_volume", "app_id": "spotify", "value": 50}
 {"action": "set_slider", "id": "slider_id", "value": 40}
 {"action": "play_sound", "sound_id": "sound_id"}
 {"action": "stop_sound"}
+{"action": "pomodoro_toggle"}
+{"action": "pomodoro_skip"}
+{"action": "pomodoro_reset"}
+{"action": "todo_toggle", "item_id": "todo_id"}
+{"action": "todo_add", "text": "Nova tarefa"}
+{"action": "todo_remove", "item_id": "todo_id"}
+{"action": "todo_clear_done"}
+{"action": "remote_search_prompt"}
+{"action": "remote_todo_prompt"}
 {"action": "run_shortcut", "id": "shortcut_id"}
 {"action": "<tile_id>"}
 ```
 > [!NOTE]
-> **Ação Direta por Tile ID:** O tablet envia `{"action": "<tile_id>"}` diretamente ao clicar em atalhos e sons. No despachante (`CommandDispatcher`), se a ação não for uma ação interna pré-definida, ele primeiro verifica se o ID corresponde a um `SoundTile` (acionando toggle de som) ou a um `ShortcutTile` (executando o binding associado no PC).
+> **Ação Direta por Tile ID:** O tablet envia `{"action": "<tile_id>"}` diretamente ao clicar em atalhos e sons. No despachante (`CommandDispatcher`), se a ação não for uma ação interna pré-definida, ele primeiro verifica se o ID corresponde a um `SoundTile` (acionando toggle de som), a um `PomodoroTile` (acionando toggle do timer de foco) ou a um `ShortcutTile` (executando o binding associado no PC).
 
 > [!IMPORTANT]
 > **A Regra de Ouro da Segurança e o Golden Test:**
@@ -118,21 +148,25 @@ O tablet dispara comandos em formato JSON. Formatos reconhecidos:
 | :--- | :--- | :--- |
 | **Volume Master** | `wpctl` por evento (`pactl subscribe` com debounce de 60ms) | `hub_audio_helper.exe` (WASAPI nativo) com polling de 1000ms. Fallback `nircmd.exe`. |
 | **Mixer por App** | `pactl -f json list sink-inputs` | `hub_audio_helper.exe` enumera sessões ativas WASAPI por PID e nome de processo. |
-| **Controle de Mídia** | `playerctl` (MPRIS via D-Bus). | `nircmd.exe sendkeypress` (`0xB3`, `0xB0`, `0xB1`). |
-| **Metadados de Mídia** | Lê título, artista e status real via `playerctl metadata`. | **Não publica metadados** (status permanece `Stopped`). |
+| **Controle de Mídia** | `playerctl` (MPRIS via D-Bus: play, pause, next, prev, seek, rewind, fast_forward, rate). | `hub_audio_helper.exe media-control` (C++/WinRT GSMTC: play/pause, next, prev, seek, rewind, fast_forward, rate). Fallback `nircmd.exe sendkeypress`. |
+| **Metadados de Mídia** | Lê título, artista, status, posição e duração via `playerctl metadata`. | `hub_audio_helper.exe media-status` (C++/WinRT GSMTC: lê título, artista, status, duração, taxa e interpola posição em tempo real). |
 | **Atalhos de Teclado** | `LinuxKeySender` via `wtype` (Wayland / Hyprland) com fallback para `ydotool` e `xdotool` (X11). | `WindowsKeySender` via `nircmd.exe sendkeypress`. |
-| **Controle de Brilho**| `LinuxBrightnessController` via `ddcutil`. | Não suportado (`UnsupportedBrightnessController`). |
-| **Estatísticas** | Leitura de `/proc/stat`, `/proc/meminfo`, `/proc/cpuinfo`, thermal zones e `df -B1 /`. | PowerShell CIM (`Win32_Processor`, `Win32_OperatingSystem`, `Win32_LogicalDisk`). Sem temp/freq. |
-| **Sound Pad** | `paplay` (suporta `--volume` e `-d <sink>`). Enumera sinks via `pactl list sinks short`. | `hub_audio_helper.exe play-sound` (WASAPI + Media Foundation com controle de volume) e `list-devices`. |
+| **Controle de Brilho**| `LinuxBrightnessController` via `ddcutil`. | `WindowsBrightnessController` via `hub_audio_helper.exe` (DDC/CI `dxva2.dll`: `list-displays`, `get-brightness`, `set-brightness`). |
+| **Estatísticas** | Leitura de `/proc/stat`, `/proc/meminfo`, `/proc/cpuinfo`, thermal zones e `df -B1 /`. | `hub_audio_helper.exe stats` (Win32 nativo: `GetSystemTimes`, `GlobalMemoryStatusEx`, `GetDiskFreeSpaceExW`). Fallback PowerShell CIM. |
+| **Sound Pad** | `paplay` (suporta `--volume` e `-d <sink>`). Enumera sinks via `pactl list sinks short`. | `hub_audio_helper.exe play-sound` (WASAPI + Media Foundation com controle de volume e roteamento dinâmico de endpoints, ex: VoiceMeeter VAIO) e `list-devices`. |
 | **Notificações do PC** | `LinuxNotificationMonitor` via `dbus-monitor` (D-Bus). | `WindowsNotificationMonitor` via `hub_audio_helper.exe watch-notifications` (WinRT `UserNotificationListener`). |
 | **Execução de Comandos** | Subprocessos com `runInShell: false`. | Subprocessos com `runInShell: true` nos bindings. |
 | **Instância Única** | Socket TCP loopback em `127.0.0.1:45871`. | Lock de arquivo exclusivo `cms_app.lock` em `<appSupport>`. |
 
 ### Tablet Android (Dashboard Kiosk):
 - O tablet roda versões antigas do Android (5/6 Lollipop/Marshmallow).
-- Código em `dashboard_web/app.js` estritamente compatível: sem sintaxes ES modernas (`?.`, `??`, default params).
+- Código em `dashboard_web/app.js` estritamente compatível: sem sintaxes ES modernas (`?.`, `??`, default params); CSS sem `inset:` nem `min()`.
+- Interface minimalista com SVGs inline no header, sidebar auto-colapsável quando há apenas 1 dispositivo conectado, barra rápida de páginas (`#page-pills-bar`) + swipe horizontal, pill global `Parar Som`, relógio minimalista e **Modo Ambiente / Screensaver OLED** (manual ou por inatividade configurável).
+- Now Playing retrai automaticamente quando nenhuma mídia está tocando.
 - Fonte `Noto Color Emoji` como fallback no `style.css` e conversão de nomes do Material Icons via `ICON_MAP`.
 - Feedback em tempo real com realce (`accent-glow`), pulso e equalizador animado para o som em reprodução.
+- Suporte a GIFs com tag `<img>` nativa única com modos `always`, `on_tap`, `while_playing` e rotina `wakeGifsInContainer`.
+- Proteção contra toque fantasma em transição de telas com filtro temporal e captura de eventos.
 - Painel de debug na base da tela (`#debug-log`) ativado via `window.logMsg` e `window.onerror`.
 
 ---
@@ -185,6 +219,9 @@ scp -P 8022 dashboard_web/* u0_a85@192.168.100.244:~/dashboard/
 
 ## 7. Pendências Conhecidas
 
-- **Brilho no Windows**: Alternativa estável para DDC/CI sem instabilidade de FFI.
-- **Metadados de Mídia no Windows**: Captura de Now Playing no Windows via helper nativo ou IPC.
-- **CI / Automação**: Pipeline de GitHub Actions para execução de `dart test`.
+- **CI / Automação**: Pipeline de GitHub Actions para execução de `dart test` e `flutter test`.
+
+Leia também as regras detalhadas em [AGENT.md](./AGENT.md). Em particular,
+preserve a separação do `agent_core`, não quebre o contrato golden do MQTT,
+respeite alterações locais existentes e valide as mudanças com as ferramentas
+disponíveis.

@@ -26,12 +26,12 @@ static void first_frame_cb(MyApplication *self, FlView *view) {
 
 // Retorna TRUE se o argumento --hidden está presente nos argumentos
 // repassados pelo Dart entrypoint.
-static gboolean has_hidden_flag(char **args) {
+static gboolean has_show_flag(char **args) {
   if (args == nullptr) {
     return FALSE;
   }
   for (int i = 0; args[i] != nullptr; i++) {
-    if (g_strcmp0(args[i], "--hidden") == 0) {
+    if (g_strcmp0(args[i], "--show") == 0) {
       return TRUE;
     }
   }
@@ -114,7 +114,8 @@ static void my_application_activate(GApplication *application) {
   //
   // Sem --hidden: mostra agora. Com --hidden: deixa o window_manager
   // (Dart) decidir quando mostrar (via tray "Mostrar janela").
-  if (!has_hidden_flag(self->dart_entrypoint_arguments)) {
+  // Inicia minimizado na bandeja por padrão (só mostra no boot se --show).
+  if (has_show_flag(self->dart_entrypoint_arguments)) {
     gtk_widget_show(GTK_WIDGET(window));
   }
 }

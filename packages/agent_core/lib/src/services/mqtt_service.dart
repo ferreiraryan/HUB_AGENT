@@ -8,12 +8,20 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
 import '../models/agent_event.dart';
+import '../models/audio_output_device.dart';
 import '../models/audio_state.dart';
+import '../models/battery_state.dart';
 import '../models/layout.dart';
 import '../models/media_state.dart';
+import '../models/pomodoro_state.dart';
+import '../models/screensaver_config.dart';
 import '../models/sound_playback_state.dart';
+import '../models/todo_state.dart';
+import '../models/weather_state.dart';
 import '../util/notifier.dart';
+import 'audio/audio_controller.dart';
 import 'stats/stats_service.dart';
+import 'window/active_window_monitor.dart';
 
 class AgentTopics {
   final String deviceId;
@@ -28,8 +36,13 @@ class AgentTopics {
   String get apps => '$base/audio/apps';
   String get media => '$base/media';
   String get soundState => '$base/sound/state';
+  String get pomodoro => '$base/state/pomodoro';
+  String get todos => '$base/state/todos';
   String get event => '$base/event';
   String get search => '$base/search';
+  String get screensaver => '$base/screensaver';
+  String get weather => '$base/weather';
+  String get uiScreensaver => '$base/ui/screensaver';
   String get cmd => '$base/cmd';
 }
 
@@ -78,14 +91,20 @@ class AgentCommand {
 }
 
 class MqttService {
-  final String host;
-  final int port;
-  final String deviceId;
-  final AgentTopics topics;
+  String _host;
+  int _port;
+  String _deviceId;
+  AgentTopics _topics;
   final String? username;
   final String? password;
 
-  late final MqttServerClient _client;
+  String get host => _host;
+  int get port => _port;
+  String get deviceId => _deviceId;
+  AgentTopics get topics => _topics;
+
+  late MqttServerClient _client;
+  StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>? _updatesSub;
 
   final stateNotifier =
       AgentNotifier<AgentConnectionState>(AgentConnectionState.disconnected);
@@ -94,18 +113,30 @@ class MqttService {
 
   Layout? _lastLayout;
   bool _intentional = false;
+  bool _disposed = false;
+  Timer? _retryTimer;
+  int _retryAttempt = 0;
+  String? _lastError;
+
+  String? get lastError => _lastError;
 
   MqttService({
-    required this.host,
-    required this.deviceId,
-    this.port = 1883,
+    required String host,
+    required String deviceId,
+    int port = 1883,
     this.username,
     this.password,
     AgentTopics? topics,
-  }) : topics = topics ?? AgentTopics(deviceId) {
+  })  : _host = host,
+        _port = port,
+        _deviceId = deviceId,
+        _topics = topics ?? AgentTopics(deviceId) {
     stateNotifier.addListener((v) => _stateChanges.add(v));
+    _client = _buildClient();
+  }
 
-    _client = MqttServerClient.withPort(host, 'node-$deviceId', port)
+  MqttServerClient _buildClient() {
+    return MqttServerClient.withPort(_host, 'node-$_deviceId', _port)
       ..keepAlivePeriod = 20
       ..autoReconnect = true
       ..resubscribeOnAutoReconnect = true
@@ -128,12 +159,15 @@ class MqttService {
       _client.connectionStatus?.state == MqttConnectionState.connected;
 
   Future<void> connect() async {
+    if (_disposed) return;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _intentional = false;
     stateNotifier.value = AgentConnectionState.connecting;
 
     _client.connectionMessage = MqttConnectMessage()
-        .withClientIdentifier('node-$deviceId')
-        .withWillTopic(topics.status)
+        .withClientIdentifier('node-$_deviceId')
+        .withWillTopic(_topics.status)
         .withWillMessage(jsonEncode({'online': false}))
         .withWillQos(MqttQos.atLeastOnce)
         .withWillRetain()
@@ -141,19 +175,88 @@ class MqttService {
 
     try {
       await _client.connect(username, password);
+      _lastError = null;
+      _retryAttempt = 0;
     } catch (e) {
-      stderr.writeln('MQTT: falha ao conectar em $host:$port -> $e');
-      _client.disconnect();
+      _lastError = '$e';
+      stderr.writeln('MQTT: falha ao conectar em $_host:$_port -> $e');
+      try {
+        _client.disconnect();
+      } catch (_) {}
       stateNotifier.value = AgentConnectionState.disconnected;
+      _scheduleRetry();
       return;
     }
 
-    _client.updates?.listen(_onMessage);
+    await _updatesSub?.cancel();
+    _updatesSub = _client.updates?.listen(_onMessage);
+  }
+
+  void _scheduleRetry() {
+    if (_disposed || _intentional) return;
+    _retryTimer?.cancel();
+    final delays = [2, 4, 8, 15];
+    final sec = delays[_retryAttempt.clamp(0, delays.length - 1)];
+    _retryAttempt++;
+    _retryTimer = Timer(Duration(seconds: sec), () {
+      if (!_disposed && !_intentional && !isConnected) {
+        connect();
+      }
+    });
+  }
+
+  /// Força reconexão imediata (usado pelo botão de status ou menu de bandeja).
+  Future<void> reconnect() async {
+    if (_disposed) return;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _retryAttempt = 0;
+    _intentional = true;
+    await _updatesSub?.cancel();
+    _updatesSub = null;
+    try {
+      _client.disconnect();
+    } catch (_) {}
+    _client = _buildClient();
+    await connect();
+  }
+
+  /// Atualiza host/porta/deviceId em tempo real e reconecta sem reiniciar o app.
+  Future<void> reconfigure({
+    required String host,
+    required int port,
+    required String deviceId,
+  }) async {
+    if (_disposed) return;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _retryAttempt = 0;
+    _intentional = true;
+    if (isConnected) {
+      publishStatus(online: false);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    await _updatesSub?.cancel();
+    _updatesSub = null;
+    try {
+      _client.disconnect();
+    } catch (_) {}
+
+    _host = host;
+    _port = port;
+    _deviceId = deviceId;
+    _topics = AgentTopics(deviceId);
+    _client = _buildClient();
+    await connect();
   }
 
   void _onConnected() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _retryAttempt = 0;
+    _lastError = null;
     stateNotifier.value = AgentConnectionState.connected;
-    _client.subscribe(topics.cmd, MqttQos.atLeastOnce);
+    _client.subscribe(_topics.cmd, MqttQos.atLeastOnce);
     publishStatus(online: true);
     final l = _lastLayout;
     if (l != null) publishLayout(l);
@@ -243,6 +346,24 @@ class MqttService {
     );
   }
 
+  void publishPomodoroState(PomodoroState pomodoro) {
+    _publish(
+      topics.pomodoro,
+      jsonEncode(pomodoro.toJson()),
+      retain: true,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
+  void publishTodoState(TodoState todo) {
+    _publish(
+      topics.todos,
+      jsonEncode(todo.toJson()),
+      retain: true,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
   void publishStatsCpu(StatsSnapshot s) {
     _publish('${topics.base}/stats/cpu', jsonEncode(s.cpuJson()),
         retain: true, qos: MqttQos.atMostOnce);
@@ -258,10 +379,107 @@ class MqttService {
         retain: true, qos: MqttQos.atMostOnce);
   }
 
-  void publishSearchQuery(String query, {bool active = true}) {
+  void publishStatsNet(StatsSnapshot s) {
+    if (s.netRxKbps == null && s.netTxKbps == null) return;
+    _publish('${topics.base}/stats/net', jsonEncode(s.netJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishStatsGpu(StatsSnapshot s) {
+    if (s.gpuLoad == null && s.gpuTemp == null) return;
+    _publish('${topics.base}/stats/gpu', jsonEncode(s.gpuJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishBatteries(BatterySnapshot snap) {
+    _publish('${topics.base}/stats/batteries', jsonEncode(snap.toJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishMicState(MicState mic) {
+    _publish('${topics.base}/audio/mic', jsonEncode(mic.toJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishAudioOutputs(List<AudioOutputDevice> devices) {
+    _publish(
+      '${topics.base}/audio/outputs',
+      jsonEncode({
+        'devices': devices
+            .map((d) => {'id': d.id, 'name': d.name, 'is_default': d.isDefault})
+            .toList(),
+      }),
+      retain: true,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
+  void publishActiveApp(ActiveWindowInfo info) {
+    _publish('${topics.base}/active_app', jsonEncode(info.toJson()),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishPageRules(Map<String, List<String>> rules) {
+    _publish('${topics.base}/page_rules', jsonEncode(rules),
+        retain: true, qos: MqttQos.atMostOnce);
+  }
+
+  void publishClipboard(String text) {
+    _publish(
+      '${topics.base}/clipboard',
+      jsonEncode({
+        'text': text,
+        'ts': DateTime.now().millisecondsSinceEpoch,
+      }),
+      retain: false,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
+  void publishSearchQuery(
+    String query, {
+    bool active = true,
+    String filter = 'all',
+    String scope = 'all',
+  }) {
     _publish(
       topics.search,
-      jsonEncode({'query': query, 'active': active}),
+      jsonEncode({
+        'query': query,
+        'active': active,
+        'filter': filter,
+        'scope': scope,
+      }),
+      retain: false,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
+  void publishScreensaverConfig(ScreensaverConfig config) {
+    _publish(
+      topics.screensaver,
+      jsonEncode(config.toJson()),
+      retain: true,
+      qos: MqttQos.atLeastOnce,
+    );
+  }
+
+  void publishWeather(WeatherState weather) {
+    _publish(
+      topics.weather,
+      jsonEncode(weather.toJson()),
+      retain: true,
+      qos: MqttQos.atMostOnce,
+    );
+  }
+
+  void publishScreensaverCommand(String action) {
+    _publish(
+      topics.uiScreensaver,
+      jsonEncode({
+        'action': action,
+        'ts': DateTime.now().millisecondsSinceEpoch,
+      }),
       retain: false,
       qos: MqttQos.atMostOnce,
     );
@@ -275,6 +493,8 @@ class MqttService {
       topics.apps,
       topics.media,
       topics.soundState,
+      topics.pomodoro,
+      topics.todos,
       '${topics.base}/stats/cpu',
       '${topics.base}/stats/ram',
       '${topics.base}/stats/disk',
@@ -299,12 +519,19 @@ class MqttService {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
     _intentional = true;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    await _updatesSub?.cancel();
+    _updatesSub = null;
     if (isConnected) {
       publishStatus(online: false);
       await Future<void>.delayed(const Duration(milliseconds: 150));
     }
-    _client.disconnect();
+    try {
+      _client.disconnect();
+    } catch (_) {}
     await _stateChanges.close();
     await _commands.close();
   }

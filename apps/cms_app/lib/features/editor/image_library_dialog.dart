@@ -9,6 +9,108 @@ import 'editor_controller.dart';
 import 'helpers/image_icon_helper.dart';
 import 'widgets/tile_icon_view.dart';
 
+/// Abre o seletor nativo, solicita o nome e importa a imagem/GIF para a biblioteca.
+Future<ImageItem?> promptAndImportImage({
+  required BuildContext context,
+  required ImageLibraryRepository repo,
+  String saveButtonLabel = 'Salvar',
+}) async {
+  try {
+    final xFile = await openFile(
+      acceptedTypeGroups: [ImageIconHelper.acceptedImageGroup],
+    );
+    if (xFile == null) return null;
+
+    final originalBytes = await xFile.readAsBytes();
+    final originalName = xFile.name;
+    final dot = originalName.lastIndexOf('.');
+    final baseName = (dot != -1) ? originalName.substring(0, dot) : originalName;
+    final ext = (dot != -1) ? originalName.substring(dot + 1).toLowerCase() : 'png';
+
+    if (!context.mounted) return null;
+
+    // Diálogo para confirmar / editar o nome da imagem antes de salvar
+    final nameController = TextEditingController(text: baseName);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adicionar Imagem à Biblioteca'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Digite um nome de identificação para esta imagem na biblioteca:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Nome do Ícone',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Arquivo: $originalName (${(originalBytes.length / 1024).toStringAsFixed(1)} KB)',
+              style: const TextStyle(fontSize: 11, color: Colors.white54),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (nameController.text.trim().isNotEmpty) {
+                Navigator.of(ctx).pop(true);
+              }
+            },
+            child: Text(saveButtonLabel),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return null;
+
+    final chosenName = nameController.text.trim();
+    final isGif = ImageIconHelper.isGifBytes(originalBytes) || ext == 'gif';
+
+    String? staticDataUri;
+    if (isGif) {
+      try {
+        staticDataUri = await ImageIconHelper.processImageBytes(
+          originalBytes,
+          targetSize: 96,
+        );
+      } catch (_) {}
+    }
+
+    return await repo.importImage(
+      name: chosenName,
+      rawBytes: originalBytes,
+      extension: ext,
+      staticDataUri: staticDataUri,
+    );
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao importar imagem: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+    return null;
+  }
+}
+
 /// Abre o diálogo modal da Biblioteca de Imagens e Ícones.
 ///
 /// Se [selectMode] for verdadeiro, clicar em uma imagem ou em "Selecionar"
@@ -65,107 +167,15 @@ class _ImageLibraryDialogState extends ConsumerState<_ImageLibraryDialog> {
   }
 
   Future<void> _handleImport() async {
-    try {
-      final xFile = await openFile(
-        acceptedTypeGroups: [ImageIconHelper.acceptedImageGroup],
-      );
-      if (xFile == null) return;
-
-      final originalBytes = await xFile.readAsBytes();
-      final originalName = xFile.name;
-      final dot = originalName.lastIndexOf('.');
-      final baseName = (dot != -1) ? originalName.substring(0, dot) : originalName;
-      final ext = (dot != -1) ? originalName.substring(dot + 1).toLowerCase() : 'png';
-
-      if (!mounted) return;
-
-      // Diálogo para confirmar / editar o nome da imagem antes de salvar
-      final nameController = TextEditingController(text: baseName);
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Adicionar Imagem à Biblioteca'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Digite um nome de identificação para esta imagem na biblioteca:',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Nome do Ícone',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Arquivo: $originalName (${(originalBytes.length / 1024).toStringAsFixed(1)} KB)',
-                style: const TextStyle(fontSize: 11, color: Colors.white54),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (nameController.text.trim().isNotEmpty) {
-                  Navigator.of(ctx).pop(true);
-                }
-              },
-              child: const Text('Salvar'),
-            ),
-          ],
-        ),
-      );
-
-      if (confirmed != true) return;
-
-      final chosenName = nameController.text.trim();
-      final isGif = ImageIconHelper.isGifBytes(originalBytes) || ext == 'gif';
-
-      String? staticDataUri;
-      if (isGif) {
-        try {
-          staticDataUri = await ImageIconHelper.processImageBytes(
-            originalBytes,
-            targetSize: 96,
-          );
-        } catch (_) {}
-      }
-
-      final repo = ref.read(imageLibraryRepositoryProvider);
-      final item = await repo.importImage(
-        name: chosenName,
-        rawBytes: originalBytes,
-        extension: ext,
-        staticDataUri: staticDataUri,
-      );
-
+    final repo = ref.read(imageLibraryRepositoryProvider);
+    final item = await promptAndImportImage(context: context, repo: repo);
+    if (item != null) {
       await _loadImages();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Imagem "${item.name}" adicionada com sucesso!'),
             duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao importar imagem: $e'),
-            backgroundColor: Colors.redAccent,
           ),
         );
       }

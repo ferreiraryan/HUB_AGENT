@@ -11,19 +11,26 @@ import 'package:path_provider/path_provider.dart';
 import 'features/editor/editor_page.dart';
 import 'features/editor/remote_search_controller.dart';
 import 'features/editor/remote_search_spotlight.dart';
+import 'features/editor/remote_todo_controller.dart';
+import 'features/editor/remote_todo_spotlight.dart';
 import 'providers.dart';
 import 'system/agent_config.dart';
+import 'system/global_hotkey_service.dart';
 import 'system/tray_controller.dart';
 import 'system/voicemeeter_service.dart';
 import 'system/window_controller.dart';
+import 'theme/cms_theme.dart';
 
 // ignore: unused_element
 ServerSocket? _instanceLock;
+// ignore: unused_element
+RandomAccessFile? _windowsInstanceLock;
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final isHidden = args.contains('--hidden');
+  // Inicia minimizado na bandeja por padrão (passe --show para abrir visível).
+  final isHidden = !args.contains('--show');
 
   final supportDir = await getApplicationSupportDirectory();
   if (!await _tryObtainSingleInstanceLock(supportDir)) {
@@ -72,9 +79,15 @@ void main(List<String> args) async {
     mqtt: mqtt,
     sound: soundController,
     notifications: notifications,
+    onOpenCms: WindowController.instance.showAndFocus,
+  );
+  runtime.osd.setConfig(
+    enabled: config.osdEnabled,
+    position: config.osdPosition,
   );
 
   await runtime.start(fallbackDeviceName: Platform.localHostname);
+  unawaited(GlobalHotkeyService.instance.updateHotkey(config.searchHotkey));
 
   if (Platform.isWindows && config.autoStartVoiceMeeter) {
     unawaited(VoiceMeeterService.launchIfEnabled(config));
@@ -90,11 +103,21 @@ void main(List<String> args) async {
     onPublish: () async {
       await repository.flush();
     },
+    onReconnect: () async {
+      await runtime.reconnectMqtt();
+    },
+    onTogglePomodoro: () async {
+      await runtime.pomodoro.toggle();
+    },
     onQuit: () async {
+      await GlobalHotkeyService.instance.dispose();
       await runtime.dispose();
       exit(0);
     },
   );
+  runtime.connectionState.listen((s) {
+    unawaited(TrayController.instance.updateConnectionState(s));
+  });
 
   runApp(
     ProviderScope(
@@ -121,9 +144,9 @@ Future<bool> _tryObtainSingleInstanceLock(Directory supportDir) async {
   } else if (Platform.isWindows) {
     try {
       final lock = File('${supportDir.path}/cms_app.lock');
-      lock
-          .openSync(mode: FileMode.writeOnlyAppend)
-          .lockSync(FileLock.exclusive);
+      final raf = lock.openSync(mode: FileMode.writeOnlyAppend);
+      raf.lockSync(FileLock.exclusive);
+      _windowsInstanceLock = raf;
       return true;
     } catch (_) {
       return false;
@@ -139,13 +162,8 @@ class CmsApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Hub Agent CMS',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      debugShowCheckedModeBanner: false,
+      theme: CmsTheme.dark(),
       home: const _AppRoot(),
     );
   }
@@ -157,15 +175,20 @@ class _AppRoot extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final searchState = ref.watch(remoteSearchControllerProvider);
+    final todoState = ref.watch(remoteTodoControllerProvider);
 
     if (searchState.isOpen && searchState.wasHidden) {
       return const RemoteSearchCompactView();
+    }
+    if (todoState.isOpen && todoState.wasHidden) {
+      return const RemoteTodoCompactView();
     }
 
     return Stack(
       children: [
         const EditorPage(),
         if (searchState.isOpen) const RemoteSearchOverlayView(),
+        if (todoState.isOpen) const RemoteTodoOverlayView(),
       ],
     );
   }

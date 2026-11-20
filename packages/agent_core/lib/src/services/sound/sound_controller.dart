@@ -4,8 +4,9 @@ import 'dart:io';
 
 import '../../models/audio_output_device.dart';
 import '../../models/sound_playback_state.dart';
+import '../../util/windows_binaries.dart';
 
-abstract class SoundController {
+abstract mixin class SoundController {
   Stream<SoundPlaybackState> get stateChanges;
   SoundPlaybackState get current;
 
@@ -14,7 +15,11 @@ abstract class SoundController {
 
   Future<void> play(String soundId, {String? targetDevice});
   Future<void> stop();
+  Future<void> playTestSound({String? targetDevice}) async {}
+  String? get targetDevice => null;
+  set targetDevice(String? val) {}
   Future<List<AudioOutputDevice>> listDevices();
+  void invalidateSoundCache() {}
   Future<void> dispose();
 }
 
@@ -24,6 +29,8 @@ class SystemSoundController implements SoundController {
   final String? customHelperPath;
   final void Function(int volume)? onVolumeChanged;
 
+  String? _targetDeviceOverride;
+
   final _stateController = StreamController<SoundPlaybackState>.broadcast();
   SoundPlaybackState _current = SoundPlaybackState.idle;
   final List<Process> _activeProcesses = [];
@@ -31,7 +38,6 @@ class SystemSoundController implements SoundController {
   int _playEpoch = 0;
   bool _disposed = false;
   int _volume;
-  String? _cachedHelperPath;
   final Map<String, String> _soundFileCache = {};
 
   SystemSoundController({
@@ -41,6 +47,15 @@ class SystemSoundController implements SoundController {
     this.onVolumeChanged,
     int initialVolume = 100,
   }) : _volume = initialVolume.clamp(0, 100);
+
+  @override
+  String? get targetDevice =>
+      _targetDeviceOverride ?? defaultTargetDeviceProvider?.call();
+
+  @override
+  set targetDevice(String? val) {
+    _targetDeviceOverride = val;
+  }
 
   @override
   int get volume => _volume;
@@ -70,6 +85,7 @@ class SystemSoundController implements SoundController {
     }
   }
 
+  @override
   void invalidateSoundCache() {
     _soundFileCache.clear();
   }
@@ -117,34 +133,10 @@ class SystemSoundController implements SoundController {
   }
 
   String? _resolveHelperPath() {
-    if (_cachedHelperPath != null && File(_cachedHelperPath!).existsSync()) {
-      return _cachedHelperPath;
-    }
     if (customHelperPath != null && File(customHelperPath!).existsSync()) {
-      _cachedHelperPath = customHelperPath;
-      return _cachedHelperPath;
+      return customHelperPath;
     }
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    final candidates = [
-      '$exeDir/hub_audio_helper.exe',
-      '$exeDir/resources/hub_audio_helper.exe',
-      '$exeDir/data/flutter_assets/resources/hub_audio_helper.exe',
-      'windows/runner/resources/hub_audio_helper.exe',
-      'apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
-      '../apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
-      '../../apps/cms_app/windows/runner/resources/hub_audio_helper.exe',
-      'build/windows/x64/runner/Debug/hub_audio_helper.exe',
-      'apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
-      '../apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
-      '../../apps/cms_app/build/windows/x64/runner/Debug/hub_audio_helper.exe',
-    ];
-    for (final c in candidates) {
-      if (File(c).existsSync()) {
-        _cachedHelperPath = c;
-        return c;
-      }
-    }
-    return null;
+    return WindowsBinaries.resolveHelperPath();
   }
 
   @override
@@ -190,6 +182,55 @@ class SystemSoundController implements SoundController {
   }
 
   @override
+  Future<void> playTestSound({String? targetDevice}) async {
+    final dev = targetDevice ?? this.targetDevice;
+    final entities = soundsDir.existsSync() ? soundsDir.listSync() : <FileSystemEntity>[];
+    String? testFile;
+    for (final e in entities) {
+      if (e is File && _isAudioPath(e.path)) {
+        testFile = e.path;
+        break;
+      }
+    }
+
+    if (testFile == null && Platform.isWindows) {
+      const winDing = r'C:\Windows\Media\Windows Ding.wav';
+      if (File(winDing).existsSync()) testFile = winDing;
+    }
+    if (testFile == null) return;
+
+    if (Platform.isWindows) {
+      final helper = _resolveHelperPath();
+      if (helper != null) {
+        final target = (dev != null && dev.trim().isNotEmpty && dev != 'default')
+            ? dev.trim()
+            : 'default';
+        await Process.run(helper, ['play-sound', testFile, target, '$_volume']);
+      } else {
+        await Process.run('nircmd.exe', ['mediaplay', '3000', testFile]);
+      }
+    } else if (Platform.isLinux) {
+      final args = <String>[];
+      if (dev != null && dev.trim().isNotEmpty && dev != 'default') {
+        args.addAll(['-d', dev.trim()]);
+      }
+      args.add(testFile);
+      await Process.run('paplay', args);
+    }
+  }
+
+  bool _isAudioPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp3') ||
+        lower.endsWith('.wav') ||
+        lower.endsWith('.ogg') ||
+        lower.endsWith('.flac') ||
+        lower.endsWith('.m4a') ||
+        lower.endsWith('.aac') ||
+        lower.endsWith('.wma');
+  }
+
+  @override
   Future<void> play(String soundId, {String? targetDevice}) async {
     if (_disposed) return;
 
@@ -200,7 +241,7 @@ class SystemSoundController implements SoundController {
     }
 
     final currentEpoch = _playEpoch;
-    final device = targetDevice ?? defaultTargetDeviceProvider?.call();
+    final device = targetDevice ?? this.targetDevice;
 
     try {
       Process proc;

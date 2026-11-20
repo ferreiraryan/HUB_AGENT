@@ -2,6 +2,7 @@
 
 import 'dart:io';
 
+import '../util/windows_binaries.dart';
 import 'key_sender.dart';
 
 /// Envia teclas no Windows via nircmd.exe.
@@ -14,7 +15,7 @@ class WindowsKeySender implements KeySender {
 
   @override
   Future<bool> send(String combo) async {
-    _nircmdPath ??= await _resolveNircmdPath();
+    _nircmdPath ??= WindowsBinaries.resolveNircmdPath();
     if (_nircmdPath == null) return false;
 
     final media = _mediaCommand(combo);
@@ -111,32 +112,6 @@ class WindowsKeySender implements KeySender {
       stderr.writeln('key_sender: nircmd ${args.join(' ')} falhou: $e');
       return false;
     }
-  }
-
-  Future<String?> _resolveNircmdPath() async {
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    final candidates = <String>[
-      '$exeDir${Platform.pathSeparator}nircmd.exe',
-      '$exeDir${Platform.pathSeparator}data${Platform.pathSeparator}nircmd.exe',
-      'apps/cms_app/windows/runner/resources/nircmd.exe',
-      '../apps/cms_app/windows/runner/resources/nircmd.exe',
-      '../../apps/cms_app/windows/runner/resources/nircmd.exe',
-      'apps/cms_app/build/windows/x64/runner/Debug/nircmd.exe',
-      '../apps/cms_app/build/windows/x64/runner/Debug/nircmd.exe',
-      '../../apps/cms_app/build/windows/x64/runner/Debug/nircmd.exe',
-    ];
-    for (final c in candidates) {
-      if (await File(c).exists()) return c;
-    }
-    // Fallback: procura no PATH.
-    try {
-      final r = await Process.run('where', ['nircmd.exe']);
-      if (r.exitCode == 0) {
-        final first = (r.stdout as String).trim().split('\n').first.trim();
-        if (first.isNotEmpty) return first;
-      }
-    } catch (_) {}
-    return null;
   }
 
   @override

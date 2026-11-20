@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/widgets.dart';
 import 'package:tray_manager/tray_manager.dart';
 
@@ -11,17 +12,24 @@ class TrayController with TrayListener {
   VoidCallback? _onShowWindow;
   VoidCallback? _onHideWindow;
   VoidCallback? _onPublish;
+  VoidCallback? _onReconnect;
+  VoidCallback? _onTogglePomodoro;
   VoidCallback? _onQuit;
+  AgentConnectionState _connState = AgentConnectionState.disconnected;
 
   Future<void> init({
     required VoidCallback onShowWindow,
     required VoidCallback onHideWindow,
     required VoidCallback onPublish,
+    VoidCallback? onReconnect,
+    VoidCallback? onTogglePomodoro,
     required VoidCallback onQuit,
   }) async {
     _onShowWindow = onShowWindow;
     _onHideWindow = onHideWindow;
     _onPublish = onPublish;
+    _onReconnect = onReconnect;
+    _onTogglePomodoro = onTogglePomodoro;
     _onQuit = onQuit;
 
     trayManager.addListener(this);
@@ -44,9 +52,31 @@ class TrayController with TrayListener {
       }
     }
 
+    await _rebuildMenu();
+  }
+
+  Future<void> updateConnectionState(AgentConnectionState state) async {
+    if (_connState == state) return;
+    _connState = state;
+    await _rebuildMenu();
+  }
+
+  Future<void> _rebuildMenu() async {
+    final statusLabel = switch (_connState) {
+      AgentConnectionState.connected => '● Broker: Conectado',
+      AgentConnectionState.connecting => '◐ Broker: Conectando...',
+      AgentConnectionState.disconnected => '○ Broker: Desconectado',
+    };
+
     try {
       final menu = Menu(
         items: [
+          MenuItem(
+            key: 'status',
+            label: statusLabel,
+            disabled: true,
+          ),
+          MenuItem.separator(),
           MenuItem(
             key: 'show',
             label: 'Mostrar janela',
@@ -57,8 +87,18 @@ class TrayController with TrayListener {
           ),
           MenuItem(
             key: 'publish',
-            label: 'Publicar agora',
+            label: 'Publicar layout agora',
           ),
+          if (_onReconnect != null)
+            MenuItem(
+              key: 'reconnect',
+              label: 'Reconectar broker',
+            ),
+          if (_onTogglePomodoro != null)
+            MenuItem(
+              key: 'pomodoro',
+              label: 'Pomodoro: Iniciar / Pausar',
+            ),
           MenuItem.separator(),
           MenuItem(
             key: 'quit',
@@ -91,6 +131,10 @@ class TrayController with TrayListener {
       _onHideWindow?.call();
     } else if (menuItem.key == 'publish') {
       _onPublish?.call();
+    } else if (menuItem.key == 'reconnect') {
+      _onReconnect?.call();
+    } else if (menuItem.key == 'pomodoro') {
+      _onTogglePomodoro?.call();
     } else if (menuItem.key == 'quit') {
       _onQuit?.call();
     }

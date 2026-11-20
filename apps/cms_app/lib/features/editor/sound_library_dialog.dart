@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/settings/broker_settings_dialog.dart';
 import '../../providers.dart';
 import 'editor_controller.dart';
 
@@ -64,6 +65,7 @@ class _SoundLibraryDialogState extends ConsumerState<_SoundLibraryDialog> {
 
       final repo = ref.read(soundLibraryRepositoryProvider);
       final imported = await repo.importSound(sourceFile: File(xFile.path));
+      ref.read(agentRuntimeProvider).dispatcher.invalidateSoundCache();
 
       await _loadSounds();
 
@@ -149,6 +151,7 @@ class _SoundLibraryDialogState extends ConsumerState<_SoundLibraryDialog> {
         setState(() => _currentlyPlayingId = null);
       }
       await repo.deleteSound(sound.id);
+      runtime.dispatcher.invalidateSoundCache();
       await _loadSounds();
     }
   }
@@ -200,10 +203,26 @@ class _SoundLibraryDialogState extends ConsumerState<_SoundLibraryDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Pasta gerenciada: $soundsDir',
-              style: const TextStyle(fontSize: 11, color: Colors.white38),
-              overflow: TextOverflow.ellipsis,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Pasta gerenciada: $soundsDir',
+                    style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => showBrokerSettingsDialog(context, ref),
+                  icon: const Icon(Icons.speaker_group, size: 14),
+                  label: const Text('Saída de Áudio / VoiceMeeter', style: TextStyle(fontSize: 11)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                ),
+              ],
             ),
             const Divider(height: 16),
             Expanded(

@@ -112,6 +112,8 @@ class InspectorPanel extends ConsumerWidget {
       StatTile() => _ShortcutInspector(tile: tile, state: state),
       SoundTile() => _SoundInspector(tile: tile, state: state),
       ToggleTile() => _ToggleInspector(tile: tile, state: state),
+      PomodoroTile() => _PomodoroInspector(tile: tile, state: state),
+      TodoTile() => _TodoInspector(tile: tile, state: state),
       FolderTile() => _FolderInspector(tile: tile, state: state),
       BackTile() => _BackInspector(tile: tile, state: state),
     };
@@ -204,28 +206,58 @@ class _InspectorFooter extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canTest =
+        tile is ShortcutTile || tile is SoundTile || tile is ToggleTile;
+
     return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
+      padding: const EdgeInsets.all(14.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.content_copy, size: 16),
-              label: const Text('Duplicar'),
-              onPressed: () => _handleDuplicate(ref),
+          if (canTest) ...[
+            FilledButton.tonalIcon(
+              icon: const Icon(Icons.play_arrow_rounded, size: 17),
+              label: const Text('Executar agora no PC'),
+              onPressed: () async {
+                final runtime = ref.read(agentRuntimeProvider);
+                await runtime.dispatcher.dispatch(
+                  AgentCommand(tile.id, {'action': tile.id}),
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Ação "${tile.label}" executada'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: FilledButton.icon(
-              icon: const Icon(Icons.delete, size: 16),
-              label: const Text('Excluir'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.withValues(alpha: 0.2),
-                foregroundColor: Colors.redAccent,
+            const SizedBox(height: 8),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.content_copy, size: 15),
+                  label: const Text('Duplicar'),
+                  onPressed: () => _handleDuplicate(ref),
+                ),
               ),
-              onPressed: () => _handleDelete(context, ref),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  label: const Text('Excluir'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.red.withValues(alpha: 0.18),
+                    foregroundColor: Colors.redAccent,
+                  ),
+                  onPressed: () => _handleDelete(context, ref),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -234,10 +266,7 @@ class _InspectorFooter extends ConsumerWidget {
 
   void _handleDuplicate(WidgetRef ref) {
     final notifier = ref.read(editorControllerProvider.notifier);
-    final allIds = state.layout.pages.values
-        .expand((list) => list)
-        .map((t) => t.id)
-        .toSet();
+    final allIds = state.layout.allTileIds;
 
     String newId = '${tile.id}_copy';
     int counter = 2;
@@ -246,22 +275,7 @@ class _InspectorFooter extends ConsumerWidget {
       counter++;
     }
 
-    final Tile newTile = switch (tile) {
-      final ShortcutTile s =>
-        s.copyWith(id: newId, clearCoords: true),
-      final SliderTile s =>
-        s.copyWith(id: newId, clearCoords: true),
-      final StatTile s =>
-        s.copyWith(id: newId, clearCoords: true),
-      final FolderTile f =>
-        f.copyWith(id: newId, clearCoords: true),
-      final BackTile b =>
-        b.copyWith(id: newId, clearCoords: true),
-      final SoundTile s =>
-        s.copyWith(id: newId, clearCoords: true),
-      final ToggleTile t =>
-        t.copyWith(id: newId, clearCoords: true),
-    };
+    final Tile newTile = tile.copyWithPosition(clearCoords: true).copyWithCommon(id: newId);
 
     notifier.upsertTile(state.currentPage, newTile);
     notifier.selectTile(newId);
@@ -366,7 +380,19 @@ const _builtinActions = <String, String>{
   'play_pause': '⏯️ Reproduzir / Pausar (Mídia)',
   'next': '⏭️ Próxima faixa (Mídia)',
   'prev': '⏮️ Faixa anterior (Mídia)',
+  'mute_master': '🔇 Silenciar / Restaurar Áudio Master',
+  'toggle_mic_mute': '🎙️ Silenciar / Ativar Microfone',
+  'vol_up': '🔊 Aumentar Volume (+5%)',
+  'vol_down': '🔉 Diminuir Volume (-5%)',
+  'window_always_on_top': '📌 Fixar Janela Atual no Topo',
+  'clipboard_sync_to_tablet': '📋 Enviar Clipboard do PC ao Tablet',
+  'lock_screen': '🔒 Bloquear Tela do PC',
+  'open_cms': '🖥️ Abrir Janela do CMS no PC',
   'remote_search_prompt': '🔍 Busca rápida no PC (Spotlight)',
+  'remote_todo_prompt': '✅ Nova Tarefa no PC (Spotlight)',
+  'pomodoro_toggle': '⏱️ Pomodoro: Iniciar / Pausar',
+  'pomodoro_skip': '⏭️ Pomodoro: Pular Fase',
+  'pomodoro_reset': '🔄 Pomodoro: Reiniciar',
 };
 
 class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
@@ -495,10 +521,7 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
           _IdField(
             initialValue: widget.tile.id,
             hasBinding: widget.state.layout.bindings.containsKey(widget.tile.id),
-            existingIds: widget.state.layout.pages.values
-                .expand((list) => list)
-                .map((t) => t.id)
-                .toSet(),
+            existingIds: widget.state.layout.allTileIds,
             onSubmitted: (newId) {
               notifier.replaceTile(
                   widget.state.currentPage, widget.tile.id, _updateTile(id: newId));
@@ -630,6 +653,8 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
               DropdownMenuItem(value: StatSource.kindRam, child: Text('RAM')),
               DropdownMenuItem(
                   value: StatSource.kindDisk, child: Text('Disco')),
+              DropdownMenuItem(
+                  value: 'net', child: Text('Rede (Download / Upload)')),
             ],
             onChanged: (kind) {
               if (kind == null) return;
@@ -641,6 +666,9 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
                 newField = 'percent';
               } else if (kind == StatSource.kindDisk) {
                 newField = 'percent';
+              } else if (kind == 'net') {
+                newField = 'rx_kbps';
+                newUnit = ' KB/s';
               }
 
               notifier.upsertTile(
@@ -661,6 +689,8 @@ class _ShortcutInspectorState extends ConsumerState<_ShortcutInspector> {
               fields = ['percent', 'used_mb', 'total_mb'];
             } else if (kind == StatSource.kindDisk) {
               fields = ['percent', 'used_gb', 'total_gb'];
+            } else if (kind == 'net') {
+              fields = ['rx_kbps', 'tx_kbps'];
             }
 
             return DropdownButtonFormField<String>(
@@ -944,11 +974,7 @@ class _FolderInspector extends ConsumerWidget {
           onSubmitted: (newLabel) {
             notifier.upsertTile(
               state.currentPage,
-              FolderTile(
-                  id: tile.id,
-                  icon: tile.icon,
-                  label: newLabel,
-                  target: tile.target),
+              tile.copyWith(label: newLabel),
             );
           },
         ),
@@ -977,20 +1003,12 @@ class _FolderInspector extends ConsumerWidget {
         _IdField(
           initialValue: tile.id,
           hasBinding: false,
-          existingIds: state.layout.pages.values
-              .expand((list) => list)
-              .map((t) => t.id)
-              .toSet(),
+          existingIds: state.layout.allTileIds,
           onSubmitted: (newId) {
             notifier.replaceTile(
               state.currentPage,
               tile.id,
-              FolderTile(
-                id: newId,
-                icon: tile.icon,
-                label: tile.label,
-                target: tile.target,
-              ),
+              tile.copyWith(id: newId),
             );
           },
         ),
@@ -1011,11 +1029,7 @@ class _FolderInspector extends ConsumerWidget {
               notifier.replaceTile(
                 state.currentPage,
                 tile.id,
-                FolderTile(
-                    id: tile.id,
-                    icon: tile.icon,
-                    label: tile.label,
-                    target: newTarget),
+                tile.copyWith(target: newTarget),
               );
             }
           },
@@ -1046,7 +1060,7 @@ class _BackInspector extends ConsumerWidget {
           onSubmitted: (newLabel) {
             notifier.upsertTile(
               state.currentPage,
-              BackTile(id: tile.id, icon: tile.icon, label: newLabel),
+              tile.copyWith(label: newLabel),
             );
           },
         ),
@@ -1075,15 +1089,12 @@ class _BackInspector extends ConsumerWidget {
         _IdField(
           initialValue: tile.id,
           hasBinding: false,
-          existingIds: state.layout.pages.values
-              .expand((list) => list)
-              .map((t) => t.id)
-              .toSet(),
+          existingIds: state.layout.allTileIds,
           onSubmitted: (newId) {
             notifier.replaceTile(
               state.currentPage,
               tile.id,
-              BackTile(id: newId, icon: tile.icon, label: tile.label),
+              tile.copyWith(id: newId),
             );
           },
         ),
@@ -2144,17 +2155,82 @@ class _CommandsEditorState extends State<_CommandsEditor> {
             }
           }),
         ],
-        if (_commands.length < 10)
-          OutlinedButton.icon(
-            icon: const Icon(Icons.add_to_photos, size: 16),
-            label: const Text('Adicionar comando na sequência'),
-            onPressed: () {
-              setState(() {
-                _commands.add(_CmdCtrl([]));
-              });
-              _fireChanged();
-            },
+        if (_commands.length < 10) ...[
+          const SizedBox(height: 4),
+          const Text(
+            'Adicionar passo na macro:',
+            style: TextStyle(fontSize: 11, color: Colors.white54),
           ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.terminal, size: 14),
+                label: const Text('Shell', style: TextStyle(fontSize: 11.5)),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() => _commands.add(_CmdCtrl([])));
+                  _fireChanged();
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.language, size: 14),
+                label: const Text('Abrir URL', style: TextStyle(fontSize: 11.5)),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() => _commands
+                      .add(_CmdCtrl(['__open_url__', 'https://'])));
+                  _fireChanged();
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.keyboard_alt_outlined, size: 14),
+                label: const Text('Texto', style: TextStyle(fontSize: 11.5)),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() => _commands
+                      .add(_CmdCtrl(['__type_text__', 'Texto aqui'])));
+                  _fireChanged();
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.timer_outlined, size: 14),
+                label: const Text('Delay', style: TextStyle(fontSize: 11.5)),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() => _commands.add(_CmdCtrl(['__delay__', '500'])));
+                  _fireChanged();
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.webhook_outlined, size: 14),
+                label: const Text('Webhook', style: TextStyle(fontSize: 11.5)),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() => _commands.add(_CmdCtrl([
+                        '__http__',
+                        'POST',
+                        'http://127.0.0.1:8123/api/webhook',
+                        '{}',
+                      ])));
+                  _fireChanged();
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.keyboard, size: 14),
+                label: const Text('Tecla', style: TextStyle(fontSize: 11.5)),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  setState(() => _commands
+                      .add(_CmdCtrl(['__sendkeys__', 'ctrl+shift+m'])));
+                  _fireChanged();
+                },
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -2594,10 +2670,7 @@ class _SoundInspectorState extends ConsumerState<_SoundInspector> {
   @override
   Widget build(BuildContext context) {
     final notifier = ref.read(editorControllerProvider.notifier);
-    final existingIds = widget.state.layout.pages.values
-        .expand((list) => list)
-        .map((t) => t.id)
-        .toSet();
+    final existingIds = widget.state.layout.allTileIds;
 
     final soundExists = _sounds.any((s) => s.id == widget.tile.soundId);
 
@@ -2773,10 +2846,7 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
   Widget build(BuildContext context) {
     final notifier = ref.read(editorControllerProvider.notifier);
     final dispatcher = ref.read(agentRuntimeProvider).dispatcher;
-    final existingIds = widget.state.layout.pages.values
-        .expand((list) => list)
-        .map((t) => t.id)
-        .toSet();
+    final existingIds = widget.state.layout.allTileIds;
 
     final isStateA = _selectedState == 'a';
     final currentStateConfig = isStateA ? widget.tile.stateA : widget.tile.stateB;
@@ -2995,6 +3065,392 @@ class _ToggleInspectorState extends ConsumerState<_ToggleInspector> {
             },
             dispatcher: dispatcher,
           ),
+      ],
+    );
+  }
+}
+
+class _PomodoroInspector extends ConsumerStatefulWidget {
+  final PomodoroTile tile;
+  final EditorState state;
+
+  const _PomodoroInspector({required this.tile, required this.state});
+
+  @override
+  ConsumerState<_PomodoroInspector> createState() => _PomodoroInspectorState();
+}
+
+class _PomodoroInspectorState extends ConsumerState<_PomodoroInspector> {
+  List<SoundItem> _sounds = [];
+  bool _isLoading = true;
+  String? _playingSoundId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSounds();
+  }
+
+  Future<void> _loadSounds() async {
+    final repo = ref.read(soundLibraryRepositoryProvider);
+    final list = await repo.listSounds();
+    if (mounted) {
+      setState(() {
+        _sounds = list;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _togglePreview(String? soundId) async {
+    if (soundId == null || soundId.isEmpty) return;
+    final runtime = ref.read(agentRuntimeProvider);
+    if (_playingSoundId == soundId) {
+      await runtime.sound?.stop();
+      if (mounted) setState(() => _playingSoundId = null);
+    } else {
+      await runtime.sound?.play(soundId);
+      if (mounted) setState(() => _playingSoundId = soundId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final notifier = ref.read(editorControllerProvider.notifier);
+    final existingIds = widget.state.layout.allTileIds;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _LabelField(
+          initialValue: widget.tile.label,
+          onSubmitted: (newLabel) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(label: newLabel),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        _IconField(
+          icon: widget.tile.icon,
+          staticIcon: widget.tile.staticIcon,
+          animationMode: widget.tile.animationMode,
+          isSoundOrToggle: true,
+          onPicked: (newIcon, newStatic) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(
+                icon: newIcon,
+                staticIcon: newStatic,
+              ),
+            );
+          },
+          onAnimationModeChanged: (mode, newStatic) {
+            notifier.upsertTile(
+              widget.state.currentPage,
+              widget.tile.copyWith(animationMode: mode, staticIcon: newStatic),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        _IdField(
+          initialValue: widget.tile.id,
+          hasBinding: false,
+          existingIds: existingIds,
+          onSubmitted: (newId) {
+            notifier.replaceTile(
+              widget.state.currentPage,
+              widget.tile.id,
+              widget.tile.copyWith(id: newId),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        const Text('Configurações de Ciclo e Duração',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: widget.tile.focusDurationMinutes.toString(),
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Foco (min)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onFieldSubmitted: (val) {
+                  final n = int.tryParse(val) ?? widget.tile.focusDurationMinutes;
+                  if (n > 0) {
+                    notifier.upsertTile(
+                      widget.state.currentPage,
+                      widget.tile.copyWith(focusDurationMinutes: n),
+                    );
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextFormField(
+                initialValue: widget.tile.shortBreakDurationMinutes.toString(),
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Pausa Curta (min)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onFieldSubmitted: (val) {
+                  final n = int.tryParse(val) ?? widget.tile.shortBreakDurationMinutes;
+                  if (n > 0) {
+                    notifier.upsertTile(
+                      widget.state.currentPage,
+                      widget.tile.copyWith(shortBreakDurationMinutes: n),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue: widget.tile.longBreakDurationMinutes.toString(),
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Pausa Longa (min)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onFieldSubmitted: (val) {
+                  final n = int.tryParse(val) ?? widget.tile.longBreakDurationMinutes;
+                  if (n > 0) {
+                    notifier.upsertTile(
+                      widget.state.currentPage,
+                      widget.tile.copyWith(longBreakDurationMinutes: n),
+                    );
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextFormField(
+                initialValue: widget.tile.cyclesBeforeLongBreak.toString(),
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Ciclos p/ Longa',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onFieldSubmitted: (val) {
+                  final n = int.tryParse(val) ?? widget.tile.cyclesBeforeLongBreak;
+                  if (n > 0) {
+                    notifier.upsertTile(
+                      widget.state.currentPage,
+                      widget.tile.copyWith(cyclesBeforeLongBreak: n),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        const Text('Efeitos Sonoros de Transição',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        // Som de Início de Fase
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String?>(
+                value: widget.tile.startPhaseSoundId,
+                decoration: const InputDecoration(
+                  labelText: 'Som ao Iniciar Fase',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                isExpanded: true,
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Nenhum'),
+                  ),
+                  ..._sounds.map((s) => DropdownMenuItem<String?>(
+                        value: s.id,
+                        child: Text(s.name, overflow: TextOverflow.ellipsis),
+                      )),
+                ],
+                onChanged: (newSoundId) {
+                  notifier.upsertTile(
+                    widget.state.currentPage,
+                    widget.tile.copyWith(
+                      startPhaseSoundId: newSoundId,
+                      clearStartPhaseSound: newSoundId == null,
+                    ),
+                  );
+                },
+              ),
+            ),
+            if (widget.tile.startPhaseSoundId != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(
+                  _playingSoundId == widget.tile.startPhaseSoundId
+                      ? Icons.stop
+                      : Icons.play_arrow,
+                  color: Colors.deepPurpleAccent,
+                ),
+                tooltip: 'Testar som',
+                onPressed: () => _togglePreview(widget.tile.startPhaseSoundId),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Som de Fim de Fase
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String?>(
+                value: widget.tile.endPhaseSoundId,
+                decoration: const InputDecoration(
+                  labelText: 'Som ao Finalizar Fase',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                isExpanded: true,
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Nenhum'),
+                  ),
+                  ..._sounds.map((s) => DropdownMenuItem<String?>(
+                        value: s.id,
+                        child: Text(s.name, overflow: TextOverflow.ellipsis),
+                      )),
+                ],
+                onChanged: (newSoundId) {
+                  notifier.upsertTile(
+                    widget.state.currentPage,
+                    widget.tile.copyWith(
+                      endPhaseSoundId: newSoundId,
+                      clearEndPhaseSound: newSoundId == null,
+                    ),
+                  );
+                },
+              ),
+            ),
+            if (widget.tile.endPhaseSoundId != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(
+                  _playingSoundId == widget.tile.endPhaseSoundId
+                      ? Icons.stop
+                      : Icons.play_arrow,
+                  color: Colors.deepPurpleAccent,
+                ),
+                tooltip: 'Testar som',
+                onPressed: () => _togglePreview(widget.tile.endPhaseSoundId),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TodoInspector extends ConsumerWidget {
+  final TodoTile tile;
+  final EditorState state;
+
+  const _TodoInspector({required this.tile, required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(editorControllerProvider.notifier);
+    final existingIds = state.layout.allTileIds;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _LabelField(
+          initialValue: tile.label,
+          onSubmitted: (newLabel) {
+            notifier.upsertTile(
+              state.currentPage,
+              tile.copyWith(label: newLabel),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        _IconField(
+          icon: tile.icon,
+          staticIcon: tile.staticIcon,
+          animationMode: tile.animationMode,
+          isSoundOrToggle: true,
+          onPicked: (newIcon, newStatic) {
+            notifier.upsertTile(
+              state.currentPage,
+              tile.copyWith(
+                icon: newIcon,
+                staticIcon: newStatic,
+              ),
+            );
+          },
+          onAnimationModeChanged: (mode, newStatic) {
+            notifier.upsertTile(
+              state.currentPage,
+              tile.copyWith(animationMode: mode, staticIcon: newStatic),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        _IdField(
+          initialValue: tile.id,
+          hasBinding: false,
+          existingIds: existingIds,
+          onSubmitted: (newId) {
+            notifier.replaceTile(
+              state.currentPage,
+              tile.id,
+              tile.copyWith(id: newId),
+            );
+          },
+        ),
+        const Divider(height: 32, color: Colors.white10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline, color: Colors.lightGreenAccent, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'As tarefas são adicionadas, marcadas e gerenciadas em tempo real diretamente pelo tablet através da gaveta de tarefas.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withOpacity(0.7),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

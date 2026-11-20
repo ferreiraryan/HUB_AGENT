@@ -63,6 +63,56 @@ class LinuxBrightnessController implements BrightnessController {
   @override
   List<DisplayInfo> get displays => List.unmodifiable(_displays);
 
+  /// Analisa a saída de texto do comando `ddcutil detect` e retorna os displays identificados.
+  static List<DisplayInfo> parseDdcutilDetect(String stdout) {
+    final displays = <DisplayInfo>[];
+    final lines = stdout.split('\n');
+    int? currentNum;
+    String? currentBus, currentConn, currentSerial, currentModel;
+
+    void flush() {
+      if (currentNum != null) {
+        displays.add(DisplayInfo(
+          number: currentNum,
+          bus: currentBus ?? '',
+          connector: currentConn ?? '',
+          serial: currentSerial ?? '',
+          model: currentModel ?? '',
+        ));
+      }
+    }
+
+    for (final line in lines) {
+      if (line.startsWith('Display ')) {
+        flush();
+        currentNum = null;
+        currentBus = null;
+        currentConn = null;
+        currentSerial = null;
+        currentModel = null;
+        final match = RegExp(r'Display\s+(\d+)').firstMatch(line);
+        if (match != null) {
+          final str = match.group(1);
+          if (str != null) {
+            currentNum = int.tryParse(str);
+          }
+        }
+      } else {
+        if (line.contains('I2C bus:')) {
+          currentBus = line.split(':')[1].trim();
+        } else if (line.contains('DRM connector:')) {
+          currentConn = line.split(':')[1].trim();
+        } else if (line.contains('Serial number:')) {
+          currentSerial = line.split(':')[1].trim();
+        } else if (line.contains('Model:')) {
+          currentModel = line.split(':')[1].trim();
+        }
+      }
+    }
+    flush();
+    return displays;
+  }
+
   @override
   Future<void> start() async {
     try {
@@ -74,50 +124,7 @@ class LinuxBrightnessController implements BrightnessController {
 
       final detect = await Process.run('ddcutil', ['detect']);
       if (detect.exitCode == 0) {
-        final lines = (detect.stdout as String).split('\n');
-        int? currentNum;
-        String? currentBus, currentConn, currentSerial, currentModel;
-
-        void flush() {
-          if (currentNum != null) {
-            _displays.add(DisplayInfo(
-              number: currentNum,
-              bus: currentBus ?? '',
-              connector: currentConn ?? '',
-              serial: currentSerial ?? '',
-              model: currentModel ?? '',
-            ));
-          }
-        }
-
-        for (final line in lines) {
-          if (line.startsWith('Display ')) {
-            flush();
-            currentNum = null;
-            currentBus = null;
-            currentConn = null;
-            currentSerial = null;
-            currentModel = null;
-            final match = RegExp(r'Display\s+(\d+)').firstMatch(line);
-            if (match != null) {
-              final str = match.group(1);
-              if (str != null) {
-                currentNum = int.tryParse(str);
-              }
-            }
-          } else {
-            if (line.contains('I2C bus:')) {
-              currentBus = line.split(':')[1].trim();
-            } else if (line.contains('DRM connector:')) {
-              currentConn = line.split(':')[1].trim();
-            } else if (line.contains('Serial number:')) {
-              currentSerial = line.split(':')[1].trim();
-            } else if (line.contains('Model:')) {
-              currentModel = line.split(':')[1].trim();
-            }
-          }
-        }
-        flush();
+        _displays.addAll(parseDdcutilDetect(detect.stdout as String));
       }
 
       if (_displays.isEmpty) {
@@ -154,9 +161,7 @@ class LinuxBrightnessController implements BrightnessController {
     return _displays
         .where((d) =>
             d.connector.toLowerCase().contains(l) ||
-            d.serial.toLowerCase().contains(l) ||
-            d.connector.toLowerCase() == l ||
-            d.serial.toLowerCase() == l)
+            d.serial.toLowerCase().contains(l))
         .toList();
   }
 

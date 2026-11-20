@@ -1,5 +1,4 @@
 import 'package:agent_core/agent_core.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers.dart';
@@ -92,92 +91,14 @@ class _EmojiPickerDialogState extends ConsumerState<_EmojiPickerDialog> {
   }
 
   Future<void> _handleImportNewImage() async {
-    try {
-      final xFile = await openFile(
-        acceptedTypeGroups: [ImageIconHelper.acceptedImageGroup],
-      );
-      if (xFile == null) return;
-
-      final originalBytes = await xFile.readAsBytes();
-      final originalName = xFile.name;
-      final dot = originalName.lastIndexOf('.');
-      final baseName = (dot != -1) ? originalName.substring(0, dot) : originalName;
-      final ext = (dot != -1) ? originalName.substring(dot + 1).toLowerCase() : 'png';
-
-      if (!mounted) return;
-
-      final nameController = TextEditingController(text: baseName);
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Salvar na Biblioteca de Imagens'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Digite um nome para identificar este ícone na biblioteca:',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Nome da Imagem',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Arquivo: $originalName (${(originalBytes.length / 1024).toStringAsFixed(1)} KB)',
-                style: const TextStyle(fontSize: 11, color: Colors.white54),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (nameController.text.trim().isNotEmpty) {
-                  Navigator.of(ctx).pop(true);
-                }
-              },
-              child: const Text('Salvar e Selecionar'),
-            ),
-          ],
-        ),
-      );
-
-      if (confirmed != true) return;
-
-      final chosenName = nameController.text.trim();
-      final isGif = ImageIconHelper.isGifBytes(originalBytes) || ext == 'gif';
-
-      String? staticDataUri;
-      if (isGif) {
-        try {
-          staticDataUri = await ImageIconHelper.processImageBytes(
-            originalBytes,
-            targetSize: 96,
-          );
-        } catch (_) {}
-      }
-
-      final repo = ref.read(imageLibraryRepositoryProvider);
-      final item = await repo.importImage(
-        name: chosenName,
-        rawBytes: originalBytes,
-        extension: ext,
-        staticDataUri: staticDataUri,
-      );
-
+    final repo = ref.read(imageLibraryRepositoryProvider);
+    final item = await promptAndImportImage(
+      context: context,
+      repo: repo,
+      saveButtonLabel: 'Salvar e Selecionar',
+    );
+    if (item != null) {
       await _loadLibraryImages();
-
       if (mounted) {
         setState(() {
           _selectedEmoji = item.dataUri;
@@ -187,15 +108,6 @@ class _EmojiPickerDialogState extends ConsumerState<_EmojiPickerDialog> {
           SnackBar(
             content: Text('Imagem "${item.name}" adicionada e selecionada!'),
             duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao importar imagem: $e'),
-            backgroundColor: Colors.redAccent,
           ),
         );
       }
@@ -676,13 +588,6 @@ class _EmojiPickerDialogState extends ConsumerState<_EmojiPickerDialog> {
 
     return results;
   }
-}
-
-IconData getMaterialIcon(String? iconName) {
-  if (iconName == null || iconName.isEmpty) {
-    return Icons.widgets;
-  }
-  return iconMap[iconName] ?? Icons.help_outline;
 }
 
 // ----------------------------------------------------------------------------

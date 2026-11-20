@@ -68,6 +68,22 @@ class Layout {
     'play_sound',
     'stop_sound',
     'remote_search_prompt',
+    'remote_todo_prompt',
+    'pomodoro_toggle',
+    'pomodoro_skip',
+    'pomodoro_reset',
+    'todo_toggle',
+    'todo_add',
+    'todo_remove',
+    'todo_clear_done',
+    'mute_master',
+    'vol_up',
+    'vol_down',
+    'lock_screen',
+    'open_cms',
+    'toggle_mic_mute',
+    'window_always_on_top',
+    'clipboard_sync_to_tablet',
   };
   factory Layout.initial(String deviceName) => Layout(
         deviceName: deviceName,
@@ -145,24 +161,32 @@ class Layout {
     );
   }
 
+  /// Retorna todos os IDs de tiles presentes em todas as páginas.
+  Set<String> get allTileIds =>
+      pages.values.expand((list) => list).map((t) => t.id).toSet();
+
+  /// Encontra um tile por seu ID em qualquer página, opcionalmente filtrando pelo tipo T.
+  T? findTile<T extends Tile>(String id) {
+    for (final page in pages.values) {
+      for (final tile in page) {
+        if (tile.id == id && tile is T) {
+          return tile;
+        }
+      }
+    }
+    return null;
+  }
+
   Map<String, dynamic> _orderedPages({bool publish = false}) {
     final ordered = <String, dynamic>{};
     List<Map<String, dynamic>> serializeList(List<Tile> list) {
       return list.map((t) {
-        if (t is SliderTile && t.source.kind == SliderSource.kindCustom) {
-          final sJson = t.source.toJson();
-          sJson.remove('cmd');
-          return {
-            'type': 'slider',
-            'id': t.id,
-            'icon': t.icon,
-            'label': t.label,
-            if (t.width != 2) 'width': t.width,
-            if (t.height != 1) 'height': t.height,
-            if (t.x != null) 'x': t.x,
-            if (t.y != null) 'y': t.y,
-            'source': sJson,
-          };
+        if (publish && t is SliderTile && t.source.kind == SliderSource.kindCustom) {
+          final map = t.toJson();
+          final sourceMap = Map<String, dynamic>.from(map['source'] as Map);
+          sourceMap.remove('cmd');
+          map['source'] = sourceMap;
+          return map;
         }
         return t.toJson();
       }).toList();
@@ -333,6 +357,84 @@ class Layout {
     return copyWith(pages: next);
   }
 
+  /// Renomeia uma página (exceto `home`) e atualiza automaticamente todos os
+  /// `FolderTile` que apontavam para [oldId].
+  Layout renamePage(String oldId, String newId) {
+    final cleanNew = newId.trim();
+    if (oldId == homePage ||
+        cleanNew.isEmpty ||
+        cleanNew == homePage ||
+        oldId == cleanNew ||
+        !pages.containsKey(oldId) ||
+        pages.containsKey(cleanNew)) {
+      return this;
+    }
+
+    final next = <String, List<Tile>>{};
+    for (final entry in pages.entries) {
+      final key = entry.key == oldId ? cleanNew : entry.key;
+      next[key] = entry.value.map((t) {
+        if (t is FolderTile && t.target == oldId) {
+          return t.copyWith(target: cleanNew);
+        }
+        return t;
+      }).toList();
+    }
+    return copyWith(pages: next);
+  }
+
+  /// Duplica uma página criando IDs únicos para os tiles clonados e copiando
+  /// seus respectivos bindings (incluindo `:a` / `:b` para `ToggleTile`).
+  Layout duplicatePage(String sourceId, String newId) {
+    final cleanNew = newId.trim();
+    if (cleanNew.isEmpty ||
+        !pages.containsKey(sourceId) ||
+        pages.containsKey(cleanNew)) {
+      return this;
+    }
+
+    final nextPages = _mutablePages();
+    final nextBindings = Map<String, List<List<String>>>.of(bindings);
+    final usedIds = Set<String>.of(allTileIds);
+
+    String allocId(String base) {
+      var candidate = '${base}_copy';
+      var idx = 2;
+      while (usedIds.contains(candidate)) {
+        candidate = '${base}_copy_$idx';
+        idx++;
+      }
+      usedIds.add(candidate);
+      return candidate;
+    }
+
+    final clonedTiles = <Tile>[];
+    for (final tile in pages[sourceId]!) {
+      final newTileId = allocId(tile.id);
+      final cloned = tile.copyWithCommon(id: newTileId);
+      clonedTiles.add(cloned);
+
+      if (bindings.containsKey(tile.id)) {
+        nextBindings[newTileId] = [
+          for (final argv in bindings[tile.id]!) List<String>.of(argv),
+        ];
+      }
+      if (tile is ToggleTile) {
+        for (final suffix in const [':a', ':b']) {
+          final oldKey = '${tile.id}$suffix';
+          if (bindings.containsKey(oldKey)) {
+            nextBindings['$newTileId$suffix'] = [
+              for (final argv in bindings[oldKey]!) List<String>.of(argv),
+            ];
+          }
+        }
+      }
+    }
+
+    nextPages[cleanNew] = clonedTiles;
+    return copyWith(pages: nextPages, bindings: nextBindings);
+  }
+
   /// Associa (ou remove, com [cmds] nulo) uma cadeia de comandos a um id.
   ///
   /// Regras:
@@ -441,6 +543,42 @@ class Layout {
                   pageId: entry.key, tileId: tile.id));
             }
           case BackTile():
+            break;
+          case PomodoroTile(
+              :final focusDurationMinutes,
+              :final shortBreakDurationMinutes,
+              :final longBreakDurationMinutes,
+              :final cyclesBeforeLongBreak
+            ):
+            if (focusDurationMinutes <= 0) {
+              issues.add(LayoutIssue(
+                  IssueLevel.error,
+                  'tempo de foco do Pomodoro deve ser maior que zero',
+                  pageId: entry.key,
+                  tileId: tile.id));
+            }
+            if (shortBreakDurationMinutes <= 0) {
+              issues.add(LayoutIssue(
+                  IssueLevel.error,
+                  'tempo de pausa curta do Pomodoro deve ser maior que zero',
+                  pageId: entry.key,
+                  tileId: tile.id));
+            }
+            if (longBreakDurationMinutes <= 0) {
+              issues.add(LayoutIssue(
+                  IssueLevel.error,
+                  'tempo de pausa longa do Pomodoro deve ser maior que zero',
+                  pageId: entry.key,
+                  tileId: tile.id));
+            }
+            if (cyclesBeforeLongBreak <= 0) {
+              issues.add(LayoutIssue(
+                  IssueLevel.error,
+                  'ciclos do Pomodoro devem ser maior que zero',
+                  pageId: entry.key,
+                  tileId: tile.id));
+            }
+          case TodoTile():
             break;
         }
         if (tile is! ToggleTile && tile.label.trim().isEmpty) {

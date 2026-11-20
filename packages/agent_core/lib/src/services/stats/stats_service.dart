@@ -16,6 +16,10 @@ class StatsSnapshot {
   final int diskUsedGb;
   final int diskTotalGb;
   final int diskPercent;
+  final int? netRxKbps;
+  final int? netTxKbps;
+  final int? gpuLoad;
+  final int? gpuTemp;
 
   const StatsSnapshot({
     required this.cpuLoad,
@@ -28,6 +32,10 @@ class StatsSnapshot {
     required this.diskUsedGb,
     required this.diskTotalGb,
     required this.diskPercent,
+    this.netRxKbps,
+    this.netTxKbps,
+    this.gpuLoad,
+    this.gpuTemp,
   });
 
   Map<String, dynamic> cpuJson() => {
@@ -49,6 +57,16 @@ class StatsSnapshot {
         'percent': diskPercent,
       };
 
+  Map<String, dynamic> netJson() => {
+        'rx_kbps': netRxKbps ?? 0,
+        'tx_kbps': netTxKbps ?? 0,
+      };
+
+  Map<String, dynamic> gpuJson() => {
+        if (gpuLoad != null) 'load': gpuLoad,
+        if (gpuTemp != null) 'temp': gpuTemp,
+      };
+
   @override
   bool operator ==(Object other) =>
       other is StatsSnapshot &&
@@ -61,7 +79,11 @@ class StatsSnapshot {
       other.diskMount == diskMount &&
       other.diskUsedGb == diskUsedGb &&
       other.diskTotalGb == diskTotalGb &&
-      other.diskPercent == diskPercent;
+      other.diskPercent == diskPercent &&
+      other.netRxKbps == netRxKbps &&
+      other.netTxKbps == netTxKbps &&
+      other.gpuLoad == gpuLoad &&
+      other.gpuTemp == gpuTemp;
 
   @override
   int get hashCode => Object.hash(
@@ -75,6 +97,10 @@ class StatsSnapshot {
         diskUsedGb,
         diskTotalGb,
         diskPercent,
+        netRxKbps,
+        netTxKbps,
+        gpuLoad,
+        gpuTemp,
       );
 }
 

@@ -3,6 +3,7 @@ import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../theme/cms_theme.dart';
 import 'create_tile_dialog.dart';
 import 'editor_controller.dart';
 import 'tile_card.dart';
@@ -448,97 +449,213 @@ class _PreviewPanelState extends ConsumerState<PreviewPanel> {
     EditorState state, {
     (int col, int row)? targetCell,
   }) {
-    showModalBottomSheet(
+    final categories = <String, List<({String type, String title, String subtitle, IconData icon, Color color})>>{
+      'Ações & Macros': [
+        (
+          type: 'shortcut',
+          title: 'Atalho / Macro',
+          subtitle: 'Comandos, teclas, URLs, texto ou webhooks',
+          icon: Icons.flash_on_rounded,
+          color: CmsTheme.accent,
+        ),
+        (
+          type: 'toggle',
+          title: 'Alternador A/B',
+          subtitle: 'Botão de 2 estados com ações independentes',
+          icon: Icons.toggle_on_outlined,
+          color: Colors.tealAccent,
+        ),
+      ],
+      'Áudio & Controles': [
+        (
+          type: 'slider',
+          title: 'Slider / Fader',
+          subtitle: 'Volume master, app, brilho ou Sound Pad',
+          icon: Icons.tune_rounded,
+          color: CmsTheme.blue,
+        ),
+        (
+          type: 'sound',
+          title: 'Sound Pad',
+          subtitle: 'Dispara efeito sonoro da biblioteca',
+          icon: Icons.music_note_rounded,
+          color: Colors.deepPurpleAccent,
+        ),
+      ],
+      'Produtividade': [
+        (
+          type: 'pomodoro',
+          title: 'Pomodoro',
+          subtitle: 'Timer de foco e pausas sincronizado',
+          icon: Icons.timer_outlined,
+          color: CmsTheme.peach,
+        ),
+        (
+          type: 'todo',
+          title: 'Tarefas (Todo)',
+          subtitle: 'Lista rápida com digitação no PC',
+          icon: Icons.checklist_rounded,
+          color: CmsTheme.green,
+        ),
+      ],
+      'Monitoramento & Navegação': [
+        (
+          type: 'stat',
+          title: 'Hardware Stat',
+          subtitle: 'Monitor de CPU, RAM ou Disco ao vivo',
+          icon: Icons.monitor_heart_outlined,
+          color: Colors.cyanAccent,
+        ),
+        (
+          type: 'folder',
+          title: 'Pasta',
+          subtitle: 'Abre outra página do dashboard',
+          icon: Icons.folder_outlined,
+          color: Colors.amberAccent,
+        ),
+        (
+          type: 'back',
+          title: 'Voltar',
+          subtitle: 'Retorna para a página Home',
+          icon: Icons.arrow_back_rounded,
+          color: Colors.white70,
+        ),
+      ],
+    };
+
+    showDialog<void>(
       context: context,
       builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        return AlertDialog(
+          titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 8),
+          contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          title: Row(
             children: [
-              if (targetCell != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.grid_on, size: 16, color: Colors.white54),
-                      const SizedBox(width: 8),
+              const Icon(Icons.widgets_outlined, size: 20, color: CmsTheme.accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Adicionar Widget',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    if (targetCell != null)
                       Text(
-                        'Adicionar na coluna ${targetCell.$1 + 1}, linha ${targetCell.$2 + 1}',
+                        'Posição: coluna ${targetCell.$1 + 1}, linha ${targetCell.$2 + 1}',
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w600,
-                        ),
+                            fontSize: 11.5, color: CmsTheme.textSecondary),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
-              ListTile(
-                leading: const Icon(Icons.flash_on),
-                title: const Text('Atalho'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'shortcut', context,
-                      targetCell: targetCell);
-                },
               ),
-              ListTile(
-                leading: const Icon(Icons.folder),
-                title: const Text('Pasta'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'folder', context,
-                      targetCell: targetCell);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.arrow_back),
-                title: const Text('Voltar'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'back', context,
-                      targetCell: targetCell);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.linear_scale),
-                title: const Text('Slider'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'slider', context,
-                      targetCell: targetCell);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.monitor_heart),
-                title: const Text('Stat (CPU/RAM/Disco)'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'stat', context,
-                      targetCell: targetCell);
-                },
-              ),
-              ListTile(
-                leading:
-                    const Icon(Icons.music_note, color: Colors.deepPurpleAccent),
-                title: const Text('Som (Sound Pad)'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'sound', context,
-                      targetCell: targetCell);
-                },
-              ),
-              ListTile(
-                leading:
-                    const Icon(Icons.toggle_on_outlined, color: Colors.tealAccent),
-                title: const Text('Alternador (Toggle A/B)'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleCreateTile(ref, state, 'toggle', context,
-                      targetCell: targetCell);
-                },
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => Navigator.pop(ctx),
               ),
             ],
+          ),
+          content: SizedBox(
+            width: 540,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: categories.entries.map((entry) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            entry.key.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.9,
+                              color: CmsTheme.textSecondary,
+                            ),
+                          ),
+                        ),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: entry.value.map((item) {
+                            return SizedBox(
+                              width: 255,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  _handleCreateTile(
+                                    ref,
+                                    state,
+                                    item.type,
+                                    context,
+                                    targetCell: targetCell,
+                                  );
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: CmsTheme.mantle,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: CmsTheme.border),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 36,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: item.color.withValues(alpha: 0.14),
+                                          borderRadius: BorderRadius.circular(9),
+                                        ),
+                                        child: Icon(item.icon,
+                                            size: 19, color: item.color),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              item.title,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: CmsTheme.textPrimary,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              item.subtitle,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: CmsTheme.textSecondary,
+                                                height: 1.25,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
           ),
         );
       },

@@ -60,10 +60,7 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
   @override
   void initState() {
     super.initState();
-    _existingIds = widget.state.layout.pages.values
-        .expand((list) => list)
-        .map((t) => t.id)
-        .toSet();
+    _existingIds = widget.state.layout.allTileIds;
 
     _availableFolderPages = widget.state.layout.pages.keys
         .where((k) => k != widget.state.currentPage)
@@ -121,6 +118,10 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
         return widget.state.layout.nextTileId('sound');
       case 'toggle':
         return widget.state.layout.nextTileId('toggle');
+      case 'pomodoro':
+        return widget.state.layout.nextTileId('pomodoro');
+      case 'todo':
+        return widget.state.layout.nextTileId('todo');
       case 'folder':
         return widget.state.layout.nextTileId('folder');
       case 'back':
@@ -145,6 +146,10 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
         return 'Novo Som';
       case 'toggle':
         return 'Novo Alternador';
+      case 'pomodoro':
+        return 'Pomodoro';
+      case 'todo':
+        return 'Tarefas';
       case 'folder':
         return 'Nova pasta';
       case 'back':
@@ -166,6 +171,10 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
         return 'Criar Tile de Som (Sound Pad)';
       case 'toggle':
         return 'Criar Alternador (Toggle A/B)';
+      case 'pomodoro':
+        return 'Criar Pomodoro (Timer)';
+      case 'todo':
+        return 'Criar Lista de Tarefas (Todo)';
       case 'folder':
         return 'Criar Pasta';
       case 'back':
@@ -272,6 +281,20 @@ class _CreateTileDialogState extends ConsumerState<_CreateTileDialog> {
             label: label.isEmpty ? 'Ligado' : '$label On',
           ),
           initialState: 'a',
+        );
+        break;
+      case 'pomodoro':
+        tile = PomodoroTile(
+          id: id,
+          icon: 'timer',
+          label: label.isEmpty ? 'Pomodoro' : label,
+        );
+        break;
+      case 'todo':
+        tile = TodoTile(
+          id: id,
+          icon: 'content_paste',
+          label: label.isEmpty ? 'Tarefas' : label,
         );
         break;
       case 'folder':

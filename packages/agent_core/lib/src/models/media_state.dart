@@ -22,26 +22,41 @@ class MediaState {
   final PlaybackStatus status;
   final String title;
   final String artist;
+  final int? position;
+  final int? duration;
+  final double? playbackRate;
 
   const MediaState({
     required this.status,
     this.title = '',
     this.artist = '',
+    this.position,
+    this.duration,
+    this.playbackRate,
   });
 
   static const MediaState idle = MediaState(status: PlaybackStatus.stopped);
 
-  /// Contrato: { status, title, artist }. Ordem das chaves importa.
-  Map<String, dynamic> toJson() =>
-      {'status': status.wire, 'title': title, 'artist': artist};
+  /// Contrato: { status, title, artist, [position], [duration], [playback_rate] }. Ordem das chaves importa.
+  Map<String, dynamic> toJson() => {
+        'status': status.wire,
+        'title': title,
+        'artist': artist,
+        if (position != null) 'position': position,
+        if (duration != null) 'duration': duration,
+        if (playbackRate != null) 'playback_rate': playbackRate,
+      };
 
   @override
   bool operator ==(Object other) =>
       other is MediaState &&
       other.status == status &&
       other.title == title &&
-      other.artist == artist;
+      other.artist == artist &&
+      other.position == position &&
+      other.duration == duration &&
+      other.playbackRate == playbackRate;
 
   @override
-  int get hashCode => Object.hash(status, title, artist);
+  int get hashCode => Object.hash(status, title, artist, position, duration, playbackRate);
 }

@@ -4,19 +4,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Smart Kiosk Dashboard</title>
-  <link rel="stylesheet" href="style.css?v=19">
+  <title>Hub Kiosk</title>
+  <link rel="stylesheet" href="style.css?v=34">
 </head>
 
 <body>
 
-  <div class="app-shell">
+  <div id="app-shell" class="app-shell app-shell--single-device">
+
+    <!-- Backdrop da sidebar em modo overlay -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
     <!-- ===================== SIDEBAR ===================== -->
-    <aside class="sidebar">
+    <aside id="sidebar" class="sidebar">
       <div class="sidebar__brand">
         <span class="sidebar__brand-dot"></span>
-        <span class="sidebar__brand-text">KIOSK</span>
+        <span class="sidebar__brand-text">HUB KIOSK</span>
       </div>
 
       <nav id="device-tabs" class="device-tabs">
@@ -24,6 +27,15 @@
       </nav>
 
       <div class="sidebar__footer">
+        <div class="ambient-setting">
+          <label for="ambient-timeout-select" class="ambient-setting__label">Descanso</label>
+          <select id="ambient-timeout-select" class="ambient-setting__select">
+            <option value="0">Desligado</option>
+            <option value="120">2 min</option>
+            <option value="300">5 min</option>
+            <option value="900">15 min</option>
+          </select>
+        </div>
         <span id="broker-status" class="broker-status broker-status--offline">
           <span class="broker-status__dot"></span> Conectando
         </span>
@@ -34,33 +46,100 @@
     <main class="main">
       <header class="main__header">
         <div class="main__title-group">
-          <h1 id="device-title" class="main__title">Selecione um dispositivo</h1>
-          <span id="device-status-badge" class="badge badge--offline">&mdash;</span>
+          <button id="btn-toggle-sidebar" class="btn-icon-hdr" type="button" title="Dispositivos e opções" aria-label="Dispositivos">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          </button>
+          <span id="device-status-dot" class="status-dot status-dot--offline" title="Offline"></span>
+          <h1 id="device-title" class="main__title">Conectando&hellip;</h1>
+          <button id="page-breadcrumb" class="badge badge--page" style="display: none;" type="button" title="Voltar para o início">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <span id="page-breadcrumb-label">Home</span>
+          </button>
+          <span id="device-status-badge" class="badge badge--offline badge--compact">&mdash;</span>
         </div>
 
         <div class="main__header-actions">
-          <button id="btn-toggle-search" class="btn-pill btn-pill--header" type="button" aria-expanded="false" title="Buscar widgets">
-            &#128269; Buscar
+          <button id="btn-stop-sound-pill" class="btn-stop-sound" style="display: none;" type="button" title="Parar som em reprodução">
+            <span class="btn-stop-sound__bars" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span>Parar</span>
           </button>
-          <button id="btn-toggle-events" class="btn-pill btn-pill--header" type="button" aria-expanded="false" title="Histórico de eventos">
-            &#128276; Eventos
-            <span id="events-unread-badge" class="badge-count" style="display: none;">0</span>
+
+          <button id="btn-toggle-autoswitch" class="btn-autoswitch" style="display: none;" type="button" title="Auto-Switch de página por app ativo">
+            <span>Auto</span>
           </button>
-          <button id="btn-toggle-mixer" class="btn-pill btn-pill--header" type="button">
-            &#127925; Mixer de Apps
+
+          <button id="btn-toggle-batteries" class="btn-battery-pill" type="button" title="Baterias dos dispositivos" aria-label="Baterias">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="18" height="12" rx="2" ry="2"></rect><line x1="23" y1="13" x2="23" y2="11"></line></svg>
+            <span id="header-battery-label">--%</span>
+          </button>
+
+          <button id="header-clock" class="header-clock" type="button" title="Ativar modo ambiente">--:--</button>
+
+          <button id="btn-toggle-mic" class="btn-icon-hdr" type="button" title="Silenciar / Ativar microfone do PC" aria-label="Microfone">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+          </button>
+
+          <button id="btn-toggle-clipboard" class="btn-icon-hdr" type="button" title="Clipboard PC ↔ Tablet" aria-label="Clipboard">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+          </button>
+
+          <button id="btn-toggle-media" class="btn-icon-hdr" type="button" title="Controle de mídia" aria-label="Mídia">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+          </button>
+
+          <button id="btn-toggle-search" class="btn-icon-hdr" type="button" aria-expanded="false" title="Buscar widgets" aria-label="Buscar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </button>
+
+          <button id="btn-toggle-mixer" class="btn-icon-hdr" type="button" title="Mixer de apps" aria-label="Mixer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+          </button>
+
+          <button id="btn-toggle-events" class="btn-icon-hdr btn-icon-hdr--events" type="button" aria-expanded="false" title="Histórico de eventos" aria-label="Eventos">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            <span id="events-unread-badge" class="badge-count badge-count--dot" style="display: none;">0</span>
+          </button>
+
+          <button id="btn-toggle-ambient" class="btn-icon-hdr" type="button" title="Modo Ambiente / Descanso" aria-label="Modo Ambiente">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+
+          <button id="btn-toggle-fullscreen" class="btn-icon-hdr" type="button" title="Tela cheia" aria-label="Tela cheia">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
           </button>
         </div>
       </header>
+
+      <!-- Barra de páginas rápida (aparece apenas quando há 2+ páginas) -->
+      <nav id="page-pills-bar" class="page-pills-bar" style="display: none;" aria-label="Páginas"></nav>
 
       <div class="main__body">
         <div id="main-content" class="main-content">
 
           <!-- Widget Now Playing -->
-          <div id="now-playing" class="now-playing now-playing--empty">
-            <span id="np-icon" class="np-icon">&#127925;</span>
+          <div id="now-playing" class="now-playing now-playing--empty" role="button" tabindex="0" title="Abrir controle de mídia">
+            <div class="np-disc-wrapper">
+              <span id="np-icon" class="np-icon">&#127925;</span>
+              <div class="np-disc-glow"></div>
+            </div>
             <div class="np-info">
-              <div id="np-title" class="np-title">Nenhuma mídia tocando</div>
-              <div id="np-artist" class="np-artist">-</div>
+              <div class="np-title-row">
+                <div id="np-title" class="np-title">Nenhuma mídia tocando</div>
+                <div class="np-mini-eq" id="np-mini-eq">
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+              <div class="np-meta-row">
+                <span id="np-artist" class="np-artist">-</span>
+                <span id="np-time-badge" class="np-time-badge" style="display: none;">00:00 / 00:00</span>
+              </div>
+            </div>
+            <div class="np-actions">
+              <button type="button" id="np-quick-play" class="np-quick-btn" title="Reproduzir/Pausar">&#9654;&#65039;</button>
+              <span class="np-expand-hint" title="Expandir controle de mídia">&#9662;</span>
+            </div>
+            <div class="np-progress-bar">
+              <div id="np-progress-fill" class="np-progress-fill" style="width: 0%;"></div>
             </div>
           </div>
 
@@ -89,11 +168,14 @@
 
             <div class="filter-chips-row" role="group" aria-label="Filtro por tipo de widget">
               <button type="button" class="filter-chip filter-chip--active" data-filter="all">Todos</button>
-              <button type="button" class="filter-chip" data-filter="sound">&#128266; Sons</button>
-              <button type="button" class="filter-chip" data-filter="slider">&#127915; Sliders</button>
-              <button type="button" class="filter-chip" data-filter="shortcut">&#9889; Atalhos</button>
-              <button type="button" class="filter-chip" data-filter="stat">&#128202; Stats</button>
-              <button type="button" class="filter-chip" data-filter="folder">&#128193; Pastas</button>
+              <button type="button" class="filter-chip" data-filter="shortcut">Atalhos</button>
+              <button type="button" class="filter-chip" data-filter="sound">Sons</button>
+              <button type="button" class="filter-chip" data-filter="slider">Sliders</button>
+              <button type="button" class="filter-chip" data-filter="toggle">Toggle</button>
+              <button type="button" class="filter-chip" data-filter="stat">Stats</button>
+              <button type="button" class="filter-chip" data-filter="pomodoro">Pomodoro</button>
+              <button type="button" class="filter-chip" data-filter="todo">Tarefas</button>
+              <button type="button" class="filter-chip" data-filter="folder">Pastas</button>
             </div>
           </div>
 
@@ -119,9 +201,13 @@
     <div id="mixer-backdrop" class="mixer-drawer__backdrop"></div>
     <div class="mixer-drawer__panel">
       <header class="mixer-drawer__header">
-        <h2>Mixer de Aplicações</h2>
+        <h2>Mixer &amp; Áudio</h2>
         <button id="btn-close-mixer" class="btn-icon" type="button" aria-label="Fechar">&times;</button>
       </header>
+      <div id="mixer-outputs-section" class="mixer-outputs-section" style="display: none;">
+        <div class="mixer-section-label">Saída de Áudio Padrão</div>
+        <div id="mixer-outputs-list" class="mixer-outputs-list"></div>
+      </div>
       <div id="mixer-apps-list" class="mixer-apps-list">
         <p class="mixer-empty-msg">Nenhuma aplicação de áudio ativa.</p>
       </div>
@@ -146,6 +232,190 @@
         <p class="events-empty-msg">Nenhum evento registrado para este dispositivo.</p>
       </div>
     </div>
+  </div>
+
+  <!-- ===================== DRAWER DE CONTROLE DE MÍDIA ===================== -->
+  <div id="media-drawer" class="media-drawer">
+    <div id="media-backdrop" class="media-drawer__backdrop"></div>
+    <div class="media-drawer__panel">
+      <header class="media-drawer__header">
+        <div class="media-drawer__title-group">
+          <h2>Controle de Mídia</h2>
+          <span id="media-status-pill" class="media-status-pill media-status-pill--stopped">Parado</span>
+        </div>
+        <button id="btn-close-media" class="btn-icon" type="button" aria-label="Fechar">&times;</button>
+      </header>
+
+      <div class="media-drawer__content">
+        <!-- Arte de Disco / Vinil -->
+        <div class="media-hero">
+          <div class="media-disc-art" id="media-disc-art">
+            <div class="media-disc-vinyl">
+              <div class="media-disc-grooves"></div>
+              <div class="media-disc-center">
+                <span id="media-disc-icon" class="media-disc-icon">&#127925;</span>
+              </div>
+            </div>
+          </div>
+          <div class="media-hero__info">
+            <div id="media-modal-title" class="media-hero__title">Nenhuma mídia reproduzindo</div>
+            <div id="media-modal-artist" class="media-hero__artist">-</div>
+          </div>
+        </div>
+
+        <div class="media-controls-col">
+        <!-- Linha do Tempo / Barra Móvel (Seek Bar) -->
+        <div class="media-timeline" id="media-timeline-section">
+          <div class="media-timeline__times">
+            <span id="media-time-current">00:00</span>
+            <span id="media-time-total">00:00</span>
+          </div>
+          <div class="media-timeline__slider-wrapper">
+            <input type="range" id="media-seek-slider" class="media-seek-slider" min="0" max="100" value="0" step="1">
+          </div>
+        </div>
+
+        <!-- Controles Principais de Reprodução -->
+        <div class="media-controls-row">
+          <button type="button" id="btn-media-rewind" class="btn-media-round btn-media-round--skip" title="Voltar 10 segundos">
+            <span class="btn-media-round__label">-10s</span>
+          </button>
+          <button type="button" id="btn-media-prev" class="btn-media-round" title="Faixa Anterior">
+            &#9198;&#65039;
+          </button>
+          <button type="button" id="btn-media-play-pause" class="btn-media-round btn-media-round--primary" title="Reproduzir / Pausar">
+            &#9654;&#65039;
+          </button>
+          <button type="button" id="btn-media-next" class="btn-media-round" title="Próxima Faixa">
+            &#9197;&#65039;
+          </button>
+          <button type="button" id="btn-media-fast-forward" class="btn-media-round btn-media-round--skip" title="Avançar 10 segundos">
+            <span class="btn-media-round__label">+10s</span>
+          </button>
+        </div>
+
+        <!-- Controle de Velocidade de Reprodução -->
+        <div class="media-speed-section" id="media-speed-section">
+          <span class="media-speed-title">&#9889; Velocidade:</span>
+          <div class="media-speed-chips" id="media-speed-chips">
+            <button type="button" class="btn-speed-chip" data-speed="0.5">0.5x</button>
+            <button type="button" class="btn-speed-chip" data-speed="0.75">0.75x</button>
+            <button type="button" class="btn-speed-chip btn-speed-chip--active" data-speed="1">1x</button>
+            <button type="button" class="btn-speed-chip" data-speed="1.25">1.25x</button>
+            <button type="button" class="btn-speed-chip" data-speed="1.5">1.5x</button>
+            <button type="button" class="btn-speed-chip" data-speed="2">2x</button>
+          </div>
+        </div>
+
+        <!-- Slider de Volume Integrado -->
+        <div class="media-volume-section">
+          <div class="media-volume-header">
+            <span class="media-volume-title">&#128266; Volume do Sistema</span>
+            <span id="media-volume-value" class="media-volume-value">50%</span>
+          </div>
+          <div class="media-volume-slider-wrapper">
+            <button type="button" id="btn-media-volume-mute" class="btn-media-mute" title="Silenciar">&#128266;</button>
+            <input type="range" id="media-volume-slider" class="slider-horizontal" min="0" max="100" value="50">
+          </div>
+        </div>
+        </div><!-- /.media-controls-col -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== DRAWER DE TAREFAS (TODO) ===================== -->
+  <div id="todo-drawer" class="todo-drawer">
+    <div id="todo-backdrop" class="todo-drawer__backdrop"></div>
+    <div class="todo-drawer__panel">
+      <header class="todo-drawer__header">
+        <div class="todo-drawer__title-group">
+          <h2>Tarefas</h2>
+          <span id="todo-count-label" class="todo-drawer__counter">(0 pendentes)</span>
+        </div>
+        <div class="todo-drawer__actions">
+          <button id="btn-clear-done-todo" class="btn-pill btn-pill--sm" type="button" title="Limpar tarefas concluídas">Limpar concluídas</button>
+          <button id="btn-close-todo" class="btn-icon" type="button" aria-label="Fechar">&times;</button>
+        </div>
+      </header>
+
+      <div class="todo-drawer__add">
+        <form id="todo-add-form" class="todo-add-form" onsubmit="return false;">
+          <input type="text" id="todo-input-text" class="todo-input-text" placeholder="Adicionar nova tarefa..." maxlength="120" autocomplete="off" />
+          <button id="btn-add-todo" class="btn-pill btn-pill--primary" type="button" title="Adicionar">+</button>
+          <button id="btn-todo-pc-prompt" class="btn-pill btn-pill--pc" type="button" title="Digitar tarefa no teclado do PC">💻 PC</button>
+        </form>
+      </div>
+
+      <div id="todo-items-list" class="todo-items-list">
+        <p class="todo-empty-msg">Nenhuma tarefa cadastrada.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== DRAWER DE BATERIAS ===================== -->
+  <div id="battery-drawer" class="side-drawer">
+    <div id="battery-backdrop" class="side-drawer__backdrop"></div>
+    <div class="side-drawer__panel">
+      <header class="side-drawer__header">
+        <h2>Baterias dos Dispositivos</h2>
+        <button id="btn-close-battery" class="btn-icon" type="button" aria-label="Fechar">&times;</button>
+      </header>
+      <div id="battery-list" class="side-drawer__body">
+        <p class="mixer-empty-msg">Lendo baterias&hellip;</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== DRAWER DE CLIPBOARD (PC ↔ TABLET) ===================== -->
+  <div id="clipboard-drawer" class="side-drawer">
+    <div id="clipboard-backdrop" class="side-drawer__backdrop"></div>
+    <div class="side-drawer__panel">
+      <header class="side-drawer__header">
+        <h2>Clipboard PC &harr; Tablet</h2>
+        <button id="btn-close-clipboard" class="btn-icon" type="button" aria-label="Fechar">&times;</button>
+      </header>
+      <div class="side-drawer__body">
+        <div class="clip-section">
+          <div class="clip-section__header">
+            <span class="mixer-section-label">Do PC para o Tablet</span>
+            <button id="btn-clip-pull" class="btn-pill btn-pill--sm" type="button">Puxar do PC</button>
+          </div>
+          <div id="clip-pc-preview" class="clip-preview">Toque em "Puxar do PC" para trazer o texto copiado.</div>
+          <div class="clip-actions-row">
+            <button id="btn-clip-copy-local" class="btn-pill btn-pill--sm" type="button">Copiar no Tablet</button>
+            <button id="btn-clip-open-link" class="btn-pill btn-pill--sm" type="button" style="display: none;">Abrir Link</button>
+          </div>
+        </div>
+        <div class="clip-section">
+          <div class="mixer-section-label">Do Tablet para o PC</div>
+          <textarea id="clip-send-input" class="clip-textarea" rows="3" placeholder="Cole ou digite texto/URL para enviar ao PC..."></textarea>
+          <div class="clip-actions-row">
+            <button id="btn-clip-send" class="btn-pill btn-pill--sm" type="button">Copiar no PC</button>
+            <button id="btn-clip-paste" class="btn-pill btn-pill--sm btn-pill--active" type="button">Colar no PC (Ctrl+V)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MODO AMBIENTE / AMBIENT STUDIO ===================== -->
+  <div id="ambient-overlay" class="ambient-overlay" role="button" tabindex="0" aria-label="Toque para acordar o painel">
+    <div id="ambient-bg-layer" class="ambient-bg-layer">
+      <div class="ambient-blob ambient-blob--a"></div>
+      <div class="ambient-blob ambient-blob--b"></div>
+      <img id="ambient-bg-img" class="ambient-bg-img" alt="" style="display: none;">
+      <div id="ambient-bg-dim" class="ambient-bg-dim" style="display: none;"></div>
+    </div>
+    <canvas id="ambient-canvas" class="ambient-canvas"></canvas>
+    <div id="ambient-stage" class="ambient-stage"></div>
+    <div id="ambient-fallback" class="ambient-overlay__inner">
+      <div id="ambient-clock" class="ambient-clock">--:--</div>
+      <div id="ambient-date" class="ambient-date"></div>
+      <div id="ambient-battery" class="ambient-battery" style="display: none;"></div>
+      <div id="ambient-pomo" class="ambient-pill" style="display: none;"></div>
+      <div id="ambient-media" class="ambient-media" style="display: none;"></div>
+    </div>
+    <div id="ambient-wake-hint" class="ambient-hint ambient-hint--fixed">Toque para voltar</div>
   </div>
 
   <!-- ===================== TOAST CONTAINER (CANTO SUPERIOR DIREITO) ===================== -->
@@ -176,6 +446,6 @@
   </script>
 
   <script src="mqtt.min.js"></script>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=35"></script>
 </body>
 </html>

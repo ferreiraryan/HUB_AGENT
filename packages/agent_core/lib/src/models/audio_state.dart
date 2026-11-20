@@ -48,4 +48,21 @@ class AppVolume {
 
   @override
   int get hashCode => Object.hash(id, name, volume);
+
+  /// Verifica se este stream de áudio corresponde ao app indicado pelo usuário
+  /// (removendo .exe e comparando com `id` ou `name`).
+  bool matchesTarget(String targetApp) {
+    final tClean = targetApp.toLowerCase().replaceAll('.exe', '').trim();
+    if (tClean.isEmpty) return false;
+
+    final idClean = id.toLowerCase().replaceAll('.exe', '').trim();
+    final nameClean = name.toLowerCase().replaceAll('.exe', '').trim();
+
+    return idClean == tClean ||
+        nameClean == tClean ||
+        idClean.contains(tClean) ||
+        nameClean.contains(tClean) ||
+        tClean.contains(idClean) ||
+        tClean.contains(nameClean);
+  }
 }

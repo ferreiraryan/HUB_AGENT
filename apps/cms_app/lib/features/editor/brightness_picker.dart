@@ -1,22 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:agent_core/agent_core.dart';
 import 'package:flutter/material.dart';
 
-class MonitorInfo {
-  final int number;
-  final String connector;
-  final String serial;
-  final String model;
+typedef MonitorInfo = DisplayInfo;
 
-  String get label => '$connector ($model)';
-
-  const MonitorInfo({
-    required this.number,
-    required this.connector,
-    required this.serial,
-    required this.model,
-  });
+extension MonitorInfoLabel on DisplayInfo {
+  String get label => connector.isNotEmpty ? '$connector ($model)' : model;
 }
 
 DateTime? _lastFetch;
@@ -35,44 +26,7 @@ Future<List<MonitorInfo>> detectMonitors() async {
         .timeout(const Duration(seconds: 5));
     if (r.exitCode != 0) return [];
 
-    final displays = <MonitorInfo>[];
-    final lines = (r.stdout as String).split('\n');
-
-    int? number;
-    String? conn, serial, model;
-
-    void flush() {
-      if (number != null && conn != null) {
-        displays.add(MonitorInfo(
-          number: number,
-          connector: conn,
-          serial: serial ?? '',
-          model: model ?? '',
-        ));
-      }
-    }
-
-    for (final line in lines) {
-      if (line.startsWith('Display ')) {
-        flush();
-        number = null;
-        conn = null;
-        serial = null;
-        model = null;
-        final match = RegExp(r'Display\s+(\d+)').firstMatch(line);
-        if (match != null) number = int.tryParse(match.group(1)!);
-      } else {
-        if (line.contains('DRM connector:')) {
-          conn = line.split(':')[1].trim();
-        } else if (line.contains('Serial number:')) {
-          serial = line.split(':')[1].trim();
-        } else if (line.contains('Model:')) {
-          model = line.split(':')[1].trim();
-        }
-      }
-    }
-    flush();
-
+    final displays = LinuxBrightnessController.parseDdcutilDetect(r.stdout as String);
     _cachedMonitors = displays;
     _lastFetch = DateTime.now();
     return displays;
